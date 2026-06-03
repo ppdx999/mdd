@@ -1,12 +1,12 @@
-# MDD Philosophy
+# MDD
 
-MDD (Markdown with Diagrams) is a lightweight Markdown preprocessor.
+MDD (Markdown with Diagrams) は軽量な Markdown プリプロセッサ。
 
-MDD scans Markdown code blocks, invokes external plugins, and replaces the blocks with generated SVG images.
+Markdown のコードブロックをスキャンし、外部プラグインを呼び出して、ブロックを生成された SVG 画像に置換する。
 
-Plugins are simple executable commands discovered from `$PATH`.
+プラグインは `$PATH` から発見される単純な実行可能コマンド。
 
-For a code block:
+コードブロック:
 
 ````markdown
 ```sequence
@@ -14,31 +14,37 @@ Alice -> Bob: Hello
 ```
 ````
 
-MDD executes:
+に対して MDD は以下を実行する:
 
 ```bash
 mdd-sequence
 ```
 
-The block content is passed through stdin, and the plugin returns SVG through stdout.
+ブロックの内容は標準入力で渡され、プラグインは標準出力で SVG を返す。
 
 ```text
 Markdown
     ↓
-Code Block
+コードブロック
     ↓
-mdd-{block-name}
+mdd-{ブロック名}
     ↓
 SVG
     ↓
 Markdown
 ```
 
-MDD itself only handles:
+MDD 本体が担うのは以下のみ:
 
-* Markdown parsing
-* Plugin discovery
-* Plugin execution
-* Markdown generation
+* Markdown のパース
+* プラグインの発見
+* プラグインの実行
+* Markdown の生成
 
-Diagram rendering logic belongs entirely to plugins.
+図の描画ロジックはすべてプラグイン側に属する。
+
+## プラグイン
+
+| プラグイン | 説明 |
+|---|---|
+| [mdd-usecase](crates/mdd-usecase/) | ユースケース図 |
