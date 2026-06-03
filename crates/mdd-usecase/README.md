@@ -7,7 +7,7 @@
 標準入力からユースケース記法を受け取り、標準出力にSVGを出力する。
 
 ```sh
-cat examples/simple.usecase | mdd-usecase > output.svg
+mdd-usecase < examples/simple.usecase > output.svg
 ```
 
 `mdd` 経由で使う場合は、Markdownのコードブロックに `usecase` を指定する。
@@ -72,11 +72,11 @@ Login -> TwoFactorAuth
 
 ```sh
 # シンプルな図
-cat examples/simple.usecase | cargo run --bin mdd-usecase > simple.svg
+mdd-usecase < examples/simple.usecase > simple.svg
 
 # 複雑な図（複数アクター、複数パッケージ）
-cat examples/complex.usecase | cargo run --bin mdd-usecase > complex.svg
+mdd-usecase < examples/complex.usecase > complex.svg
 
 # 非接続ノードを含む図
-cat examples/disconnected.usecase | cargo run --bin mdd-usecase > disconnected.svg
+mdd-usecase < examples/disconnected.usecase > disconnected.svg
 ```
