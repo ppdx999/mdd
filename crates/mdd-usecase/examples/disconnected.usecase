@@ -1,0 +1,13 @@
+actor User
+
+package "Features" {
+  usecase Login
+  usecase Register
+  usecase ViewProfile
+  usecase EditProfile
+  usecase DeleteAccount
+  usecase ChangePassword
+}
+
+User -> Login
+Login -> Register

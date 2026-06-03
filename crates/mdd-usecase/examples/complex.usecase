@@ -1,0 +1,37 @@
+actor Customer
+actor Admin
+actor System
+
+package "Authentication" {
+  usecase Login
+  usecase Logout
+  usecase ResetPassword
+  usecase TwoFactorAuth
+}
+
+package "Order Management" {
+  usecase PlaceOrder
+  usecase CancelOrder
+  usecase TrackOrder
+  usecase ViewOrderHistory
+}
+
+package "Admin Panel" {
+  usecase ManageUsers
+  usecase ViewReports
+  usecase UpdateInventory
+}
+
+Customer -> Login
+Customer -> Logout
+Customer -> ResetPassword
+Customer -> PlaceOrder
+Customer -> CancelOrder
+Customer -> TrackOrder
+Customer -> ViewOrderHistory
+Admin -> Login
+Admin -> ManageUsers
+Admin -> ViewReports
+Admin -> UpdateInventory
+System -> TwoFactorAuth
+Login -> TwoFactorAuth
