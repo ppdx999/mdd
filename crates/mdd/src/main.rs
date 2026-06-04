@@ -58,9 +58,14 @@ fn strip_root(path: &Path) -> PathBuf {
     if let Ok(stripped) = path.strip_prefix("/") {
         return stripped.to_path_buf();
     }
-    // Windows: strip drive prefix like "C:\"
-    let s = path.to_string_lossy();
-    if s.len() >= 3 && s.as_bytes()[1] == b':' && (s.as_bytes()[2] == b'\\' || s.as_bytes()[2] == b'/') {
+    // Windows: canonicalize returns "\\?\C:\..." UNC paths; strip that prefix first
+    let mut s = path.to_string_lossy().into_owned();
+    if s.starts_with(r"\\?\") {
+        s = s[4..].to_string();
+    }
+    // Strip drive prefix like "C:\" or "C:/"
+    let bytes = s.as_bytes();
+    if bytes.len() >= 3 && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/') {
         return PathBuf::from(&s[3..]);
     }
     path.to_path_buf()
