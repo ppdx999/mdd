@@ -43,6 +43,24 @@ MDD 本体が担うのは以下のみ:
 
 図の描画ロジックはすべてプラグイン側に属する。
 
+## インストール
+
+Rust ツールチェインが必要。
+
+```sh
+git clone https://github.com/ppdx999/mdd.git
+cd mdd
+make install
+```
+
+`~/.cargo/bin/` に `mdd` と全プラグインがインストールされる。
+
+アンインストール:
+
+```sh
+make uninstall
+```
+
 ## プラグイン
 
 | プラグイン | 説明 |
