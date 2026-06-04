@@ -81,9 +81,12 @@ HandleOrder -> ValidatePayment
 ## サンプル
 
 ```sh
-# シンプルな図
+# シンプルな図（少なめ）
 mdd-dfd < examples/simple.dfd > simple.svg
 
-# 複雑な図
+# 中規模の図
 mdd-dfd < examples/complex.dfd > complex.svg
+
+# 大規模な図
+mdd-dfd < examples/large.dfd > large.svg
 ```

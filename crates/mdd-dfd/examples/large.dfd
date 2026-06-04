@@ -1,0 +1,71 @@
+entity Customer
+entity Admin
+entity ExternalAPI
+entity NotificationService
+
+process ReceiveOrder
+process ValidateStock
+process ProcessPayment
+process ShipOrder
+process GenerateInvoice
+process SendNotification
+
+datastore Orders {
+  注文ID
+  顧客ID
+  注文日
+  合計金額
+  ステータス
+}
+
+datastore Products {
+  商品ID
+  商品名
+  価格
+  在庫数
+  カテゴリ
+}
+
+datastore Payments {
+  決済ID
+  注文ID
+  決済方法
+  金額
+  決済日
+}
+
+datastore Shipments {
+  出荷ID
+  注文ID
+  追跡番号
+  出荷日
+  配達予定日
+}
+
+datastore Invoices {
+  請求書ID
+  注文ID
+  発行日
+  金額
+  PDF
+}
+
+Customer -> ReceiveOrder : "注文リクエスト"
+ReceiveOrder -> Orders : "注文登録"
+ReceiveOrder -> ValidateStock : "在庫確認依頼"
+ValidateStock -> Products : "在庫照会"
+Products -> ValidateStock : "在庫情報"
+ValidateStock -> ProcessPayment : "在庫確認OK"
+ProcessPayment -> ExternalAPI : "決済リクエスト"
+ExternalAPI -> ProcessPayment : "決済結果"
+ProcessPayment -> Payments : "決済記録"
+ProcessPayment -> ShipOrder : "出荷指示"
+ShipOrder -> Shipments : "出荷登録"
+ShipOrder -> SendNotification : "出荷完了通知"
+SendNotification -> NotificationService : "メール送信"
+SendNotification -> Customer : "出荷通知"
+ProcessPayment -> GenerateInvoice : "請求書作成依頼"
+GenerateInvoice -> Invoices : "請求書保存"
+GenerateInvoice -> Customer : "請求書送付"
+Admin -> Orders : "注文管理"
+Admin -> Products : "商品管理"
