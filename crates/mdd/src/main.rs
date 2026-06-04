@@ -121,12 +121,11 @@ fn process(input: &str, source_path: &Path) -> Result<String, String> {
             Event::End(TagEnd::CodeBlock) => {
                 if let Some(lang) = code_block_lang.take() {
                     let svg = run_plugin(&lang, &code_block_content)?;
-                    let svg_path = save_svg(&svg_dir, &lang, &svg)?;
-                    output.push_str(&format!(
-                        "![{}]({})\n",
-                        lang,
-                        svg_path.display()
-                    ));
+                    // Cache SVG to disk for reuse
+                    let _ = save_svg(&svg_dir, &lang, &svg);
+                    // Embed SVG inline to avoid path issues (Windows backslash, CJK paths)
+                    output.push_str(&svg);
+                    output.push('\n');
                 } else {
                     in_code_block = false;
                     output.push_str("```\n");
