@@ -74,6 +74,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdd-dfd"
+version = "0.1.0"
+dependencies = [
+ "rust-sugiyama",
+]
+
+[[package]]
 name = "mdd-usecase"
 version = "0.1.0"
 dependencies = [

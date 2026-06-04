@@ -1,0 +1,27 @@
+entity Customer
+entity PaymentGateway
+
+process HandleOrder
+process ValidatePayment
+
+datastore Orders {
+  注文ID
+  顧客ID
+  合計金額
+  ステータス
+}
+
+datastore Products {
+  商品ID
+  商品名
+  価格
+  在庫数
+}
+
+Customer -> HandleOrder : "注文情報"
+HandleOrder -> Orders : "注文データ"
+HandleOrder -> ValidatePayment : "支払い依頼"
+ValidatePayment -> PaymentGateway : "決済リクエスト"
+PaymentGateway -> ValidatePayment : "決済結果"
+ValidatePayment -> Orders : "ステータス更新"
+Products -> HandleOrder : "商品情報"

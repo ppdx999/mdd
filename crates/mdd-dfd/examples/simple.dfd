@@ -1,0 +1,10 @@
+entity Customer
+process HandleOrder
+datastore Orders {
+  注文ID
+  顧客ID
+  合計金額
+}
+
+Customer -> HandleOrder : "注文情報"
+HandleOrder -> Orders : "注文データ"

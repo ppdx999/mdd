@@ -66,3 +66,4 @@ make uninstall
 | プラグイン | 説明 |
 |---|---|
 | [mdd-usecase](crates/mdd-usecase/) | ユースケース図 |
+| [mdd-dfd](crates/mdd-dfd/) | DFD（データフロー図） |
