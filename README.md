@@ -67,3 +67,52 @@ make uninstall
 |---|---|
 | [mdd-usecase](crates/mdd-usecase/) | ユースケース図 |
 | [mdd-dfd](crates/mdd-dfd/) | DFD（データフロー図） |
+
+## AGENTS.md 向けサンプル
+
+AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
+
+````markdown
+## 図の生成
+
+このプロジェクトでは [mdd](https://github.com/ppdx999/mdd) を使って Markdown 内に図を埋め込む。
+コードブロックの言語名に応じたプラグインが SVG を生成する。
+
+### ユースケース図
+
+```usecase
+actor Customer
+actor Admin
+
+package "認証" {
+  usecase Login
+  usecase Logout
+}
+
+Customer -> Login
+Admin -> Login
+Admin -> Logout
+```
+
+### DFD（データフロー図）
+
+```dfd
+entity Customer
+entity PaymentGateway
+
+process HandleOrder
+process ValidatePayment
+
+datastore Orders {
+  注文ID
+  顧客ID
+  合計金額
+  ステータス
+}
+
+Customer -> HandleOrder : "注文情報"
+HandleOrder -> Orders : "注文データ"
+HandleOrder -> ValidatePayment : "支払い依頼"
+ValidatePayment -> PaymentGateway : "決済リクエスト"
+```
+````
