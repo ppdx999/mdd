@@ -46,13 +46,31 @@ fn content_hash(content: &str) -> String {
     format!("{:016x}", hasher.finish())
 }
 
+fn home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .expect("HOME or USERPROFILE not set")
+}
+
+fn strip_root(path: &Path) -> PathBuf {
+    // Unix: strip leading "/"
+    if let Ok(stripped) = path.strip_prefix("/") {
+        return stripped.to_path_buf();
+    }
+    // Windows: strip drive prefix like "C:\"
+    let s = path.to_string_lossy();
+    if s.len() >= 3 && s.as_bytes()[1] == b':' && (s.as_bytes()[2] == b'\\' || s.as_bytes()[2] == b'/') {
+        return PathBuf::from(&s[3..]);
+    }
+    path.to_path_buf()
+}
+
 fn cache_dir(source_path: &Path) -> PathBuf {
-    let home = std::env::var("HOME").expect("HOME not set");
+    let home = home_dir();
     let abs_path = fs::canonicalize(source_path).unwrap_or_else(|_| source_path.to_path_buf());
-    let stripped = abs_path
-        .strip_prefix("/")
-        .unwrap_or(&abs_path);
-    Path::new(&home).join(".cache/mdd/svgs").join(stripped)
+    let stripped = strip_root(&abs_path);
+    home.join(".cache").join("mdd").join("svgs").join(stripped)
 }
 
 fn save_svg(dir: &Path, lang: &str, svg: &str) -> Result<PathBuf, String> {
