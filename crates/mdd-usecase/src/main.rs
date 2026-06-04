@@ -181,8 +181,14 @@ fn wrap_lines(label: &str) -> Vec<String> {
 /// Calculate the node size based on the label
 fn usecase_size(label: &str) -> (f64, f64) {
     let lines = wrap_lines(label);
-    let max_line_len = lines.iter().map(|l| l.len()).max().unwrap_or(0);
-    let text_width = max_line_len as f64 * CHAR_WIDTH;
+    let text_width = lines
+        .iter()
+        .map(|l| {
+            l.chars()
+                .map(|c| if c.is_ascii() { CHAR_WIDTH } else { 14.0 })
+                .sum::<f64>()
+        })
+        .fold(0.0_f64, f64::max);
     let w = (text_width + ELLIPSE_H_PAD * 2.0).max(MIN_NODE_WIDTH);
     let text_height = lines.len() as f64 * LINE_HEIGHT;
     let h = (text_height + 24.0).max(MIN_NODE_HEIGHT);
