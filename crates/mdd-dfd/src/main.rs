@@ -210,16 +210,16 @@ fn compute_spacing(diagram: &Diagram) -> SpacingConfig {
     } else if complexity <= 30 {
         1.0 + (complexity as f64 / 10.0).sqrt() * 0.6
     } else {
-        2.0 + (complexity - 30) as f64 * 0.1
+        2.0 + (complexity - 30) as f64 * 0.06
     }
-    .min(6.0);
+    .min(5.0);
 
     let node_count = diagram.nodes.len() as f64;
     SpacingConfig {
-        nodesep: 25.0 * factor,
-        ranksep: 40.0 * factor,
-        component_gap: 30.0 * factor,
-        vertex_spacing: 5.0 + node_count * 4.0,
+        nodesep: 22.0 * factor,
+        ranksep: 35.0 * factor,
+        component_gap: 28.0 * factor,
+        vertex_spacing: 5.0 + node_count * 3.5,
     }
 }
 
