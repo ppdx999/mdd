@@ -201,16 +201,23 @@ struct SpacingConfig {
 
 fn compute_spacing(diagram: &Diagram) -> SpacingConfig {
     let complexity = diagram.nodes.len() + diagram.edges.len();
-    // Gentle growth: factor starts at 1.0 for tiny diagrams, reaches ~1.5 around 20 items,
-    // ~2.0 around 50 items. Only large diagrams (30+ nodes/edges) get significant expansion.
-    let factor = (1.0 + (complexity as f64 / 20.0).sqrt() * 0.4).min(3.0);
+    // Two-tier scaling: gentle for small diagrams, steeper for large ones.
+    // <=10: factor ~1.0-1.3  (compact)
+    // 10-30: factor ~1.3-2.0 (moderate)
+    // 30+:  factor ~2.0-4.0  (spacious)
+    let factor = if complexity <= 10 {
+        1.0 + (complexity as f64 / 20.0).sqrt() * 0.4
+    } else {
+        1.0 + (complexity as f64 / 10.0).sqrt() * 0.6
+    }
+    .min(4.0);
 
     let node_count = diagram.nodes.len() as f64;
     SpacingConfig {
         nodesep: 20.0 * factor,
         ranksep: 30.0 * factor,
         component_gap: 25.0 * factor,
-        vertex_spacing: 5.0 + node_count * 2.0,
+        vertex_spacing: 5.0 + node_count * 3.0,
     }
 }
 
