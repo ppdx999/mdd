@@ -5,6 +5,8 @@ use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 fn run_plugin(name: &str, input: &str) -> Result<String, String> {
     let cmd_name = format!("mdd-{}", name);
@@ -166,23 +168,103 @@ fn process(input: &str, source_path: &Path) -> Result<String, String> {
     Ok(output)
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: mdd <file.md>");
-        std::process::exit(1);
-    }
-
-    let path = Path::new(&args[1]);
+fn build_html(path: &Path) -> PathBuf {
     let input = fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("mdd: Failed to read {}: {}", path.display(), e);
         std::process::exit(1);
     });
 
-    match process(&input, path) {
-        Ok(result) => print!("{}", result),
+    let md_output = match process(&input, path) {
+        Ok(result) => result,
         Err(e) => {
             eprintln!("mdd: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let parser = Parser::new_ext(&md_output, Options::empty());
+    let mut html_body = String::new();
+    pulldown_cmark::html::push_html(&mut html_body, parser);
+
+    let title = path.file_name().unwrap_or_default().to_string_lossy();
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+body {{ max-width: 900px; margin: 40px auto; padding: 0 20px; font-family: sans-serif; line-height: 1.6; color: #333; }}
+h1, h2, h3 {{ border-bottom: 1px solid #eee; padding-bottom: 0.3em; }}
+img {{ max-width: 100%; }}
+code {{ background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }}
+pre {{ background: #f5f5f5; padding: 16px; border-radius: 6px; overflow-x: auto; }}
+pre code {{ background: none; padding: 0; }}
+</style>
+</head><body>
+{html_body}
+</body></html>"#
+    );
+
+    let html_path = path.with_extension("html");
+    fs::write(&html_path, &html).unwrap_or_else(|e| {
+        eprintln!("mdd: Failed to write {}: {}", html_path.display(), e);
+        std::process::exit(1);
+    });
+    html_path
+}
+
+fn open_browser(path: &Path) {
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("open").arg(path).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = Command::new("xdg-open").arg(path).spawn();
+}
+
+fn preview(path: &Path) {
+    let html_path = build_html(path);
+    eprintln!("mdd: Built {}", html_path.display());
+
+    open_browser(&html_path);
+
+    let mut last_modified = fs::metadata(path).and_then(|m| m.modified()).ok();
+    eprintln!("mdd: Watching {} for changes... (Ctrl+C to stop)", path.display());
+
+    loop {
+        thread::sleep(Duration::from_secs(1));
+        let current = fs::metadata(path).and_then(|m| m.modified()).ok();
+        if current != last_modified {
+            last_modified = current;
+            build_html(path);
+            eprintln!("mdd: Rebuilt {}", html_path.display());
+        }
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    match args.len() {
+        2 => {
+            let path = Path::new(&args[1]);
+            let input = fs::read_to_string(path).unwrap_or_else(|e| {
+                eprintln!("mdd: Failed to read {}: {}", path.display(), e);
+                std::process::exit(1);
+            });
+            match process(&input, path) {
+                Ok(result) => print!("{}", result),
+                Err(e) => {
+                    eprintln!("mdd: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        3 if args[1] == "preview" => {
+            let path = Path::new(&args[2]);
+            preview(path);
+        }
+        _ => {
+            eprintln!("Usage: mdd <file.md>");
+            eprintln!("       mdd preview <file.md>");
             std::process::exit(1);
         }
     }
