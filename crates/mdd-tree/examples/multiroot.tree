@@ -1,0 +1,31 @@
+node フロントエンド
+
+group "React" {
+  node コンポーネント
+  node フック
+  node ルーティング
+}
+
+group "Vue" {
+  node コンポーネント
+  node ストア
+}
+
+node バックエンド
+
+group "API" {
+  node 認証
+  node ユーザー
+  node 注文
+}
+
+group "インフラ" {
+  node DB
+  node キャッシュ
+  node メッセージキュー
+}
+
+フロントエンド -> "React"
+フロントエンド -> "Vue"
+バックエンド -> "API"
+バックエンド -> "インフラ"
