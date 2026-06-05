@@ -581,9 +581,9 @@ fn render_svg(diagram: &Diagram) -> String {
         ));
 
         if !edge.label.is_empty() {
-            let mid = clipped_route.len() / 2;
-            let lx = clipped_route[mid].0;
-            let ly = clipped_route[mid].1 - 6.0;
+            let (mx, my) = midpoint_on_path(&clipped_route);
+            let lx = mx;
+            let ly = my - 6.0;
             svg.push_str(&format!(
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.85\"/>",
                 lx - text_width(&edge.label) / 2.0 - 3.0,
@@ -773,6 +773,107 @@ fn build_smooth_path(points: &[(f64, f64)]) -> String {
     let last = points[points.len() - 1];
     d.push_str(&format!(" L{},{}", last.0, last.1));
     d
+}
+
+/// Sample a point at arc-length midpoint of a polyline/curve defined by waypoints.
+/// Uses the same Bézier construction as build_smooth_path for consistency.
+fn midpoint_on_path(points: &[(f64, f64)]) -> (f64, f64) {
+    if points.len() <= 1 {
+        return points.first().copied().unwrap_or((0.0, 0.0));
+    }
+    if points.len() == 2 {
+        return (
+            (points[0].0 + points[1].0) / 2.0,
+            (points[0].1 + points[1].1) / 2.0,
+        );
+    }
+
+    // Sample the smooth path at many points, then find arc-length midpoint
+    let samples = sample_smooth_path(points, 64);
+    if samples.is_empty() {
+        return points[points.len() / 2];
+    }
+
+    // Compute cumulative arc lengths
+    let mut lengths = vec![0.0_f64];
+    for i in 1..samples.len() {
+        let dx = samples[i].0 - samples[i - 1].0;
+        let dy = samples[i].1 - samples[i - 1].1;
+        lengths.push(lengths[i - 1] + (dx * dx + dy * dy).sqrt());
+    }
+
+    let total = *lengths.last().unwrap();
+    let half = total / 2.0;
+
+    // Find the segment containing the midpoint
+    for i in 1..lengths.len() {
+        if lengths[i] >= half {
+            let t = (half - lengths[i - 1]) / (lengths[i] - lengths[i - 1]).max(1e-10);
+            return (
+                samples[i - 1].0 + (samples[i].0 - samples[i - 1].0) * t,
+                samples[i - 1].1 + (samples[i].1 - samples[i - 1].1) * t,
+            );
+        }
+    }
+    *samples.last().unwrap()
+}
+
+/// Sample points along the smooth Bézier path at n intervals.
+fn sample_smooth_path(points: &[(f64, f64)], n: usize) -> Vec<(f64, f64)> {
+    if points.len() < 2 {
+        return points.to_vec();
+    }
+    if points.len() == 2 {
+        return (0..=n)
+            .map(|i| {
+                let t = i as f64 / n as f64;
+                (
+                    points[0].0 + (points[1].0 - points[0].0) * t,
+                    points[0].1 + (points[1].1 - points[0].1) * t,
+                )
+            })
+            .collect();
+    }
+
+    // Rebuild the same Bézier segments as build_smooth_path
+    let mut segments: Vec<((f64, f64), (f64, f64), (f64, f64))> = Vec::new(); // (start, control, end)
+    let mut cursor = points[0];
+
+    for i in 1..points.len() - 1 {
+        let prev = points[i - 1];
+        let curr = points[i];
+        let next = points[i + 1];
+        let mid_prev = ((prev.0 + curr.0) / 2.0, (prev.1 + curr.1) / 2.0);
+        let mid_next = ((curr.0 + next.0) / 2.0, (curr.1 + next.1) / 2.0);
+
+        if i == 1 {
+            // Line from cursor to mid_prev
+            segments.push((cursor, cursor, mid_prev)); // degenerate: straight line as Q with control=start
+            cursor = mid_prev;
+        }
+        // Quadratic Bézier from cursor to mid_next with control at curr
+        segments.push((cursor, curr, mid_next));
+        cursor = mid_next;
+    }
+    // Final line to last point
+    let last = *points.last().unwrap();
+    segments.push((cursor, cursor, last));
+
+    // Sample each segment
+    let per_seg = (n / segments.len()).max(2);
+    let mut result = Vec::new();
+    for (start, ctrl, end) in &segments {
+        for j in 0..per_seg {
+            let t = j as f64 / per_seg as f64;
+            // Quadratic Bézier: B(t) = (1-t)^2*P0 + 2*(1-t)*t*P1 + t^2*P2
+            let mt = 1.0 - t;
+            let x = mt * mt * start.0 + 2.0 * mt * t * ctrl.0 + t * t * end.0;
+            let y = mt * mt * start.1 + 2.0 * mt * t * ctrl.1 + t * t * end.1;
+            result.push((x, y));
+        }
+    }
+    result.push(last);
+    result
 }
 
 /// Clip a line from (cx, cy) toward (tx, ty) to the boundary of the node shape.
