@@ -1,4 +1,4 @@
-CRATES := mdd mdd-usecase mdd-dfd mdd-tree
+CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er
 
 .PHONY: build test install uninstall clean
 

@@ -1,0 +1,55 @@
+table Users {
+  * id
+  name
+  email
+  password_hash
+  created_at
+}
+
+table Orders {
+  * id
+  user_id
+  order_date
+  total
+  status
+  shipping_address
+}
+
+table OrderItems {
+  * id
+  order_id
+  product_id
+  quantity
+  unit_price
+}
+
+table Products {
+  * id
+  name
+  description
+  price
+  stock
+  category_id
+}
+
+table Categories {
+  * id
+  name
+  parent_id
+}
+
+table Reviews {
+  * id
+  user_id
+  product_id
+  rating
+  comment
+  created_at
+}
+
+Users 1--* Orders
+Orders 1--* OrderItems
+Products 1--* OrderItems
+Categories 1--* Products
+Users 1--* Reviews
+Products 1--* Reviews

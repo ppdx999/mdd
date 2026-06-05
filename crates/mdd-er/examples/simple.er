@@ -1,0 +1,14 @@
+table Users {
+  * id
+  name
+  email
+}
+
+table Posts {
+  * id
+  user_id
+  title
+  body
+}
+
+Users 1--* Posts
