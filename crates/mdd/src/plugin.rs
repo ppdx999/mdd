@@ -1,9 +1,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use std::{fs};
+use std::fs;
 
 pub fn run_plugin(name: &str, input: &str) -> Result<String, String> {
     let cmd_name = format!("mdd-{}", name);
@@ -43,36 +43,23 @@ fn content_hash(content: &str) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn home_dir() -> PathBuf {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map(PathBuf::from)
-        .expect("HOME or USERPROFILE not set")
-}
-
-fn strip_root(path: &Path) -> PathBuf {
-    // Unix: strip leading "/"
-    if let Ok(stripped) = path.strip_prefix("/") {
-        return stripped.to_path_buf();
-    }
-    // Windows: canonicalize returns "\\?\C:\..." UNC paths; strip that prefix first
-    let mut s = path.to_string_lossy().into_owned();
-    if s.starts_with(r"\\?\") {
-        s = s[4..].to_string();
-    }
-    // Strip drive prefix like "C:\" or "C:/"
-    let bytes = s.as_bytes();
-    if bytes.len() >= 3 && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/') {
-        return PathBuf::from(&s[3..]);
-    }
-    path.to_path_buf()
+/// Extract only the normal path components, stripping root ("/"), drive
+/// prefix ("C:\"), and UNC prefix ("\\?\") via the standard library's
+/// Component decomposition.
+fn relative_components(path: &Path) -> PathBuf {
+    path.components()
+        .filter_map(|c| match c {
+            Component::Normal(s) => Some(PathBuf::from(s)),
+            _ => None, // skip RootDir, Prefix, CurDir, ParentDir
+        })
+        .collect()
 }
 
 pub fn cache_dir(source_path: &Path) -> PathBuf {
-    let home = home_dir();
+    let home = dirs::home_dir().expect("Could not determine home directory");
     let abs_path = fs::canonicalize(source_path).unwrap_or_else(|_| source_path.to_path_buf());
-    let stripped = strip_root(&abs_path);
-    home.join(".cache").join("mdd").join("svgs").join(stripped)
+    let relative = relative_components(&abs_path);
+    home.join(".cache").join("mdd").join("svgs").join(relative)
 }
 
 pub fn save_svg(dir: &Path, lang: &str, svg: &str) -> Result<PathBuf, String> {
