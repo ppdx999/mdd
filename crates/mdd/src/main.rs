@@ -120,12 +120,19 @@ fn process(input: &str, source_path: &Path) -> Result<String, String> {
             }
             Event::End(TagEnd::CodeBlock) => {
                 if let Some(lang) = code_block_lang.take() {
-                    let svg = run_plugin(&lang, &code_block_content)?;
-                    // Cache SVG to disk for reuse
-                    let _ = save_svg(&svg_dir, &lang, &svg);
-                    // Embed SVG inline to avoid path issues (Windows backslash, CJK paths)
-                    output.push_str(&svg);
-                    output.push('\n');
+                    match run_plugin(&lang, &code_block_content) {
+                        Ok(svg) => {
+                            let _ = save_svg(&svg_dir, &lang, &svg);
+                            output.push_str(&svg);
+                            output.push('\n');
+                        }
+                        Err(_) => {
+                            // Plugin not found — pass through as a normal code block
+                            output.push_str(&format!("```{}\n", lang));
+                            output.push_str(&code_block_content);
+                            output.push_str("```\n");
+                        }
+                    }
                 } else {
                     in_code_block = false;
                     output.push_str("```\n");
@@ -196,17 +203,53 @@ fn build_html(path: &Path) -> PathBuf {
         std::process::exit(1);
     });
 
-    let md_output = match process(&input, path) {
-        Ok(result) => result,
-        Err(e) => {
-            eprintln!("mdd: {}", e);
-            std::process::exit(1);
-        }
-    };
+    // Parse with all extensions enabled (tables, strikethrough, tasklists, etc.)
+    let opts = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS;
+    let parser = Parser::new_ext(&input, opts);
 
-    let parser = Parser::new_ext(&md_output, Options::empty());
+    // Intercept diagram code blocks, pass everything else to HTML renderer
+    let mut code_block_lang: Option<String> = None;
+    let mut code_block_content = String::new();
+
+    let events: Vec<Event> = parser
+        .flat_map(|event| match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang)))
+                if !lang.is_empty() =>
+            {
+                code_block_lang = Some(lang.to_string());
+                code_block_content.clear();
+                vec![]
+            }
+            Event::Text(ref text) if code_block_lang.is_some() => {
+                code_block_content.push_str(text);
+                vec![]
+            }
+            Event::End(TagEnd::CodeBlock) if code_block_lang.is_some() => {
+                let lang = code_block_lang.take().unwrap();
+                match run_plugin(&lang, &code_block_content) {
+                    Ok(svg) => {
+                        vec![Event::Html(svg.into())]
+                    }
+                    Err(_) => {
+                        // Not a diagram plugin — emit as normal code block
+                        vec![
+                            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(
+                                lang.into(),
+                            ))),
+                            Event::Text(code_block_content.clone().into()),
+                            Event::End(TagEnd::CodeBlock),
+                        ]
+                    }
+                }
+            }
+            other => vec![other],
+        })
+        .collect();
+
     let mut html_body = String::new();
-    pulldown_cmark::html::push_html(&mut html_body, parser);
+    pulldown_cmark::html::push_html(&mut html_body, events.into_iter());
 
     let title = path.file_name().unwrap_or_default().to_string_lossy();
     let html = format!(
