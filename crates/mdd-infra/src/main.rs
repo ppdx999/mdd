@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-// rust-sugiyama reserved for future use with more complex layouts
-#[allow(unused_imports)]
 use rust_sugiyama::{configure::Config, from_vertices_and_edges};
 
 // ---------------------------------------------------------------------------
@@ -192,8 +190,6 @@ const GROUP_H_PAD: f64 = 16.0;
 const GROUP_V_PAD: f64 = 12.0;
 const GROUP_HEADER_H: f64 = 28.0;
 const GROUP_INNER_GAP: f64 = 16.0;
-const GROUP_COLS_MAX: usize = 4;
-
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
 const COLOR_GROUP_FILL: &str = "#fafafa";
@@ -226,96 +222,171 @@ fn text_width(s: &str) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Sizing: compute bounding box for each element
+// Sizing & Layout (bottom-up Sugiyama)
 // ---------------------------------------------------------------------------
 
-fn node_size(_node: &Node) -> (f64, f64) {
-    (NODE_W, NODE_H)
-}
-
-fn group_content_size(group: &Group, nodes: &[Node], groups: &[Group]) -> (f64, f64) {
-    let child_sizes: Vec<(f64, f64)> = group
-        .children
-        .iter()
-        .map(|e| element_size(e, nodes, groups))
-        .collect();
-
-    if child_sizes.is_empty() {
-        let w = (text_width(&group.name) + GROUP_H_PAD * 2.0).max(NODE_W);
-        return (w, GROUP_HEADER_H + GROUP_V_PAD);
-    }
-
-    let cols = child_sizes.len().min(GROUP_COLS_MAX);
-    let rows = (child_sizes.len() + cols - 1) / cols;
-
-    let mut col_widths = vec![0.0_f64; cols];
-    let mut row_heights = vec![0.0_f64; rows];
-    for (i, (w, h)) in child_sizes.iter().enumerate() {
-        col_widths[i % cols] = col_widths[i % cols].max(*w);
-        row_heights[i / cols] = row_heights[i / cols].max(*h);
-    }
-
-    let inner_w: f64 =
-        col_widths.iter().sum::<f64>() + (cols as f64 - 1.0).max(0.0) * GROUP_INNER_GAP;
-    let inner_h: f64 =
-        row_heights.iter().sum::<f64>() + (rows as f64 - 1.0).max(0.0) * GROUP_INNER_GAP;
-
-    let header_w = text_width(&group.name) + GROUP_H_PAD * 2.0;
-    let w = inner_w.max(header_w) + GROUP_H_PAD * 2.0;
-    let h = GROUP_HEADER_H + inner_h + GROUP_V_PAD * 2.0;
-    (w, h)
-}
-
-fn element_size(elem: &Element, nodes: &[Node], groups: &[Group]) -> (f64, f64) {
+/// Get the name of an element (node or group)
+fn element_name(elem: &Element, nodes: &[Node], groups: &[Group]) -> String {
     match elem {
-        Element::NodeRef(i) => node_size(&nodes[*i]),
-        Element::GroupRef(i) => group_content_size(&groups[*i], nodes, groups),
+        Element::NodeRef(i) => nodes[*i].name.clone(),
+        Element::GroupRef(i) => groups[*i].name.clone(),
     }
 }
 
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
+/// Collect all node/group names reachable from an element (recursively for groups)
+fn element_all_names(elem: &Element, nodes: &[Node], groups: &[Group]) -> Vec<String> {
+    match elem {
+        Element::NodeRef(i) => vec![nodes[*i].name.clone()],
+        Element::GroupRef(i) => {
+            let mut names = vec![groups[*i].name.clone()];
+            for child in &groups[*i].children {
+                names.extend(element_all_names(child, nodes, groups));
+            }
+            names
+        }
+    }
+}
 
+/// Recursively layout elements using Sugiyama, bottom-up.
+/// First layout children of each group, compute their sizes,
+/// then layout this level's elements using edges between them.
 fn layout_elements(
     elements: &[Element],
     nodes: &[Node],
     groups: &[Group],
+    edges: &[Edge],
     start_x: f64,
     start_y: f64,
-    positions: &mut HashMap<String, (f64, f64, f64, f64)>, // name -> (x, y, w, h)
+    positions: &mut HashMap<String, (f64, f64, f64, f64)>,
 ) -> (f64, f64) {
-    let child_sizes: Vec<(f64, f64)> = elements
-        .iter()
-        .map(|e| element_size(e, nodes, groups))
-        .collect();
-
-    if child_sizes.is_empty() {
+    if elements.is_empty() {
         return (0.0, 0.0);
     }
 
-    let cols = child_sizes.len().min(GROUP_COLS_MAX);
-    let rows = (child_sizes.len() + cols - 1) / cols;
+    // Step 1: Recursively layout children of each group (bottom-up)
+    // and compute the size of each element at this level.
+    let mut elem_sizes: Vec<(f64, f64)> = Vec::new();
+    // Temporarily store group internal sizes for later positioning
+    let mut group_internal: HashMap<usize, (f64, f64)> = HashMap::new();
 
-    let mut col_widths = vec![0.0_f64; cols];
-    let mut row_heights = vec![0.0_f64; rows];
-    for (i, (w, h)) in child_sizes.iter().enumerate() {
-        col_widths[i % cols] = col_widths[i % cols].max(*w);
-        row_heights[i / cols] = row_heights[i / cols].max(*h);
+    for elem in elements {
+        match elem {
+            Element::NodeRef(_) => {
+                elem_sizes.push((NODE_W, NODE_H));
+            }
+            Element::GroupRef(gi) => {
+                let g = &groups[*gi];
+                if g.children.is_empty() {
+                    let w = (text_width(&g.name) + GROUP_H_PAD * 2.0).max(NODE_W);
+                    let h = GROUP_HEADER_H + GROUP_V_PAD;
+                    elem_sizes.push((w, h));
+                } else {
+                    // Layout children in a temporary coordinate space
+                    let mut child_positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
+                    let (inner_w, inner_h) = layout_elements(
+                        &g.children,
+                        nodes,
+                        groups,
+                        edges,
+                        0.0,
+                        0.0,
+                        &mut child_positions,
+                    );
+                    // Store child positions relative to (0,0) for later offset
+                    for (name, pos) in &child_positions {
+                        positions.insert(name.clone(), *pos);
+                    }
+                    group_internal.insert(*gi, (inner_w, inner_h));
+
+                    let header_w = text_width(&g.name) + GROUP_H_PAD * 2.0;
+                    let w = inner_w.max(header_w) + GROUP_H_PAD * 2.0;
+                    let h = GROUP_HEADER_H + inner_h + GROUP_V_PAD * 2.0;
+                    elem_sizes.push((w, h));
+                }
+            }
+        }
     }
 
+    // Step 2: Build name-to-local-index map for this level's elements
+    let mut name_to_local: HashMap<String, usize> = HashMap::new();
+    // Also track which names belong to which element (including nested)
+    let mut name_to_elem_idx: HashMap<String, usize> = HashMap::new();
     for (i, elem) in elements.iter().enumerate() {
-        let col = i % cols;
-        let row = i / cols;
+        for name in element_all_names(elem, nodes, groups) {
+            name_to_elem_idx.insert(name, i);
+        }
+        name_to_local.insert(element_name(elem, nodes, groups), i);
+    }
 
-        let col_x: f64 = col_widths[..col].iter().sum::<f64>() + col as f64 * GROUP_INNER_GAP;
-        let row_y: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * GROUP_INNER_GAP;
+    // Step 3: Find edges between elements at this level
+    let mut local_edges: Vec<(u32, u32)> = Vec::new();
+    let mut seen_edges: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    for edge in edges {
+        let from_idx = name_to_elem_idx.get(&edge.from);
+        let to_idx = name_to_elem_idx.get(&edge.to);
+        if let (Some(&fi), Some(&ti)) = (from_idx, to_idx) {
+            if fi != ti && seen_edges.insert((fi, ti)) {
+                local_edges.push((fi as u32, ti as u32));
+            }
+        }
+    }
 
-        let (ew, eh) = child_sizes[i];
-        let cell_w = col_widths[col];
-        let cell_h = row_heights[row];
-        let ex = start_x + col_x + (cell_w - ew) / 2.0;
-        let ey = start_y + row_y + (cell_h - eh) / 2.0;
+    // Step 4: Run Sugiyama on this level
+    let vertices: Vec<(u32, (f64, f64))> = elem_sizes
+        .iter()
+        .enumerate()
+        .map(|(i, (w, h))| (i as u32, (*h, *w))) // swap for LTR
+        .collect();
+
+    let config = Config {
+        vertex_spacing: 15.0 + elements.len() as f64 * 3.0,
+        ..Config::default()
+    };
+
+    let layouts = from_vertices_and_edges(&vertices, &local_edges, &config);
+
+    // Collect and pack disconnected components
+    let mut local_positions: HashMap<usize, (f64, f64)> = HashMap::new();
+    let mut x_cursor: f64 = 0.0;
+    let component_gap = GROUP_INNER_GAP * 2.0;
+
+    for (coords, _w, _h) in &layouts {
+        let mut comp_min_x = f64::MAX;
+        let mut comp_min_y = f64::MAX;
+        let mut comp_max_x = f64::MIN;
+        let mut comp_max_y = f64::MIN;
+
+        for &(id, (sx, sy)) in coords {
+            let final_x = sy; // swap back for LTR
+            let final_y = sx;
+            let (w, h) = elem_sizes[id];
+            comp_min_x = comp_min_x.min(final_x);
+            comp_min_y = comp_min_y.min(final_y);
+            comp_max_x = comp_max_x.max(final_x + w);
+            comp_max_y = comp_max_y.max(final_y + h);
+        }
+
+        for &(id, (sx, sy)) in coords {
+            let final_x = sy - comp_min_x + x_cursor;
+            let final_y = sx - comp_min_y;
+            local_positions.insert(id, (final_x, final_y));
+        }
+
+        x_cursor += (comp_max_x - comp_min_x) + component_gap;
+    }
+
+    // Step 5: Compute total bounding box and place elements
+    let mut total_max_x: f64 = 0.0;
+    let mut total_max_y: f64 = 0.0;
+
+    for (i, elem) in elements.iter().enumerate() {
+        let (lx, ly) = local_positions.get(&i).copied().unwrap_or((0.0, 0.0));
+        let (ew, eh) = elem_sizes[i];
+        let ex = start_x + lx;
+        let ey = start_y + ly;
+
+        total_max_x = total_max_x.max(lx + ew);
+        total_max_y = total_max_y.max(ly + eh);
 
         match elem {
             Element::NodeRef(ni) => {
@@ -323,26 +394,45 @@ fn layout_elements(
             }
             Element::GroupRef(gi) => {
                 let g = &groups[*gi];
-                let (gw, gh) = group_content_size(g, nodes, groups);
-                positions.insert(g.name.clone(), (ex, ey, gw, gh));
-                // Layout children inside group
-                layout_elements(
-                    &g.children,
-                    nodes,
-                    groups,
-                    ex + GROUP_H_PAD,
-                    ey + GROUP_HEADER_H + GROUP_V_PAD,
-                    positions,
-                );
+                positions.insert(g.name.clone(), (ex, ey, ew, eh));
+
+                // Offset pre-computed child positions into this group's space
+                let content_x = ex + GROUP_H_PAD;
+                let content_y = ey + GROUP_HEADER_H + GROUP_V_PAD;
+                // Center inner content
+                let (inner_w, _inner_h) = group_internal.get(gi).copied().unwrap_or((0.0, 0.0));
+                let offset_x = content_x + (ew - GROUP_H_PAD * 2.0 - inner_w).max(0.0) / 2.0;
+                let offset_y = content_y;
+
+                for child in &g.children {
+                    offset_positions(child, nodes, groups, offset_x, offset_y, positions);
+                }
             }
         }
     }
 
-    let total_w: f64 =
-        col_widths.iter().sum::<f64>() + (cols as f64 - 1.0).max(0.0) * GROUP_INNER_GAP;
-    let total_h: f64 =
-        row_heights.iter().sum::<f64>() + (rows as f64 - 1.0).max(0.0) * GROUP_INNER_GAP;
-    (total_w, total_h)
+    (total_max_x, total_max_y)
+}
+
+/// Offset pre-computed positions (from 0,0-based child layout) by the group's absolute position
+fn offset_positions(
+    elem: &Element,
+    nodes: &[Node],
+    groups: &[Group],
+    offset_x: f64,
+    offset_y: f64,
+    positions: &mut HashMap<String, (f64, f64, f64, f64)>,
+) {
+    let name = element_name(elem, nodes, groups);
+    if let Some(pos) = positions.get_mut(&name) {
+        pos.0 += offset_x;
+        pos.1 += offset_y;
+    }
+    if let Element::GroupRef(gi) = elem {
+        for child in &groups[*gi].children {
+            offset_positions(child, nodes, groups, offset_x, offset_y, positions);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -548,6 +638,7 @@ fn render_svg(diagram: &Diagram) -> String {
         &diagram.top_level,
         &diagram.nodes,
         &diagram.groups,
+        &diagram.edges,
         PADDING,
         PADDING,
         &mut positions,
