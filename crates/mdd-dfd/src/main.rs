@@ -499,30 +499,91 @@ fn render_svg(diagram: &Diagram) -> String {
         }
     }
 
-    // Render edges on top of nodes so they remain visible
+    // Build node bounding boxes (cx, cy, hw, hh, is_circle)
+    let node_bounds: Vec<(f64, f64, f64, f64, bool)> = diagram
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, node)| {
+            let (x, y) = positions.get(&i).copied().unwrap_or((0.0, 0.0));
+            let (w, h) = node_size(node);
+            let is_circle = matches!(node.kind, NodeKind::Process);
+            (PADDING + x + w / 2.0, PADDING + y + h / 2.0, w / 2.0, h / 2.0, is_circle)
+        })
+        .collect();
+
+    // Count duplicate pairs for reciprocal edge offset
+    let mut pair_count: HashMap<(usize, usize), usize> = HashMap::new();
     for edge in &diagram.edges {
-        let (x1, y1) = positions.get(&edge.from).copied().unwrap_or((0.0, 0.0));
-        let (x2, y2) = positions.get(&edge.to).copied().unwrap_or((0.0, 0.0));
+        let key = (edge.from.min(edge.to), edge.from.max(edge.to));
+        *pair_count.entry(key).or_insert(0) += 1;
+    }
+    let mut pair_seen: HashMap<(usize, usize), usize> = HashMap::new();
+
+    // Render edges on top of nodes
+    for edge in &diagram.edges {
         let (fw, fh) = node_size(&diagram.nodes[edge.from]);
         let (tw, th) = node_size(&diagram.nodes[edge.to]);
+        let (x1, y1) = positions.get(&edge.from).copied().unwrap_or((0.0, 0.0));
+        let (x2, y2) = positions.get(&edge.to).copied().unwrap_or((0.0, 0.0));
 
         let cx1 = PADDING + x1 + fw / 2.0;
         let cy1 = PADDING + y1 + fh / 2.0;
         let cx2 = PADDING + x2 + tw / 2.0;
         let cy2 = PADDING + y2 + th / 2.0;
 
-        let (ax1, ay1) = clip_to_boundary(cx1, cy1, cx2, cy2, &diagram.nodes[edge.from]);
-        let (ax2, ay2) = clip_to_boundary(cx2, cy2, cx1, cy1, &diagram.nodes[edge.to]);
+        // Reciprocal edge offset
+        let pair_key = (edge.from.min(edge.to), edge.from.max(edge.to));
+        let total = *pair_count.get(&pair_key).unwrap_or(&1);
+        let idx = {
+            let seen = pair_seen.entry(pair_key).or_insert(0);
+            let v = *seen;
+            *seen += 1;
+            v
+        };
+
+        let offset = if total > 1 {
+            let spread = 15.0;
+            (idx as f64 - (total as f64 - 1.0) / 2.0) * spread
+        } else {
+            0.0
+        };
+
+        // Build route avoiding intermediate nodes
+        let route = route_around_nodes(
+            cx1, cy1, cx2, cy2, edge.from, edge.to, &node_bounds, offset,
+        );
+
+        // Clip start and end to node boundaries
+        let start_target = if route.len() > 1 { route[1] } else { (cx2, cy2) };
+        let end_target = if route.len() > 1 { route[route.len() - 2] } else { (cx1, cy1) };
+        let (ax1, ay1) = clip_to_boundary(cx1, cy1, start_target.0, start_target.1, &diagram.nodes[edge.from]);
+        let (ax2, ay2) = clip_to_boundary(cx2, cy2, end_target.0, end_target.1, &diagram.nodes[edge.to]);
+
+        // Build SVG path
+        let mut clipped_route = vec![(ax1, ay1)];
+        if route.len() > 2 {
+            clipped_route.extend_from_slice(&route[1..route.len() - 1]);
+        }
+        clipped_route.push((ax2, ay2));
+
+        let path_d = if clipped_route.len() == 2 {
+            format!("M{},{} L{},{}", clipped_route[0].0, clipped_route[0].1,
+                    clipped_route[1].0, clipped_route[1].1)
+        } else {
+            // Quadratic Bézier through waypoints for smooth curves
+            build_smooth_path(&clipped_route)
+        };
 
         svg.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
-            ax1, ay1, ax2, ay2, COLOR_EDGE
+            "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
+            path_d, COLOR_EDGE
         ));
 
         if !edge.label.is_empty() {
-            let lx = (ax1 + ax2) / 2.0;
-            let ly = (ay1 + ay2) / 2.0 - 6.0;
-            // White background behind label for readability
+            let mid = clipped_route.len() / 2;
+            let lx = clipped_route[mid].0;
+            let ly = clipped_route[mid].1 - 6.0;
             svg.push_str(&format!(
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.85\"/>",
                 lx - text_width(&edge.label) / 2.0 - 3.0,
@@ -538,6 +599,180 @@ fn render_svg(diagram: &Diagram) -> String {
 
     svg.push_str("</svg>");
     svg
+}
+
+// ---------------------------------------------------------------------------
+// Edge routing: avoid crossing intermediate nodes
+// ---------------------------------------------------------------------------
+
+/// Check if a line segment (p1 -> p2) intersects a rectangle (cx, cy, hw, hh).
+/// Returns true if the segment crosses the rectangle's interior.
+fn segment_intersects_rect(
+    p1x: f64, p1y: f64, p2x: f64, p2y: f64,
+    cx: f64, cy: f64, hw: f64, hh: f64,
+) -> bool {
+    let margin = 4.0;
+    let left = cx - hw - margin;
+    let right = cx + hw + margin;
+    let top = cy - hh - margin;
+    let bottom = cy + hh + margin;
+
+    // Check if both endpoints are on the same side (no intersection)
+    if (p1x < left && p2x < left) || (p1x > right && p2x > right) {
+        return false;
+    }
+    if (p1y < top && p2y < top) || (p1y > bottom && p2y > bottom) {
+        return false;
+    }
+
+    // Check each edge of the rectangle
+    let dx = p2x - p1x;
+    let dy = p2y - p1y;
+
+    let edges: [(f64, f64, f64, f64); 4] = [
+        (left, top, right, top),       // top
+        (left, bottom, right, bottom), // bottom
+        (left, top, left, bottom),     // left
+        (right, top, right, bottom),   // right
+    ];
+
+    for (ex1, ey1, ex2, ey2) in &edges {
+        let edx = ex2 - ex1;
+        let edy = ey2 - ey1;
+        let denom = dx * edy - dy * edx;
+        if denom.abs() < 1e-10 {
+            continue;
+        }
+        let t = ((ex1 - p1x) * edy - (ey1 - p1y) * edx) / denom;
+        let u = ((ex1 - p1x) * dy - (ey1 - p1y) * dx) / denom;
+        if (0.01..=0.99).contains(&t) && (0.0..=1.0).contains(&u) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Route an edge from (sx, sy) to (ex, ey) avoiding intermediate nodes.
+/// Returns a list of waypoints including start and end.
+fn route_around_nodes(
+    sx: f64, sy: f64, ex: f64, ey: f64,
+    from_id: usize, to_id: usize,
+    bounds: &[(f64, f64, f64, f64, bool)], // cx, cy, hw, hh, is_circle
+    offset: f64,
+) -> Vec<(f64, f64)> {
+    // Apply perpendicular offset for reciprocal edges
+    let (sx, sy, ex, ey) = if offset.abs() > 0.1 {
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let nx = -dy / len * offset;
+        let ny = dx / len * offset;
+        (sx + nx, sy + ny, ex + nx, ey + ny)
+    } else {
+        (sx, sy, ex, ey)
+    };
+
+    // Find all nodes that the direct line crosses
+    let mut blockers: Vec<usize> = Vec::new();
+    for (i, &(cx, cy, hw, hh, _is_circle)) in bounds.iter().enumerate() {
+        if i == from_id || i == to_id {
+            continue;
+        }
+        if segment_intersects_rect(sx, sy, ex, ey, cx, cy, hw, hh) {
+            blockers.push(i);
+        }
+    }
+
+    if blockers.is_empty() {
+        return vec![(sx, sy), (ex, ey)];
+    }
+
+    // Generate waypoints around blocking nodes
+    let margin = 20.0;
+    let mut waypoints: Vec<(f64, f64)> = vec![(sx, sy)];
+
+    // Sort blockers by distance from start
+    blockers.sort_by(|a, b| {
+        let (acx, acy, _, _, _) = bounds[*a];
+        let (bcx, bcy, _, _, _) = bounds[*b];
+        let da = (acx - sx).powi(2) + (acy - sy).powi(2);
+        let db = (bcx - sx).powi(2) + (bcy - sy).powi(2);
+        da.partial_cmp(&db).unwrap()
+    });
+
+    for &bi in &blockers {
+        let (cx, cy, hw, hh, _) = bounds[bi];
+        // Choose to go around the side that's closer to the direct line
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+
+        // Cross product to determine which side
+        let last = waypoints.last().unwrap();
+        let cross = (cx - last.0) * dy - (cy - last.1) * dx;
+
+        if cross.abs() / len < hw + hh {
+            // Route around the node: pick the side with less deviation
+            let top_y = cy - hh - margin;
+            let bot_y = cy + hh + margin;
+            let left_x = cx - hw - margin;
+            let right_x = cx + hw + margin;
+
+            // Prefer vertical detour (go above or below)
+            if dy.abs() > dx.abs() {
+                // Line is more vertical, detour horizontally
+                if cross > 0.0 {
+                    waypoints.push((right_x, cy));
+                } else {
+                    waypoints.push((left_x, cy));
+                }
+            } else {
+                // Line is more horizontal, detour vertically
+                if cross > 0.0 {
+                    waypoints.push((cx, top_y));
+                } else {
+                    waypoints.push((cx, bot_y));
+                }
+            }
+        }
+    }
+
+    waypoints.push((ex, ey));
+    waypoints
+}
+
+/// Build a smooth SVG path through waypoints using quadratic Bézier curves.
+fn build_smooth_path(points: &[(f64, f64)]) -> String {
+    if points.len() < 2 {
+        return String::new();
+    }
+    if points.len() == 2 {
+        return format!("M{},{} L{},{}", points[0].0, points[0].1, points[1].0, points[1].1);
+    }
+
+    let mut d = format!("M{},{}", points[0].0, points[0].1);
+
+    for i in 1..points.len() - 1 {
+        let prev = points[i - 1];
+        let curr = points[i];
+        let next = points[i + 1];
+
+        // Midpoints
+        let mid_prev = ((prev.0 + curr.0) / 2.0, (prev.1 + curr.1) / 2.0);
+        let mid_next = ((curr.0 + next.0) / 2.0, (curr.1 + next.1) / 2.0);
+
+        if i == 1 {
+            d.push_str(&format!(" L{},{}", mid_prev.0, mid_prev.1));
+        }
+        d.push_str(&format!(
+            " Q{},{} {},{}",
+            curr.0, curr.1, mid_next.0, mid_next.1
+        ));
+    }
+
+    let last = points[points.len() - 1];
+    d.push_str(&format!(" L{},{}", last.0, last.1));
+    d
 }
 
 /// Clip a line from (cx, cy) toward (tx, ty) to the boundary of the node shape.
