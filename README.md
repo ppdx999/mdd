@@ -69,6 +69,7 @@ make uninstall
 | [mdd-dfd](crates/mdd-dfd/) | DFD（データフロー図） |
 | [mdd-tree](crates/mdd-tree/) | ツリー図（組織図、ディレクトリ構造等） |
 | [mdd-er](crates/mdd-er/) | ER 図（テーブル定義 + リレーション） |
+| [mdd-sequence](crates/mdd-sequence/) | シーケンス図 |
 
 ## AGENTS.md 向けサンプル
 

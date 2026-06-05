@@ -1,0 +1,14 @@
+participant Client
+participant Server
+participant DB
+
+Client -> Server : "POST /login"
+Server -> DB : "SELECT * FROM users WHERE email=?"
+DB --> Server : "ユーザー情報"
+Server -> Server : "パスワード検証"
+Server --> Client : "200 OK + JWT"
+Client -> Server : "GET /profile (Bearer token)"
+Server -> Server : "トークン検証"
+Server -> DB : "SELECT * FROM users WHERE id=?"
+DB --> Server : "プロフィール"
+Server --> Client : "200 OK"

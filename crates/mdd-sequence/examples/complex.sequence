@@ -1,0 +1,28 @@
+participant Browser
+participant API
+participant Auth
+participant OrderService
+participant PaymentGateway
+participant DB
+participant Queue
+
+Browser -> API : "POST /orders"
+API -> Auth : "トークン検証"
+Auth --> API : "認証OK"
+API -> OrderService : "注文作成"
+OrderService -> DB : "INSERT order"
+DB --> OrderService : "order_id"
+OrderService -> PaymentGateway : "決済リクエスト"
+PaymentGateway --> OrderService : "決済承認"
+OrderService -> DB : "UPDATE order SET status=paid"
+DB --> OrderService : "OK"
+OrderService -> Queue : "出荷イベント発行"
+Queue --> OrderService : "ACK"
+OrderService --> API : "注文完了"
+API --> Browser : "201 Created"
+Browser -> API : "GET /orders/123"
+API -> Auth : "トークン検証"
+Auth --> API : "認証OK"
+API -> DB : "SELECT order"
+DB --> API : "注文詳細"
+API --> Browser : "200 OK"
