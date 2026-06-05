@@ -159,8 +159,8 @@ const TBL_MAX_ROWS: usize = 10;
 
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
-const COLOR_HEADER_BG: &str = "#336699";
-const COLOR_HEADER_TEXT: &str = "#fff";
+const COLOR_HEADER_BG: &str = "#e8f5e9";
+const COLOR_HEADER_TEXT: &str = "#2e7d32";
 const COLOR_BODY_BG: &str = "#fff";
 const COLOR_BODY_STROKE: &str = "#aaa";
 const COLOR_PK: &str = "#c8a415";
@@ -558,9 +558,11 @@ fn render_svg(diagram: &Diagram) -> String {
         })
         .collect();
 
+    // Exclude self-referencing relations from layout (they cause cycles)
     let edges: Vec<(u32, u32)> = diagram
         .relations
         .iter()
+        .filter(|r| r.from != r.to)
         .map(|r| (r.from as u32, r.to as u32))
         .collect();
 
@@ -698,6 +700,31 @@ fn render_svg(diagram: &Diagram) -> String {
         let cy1 = PADDING + y1 + fh / 2.0;
         let cx2 = PADDING + x2 + tw / 2.0;
         let cy2 = PADDING + y2 + th / 2.0;
+
+        // Self-referencing relation: draw a loop on the right side
+        if rel.from == rel.to {
+            let rx = PADDING + x1 + fw;
+            let ry_top = PADDING + y1 + fh * 0.3;
+            let ry_bot = PADDING + y1 + fh * 0.7;
+            let bulge = 40.0;
+            svg.push_str(&format!(
+                "<path d=\"M{},{} C{},{} {},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                rx, ry_top,
+                rx + bulge, ry_top - 15.0,
+                rx + bulge, ry_bot + 15.0,
+                rx, ry_bot,
+                COLOR_EDGE
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"start\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                rx + bulge + 4.0, (ry_top + ry_bot) / 2.0 - 6.0, COLOR_EDGE, escape_xml(&rel.from_card)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"start\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                rx + bulge + 4.0, (ry_top + ry_bot) / 2.0 + 10.0, COLOR_EDGE, escape_xml(&rel.to_card)
+            ));
+            continue;
+        }
 
         let pair_key = (rel.from.min(rel.to), rel.from.max(rel.to));
         let total = *pair_count.get(&pair_key).unwrap_or(&1);
