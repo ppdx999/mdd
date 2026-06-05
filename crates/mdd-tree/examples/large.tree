@@ -1,0 +1,92 @@
+node 代表取締役
+
+group "経営企画室" {
+  node 室長
+  node 企画担当A
+  node 企画担当B
+}
+
+group "営業本部" {
+  node 営業本部長
+  node 営業企画
+}
+
+group "第一営業部" {
+  node 第一営業部長
+  node 営業1課長
+  node 営業担当A
+  node 営業担当B
+  node 営業担当C
+}
+
+group "第二営業部" {
+  node 第二営業部長
+  node 営業2課長
+  node 営業担当D
+  node 営業担当E
+}
+
+group "開発本部" {
+  node 開発本部長
+  node 技術企画
+}
+
+group "プラットフォーム部" {
+  node PF部長
+  node インフラエンジニアA
+  node インフラエンジニアB
+  node SREエンジニア
+}
+
+group "プロダクト開発部" {
+  node PD部長
+  node フロントエンドA
+  node フロントエンドB
+  node バックエンドA
+  node バックエンドB
+  node バックエンドC
+}
+
+group "QA部" {
+  node QA部長
+  node QAエンジニアA
+  node QAエンジニアB
+}
+
+group "管理本部" {
+  node 管理本部長
+}
+
+group "人事部" {
+  node 人事部長
+  node 採用担当
+  node 労務担当
+}
+
+group "経理部" {
+  node 経理部長
+  node 経理担当A
+  node 経理担当B
+}
+
+group "総務部" {
+  node 総務部長
+  node 総務担当
+  node 法務担当
+}
+
+代表取締役 -> "経営企画室"
+代表取締役 -> "営業本部"
+代表取締役 -> "開発本部"
+代表取締役 -> "管理本部"
+
+"営業本部" -> "第一営業部"
+"営業本部" -> "第二営業部"
+
+"開発本部" -> "プラットフォーム部"
+"開発本部" -> "プロダクト開発部"
+"開発本部" -> "QA部"
+
+"管理本部" -> "人事部"
+"管理本部" -> "経理部"
+"管理本部" -> "総務部"
