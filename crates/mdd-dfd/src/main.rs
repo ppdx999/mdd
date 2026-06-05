@@ -484,39 +484,7 @@ fn render_svg(diagram: &Diagram) -> String {
         COLOR_EDGE
     ));
 
-    // Render edges first (behind nodes)
-    for edge in &diagram.edges {
-        let (x1, y1) = positions.get(&edge.from).copied().unwrap_or((0.0, 0.0));
-        let (x2, y2) = positions.get(&edge.to).copied().unwrap_or((0.0, 0.0));
-        let (fw, fh) = node_size(&diagram.nodes[edge.from]);
-        let (tw, th) = node_size(&diagram.nodes[edge.to]);
-
-        let cx1 = PADDING + x1 + fw / 2.0;
-        let cy1 = PADDING + y1 + fh / 2.0;
-        let cx2 = PADDING + x2 + tw / 2.0;
-        let cy2 = PADDING + y2 + th / 2.0;
-
-        // Adjust endpoints to node boundary
-        let (ax1, ay1) = clip_to_boundary(cx1, cy1, cx2, cy2, &diagram.nodes[edge.from]);
-        let (ax2, ay2) = clip_to_boundary(cx2, cy2, cx1, cy1, &diagram.nodes[edge.to]);
-
-        svg.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
-            ax1, ay1, ax2, ay2, COLOR_EDGE
-        ));
-
-        // Edge label
-        if !edge.label.is_empty() {
-            let lx = (ax1 + ax2) / 2.0;
-            let ly = (ay1 + ay2) / 2.0 - 6.0;
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" fill=\"{}\">{}</text>",
-                lx, ly, COLOR_EDGE, escape_xml(&edge.label)
-            ));
-        }
-    }
-
-    // Render nodes
+    // Render nodes first (behind edges)
     for (i, node) in diagram.nodes.iter().enumerate() {
         let (x, y) = positions.get(&i).copied().unwrap_or((0.0, 0.0));
         let px = PADDING + x;
@@ -528,6 +496,43 @@ fn render_svg(diagram: &Diagram) -> String {
             NodeKind::DataStore { columns } => {
                 render_datastore(&mut svg, px, py, &node.label, columns)
             }
+        }
+    }
+
+    // Render edges on top of nodes so they remain visible
+    for edge in &diagram.edges {
+        let (x1, y1) = positions.get(&edge.from).copied().unwrap_or((0.0, 0.0));
+        let (x2, y2) = positions.get(&edge.to).copied().unwrap_or((0.0, 0.0));
+        let (fw, fh) = node_size(&diagram.nodes[edge.from]);
+        let (tw, th) = node_size(&diagram.nodes[edge.to]);
+
+        let cx1 = PADDING + x1 + fw / 2.0;
+        let cy1 = PADDING + y1 + fh / 2.0;
+        let cx2 = PADDING + x2 + tw / 2.0;
+        let cy2 = PADDING + y2 + th / 2.0;
+
+        let (ax1, ay1) = clip_to_boundary(cx1, cy1, cx2, cy2, &diagram.nodes[edge.from]);
+        let (ax2, ay2) = clip_to_boundary(cx2, cy2, cx1, cy1, &diagram.nodes[edge.to]);
+
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
+            ax1, ay1, ax2, ay2, COLOR_EDGE
+        ));
+
+        if !edge.label.is_empty() {
+            let lx = (ax1 + ax2) / 2.0;
+            let ly = (ay1 + ay2) / 2.0 - 6.0;
+            // White background behind label for readability
+            svg.push_str(&format!(
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.85\"/>",
+                lx - text_width(&edge.label) / 2.0 - 3.0,
+                ly - 12.0,
+                text_width(&edge.label) + 6.0
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" fill=\"{}\">{}</text>",
+                lx, ly, COLOR_EDGE, escape_xml(&edge.label)
+            ));
         }
     }
 
