@@ -331,15 +331,15 @@ fn layout_elements(
         }
     }
 
-    // Step 4: Run Sugiyama on this level
+    // Step 4: Run Sugiyama on this level (top-down, no LTR swap)
     let vertices: Vec<(u32, (f64, f64))> = elem_sizes
         .iter()
         .enumerate()
-        .map(|(i, (w, h))| (i as u32, (*h, *w))) // swap for LTR
+        .map(|(i, (w, h))| (i as u32, (*w, *h))) // top-down: (w, h) as-is
         .collect();
 
     let config = Config {
-        vertex_spacing: 15.0 + elements.len() as f64 * 3.0,
+        vertex_spacing: 20.0 + elements.len() as f64 * 4.0,
         ..Config::default()
     };
 
@@ -357,18 +357,17 @@ fn layout_elements(
         let mut comp_max_y = f64::MIN;
 
         for &(id, (sx, sy)) in coords {
-            let final_x = sy; // swap back for LTR
-            let final_y = sx;
+            // Top-down: x = horizontal, y = vertical (no swap needed)
             let (w, h) = elem_sizes[id];
-            comp_min_x = comp_min_x.min(final_x);
-            comp_min_y = comp_min_y.min(final_y);
-            comp_max_x = comp_max_x.max(final_x + w);
-            comp_max_y = comp_max_y.max(final_y + h);
+            comp_min_x = comp_min_x.min(sx);
+            comp_min_y = comp_min_y.min(sy);
+            comp_max_x = comp_max_x.max(sx + w);
+            comp_max_y = comp_max_y.max(sy + h);
         }
 
         for &(id, (sx, sy)) in coords {
-            let final_x = sy - comp_min_x + x_cursor;
-            let final_y = sx - comp_min_y;
+            let final_x = sx - comp_min_x + x_cursor;
+            let final_y = sy - comp_min_y;
             local_positions.insert(id, (final_x, final_y));
         }
 
