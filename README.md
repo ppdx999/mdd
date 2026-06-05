@@ -71,6 +71,7 @@ make uninstall
 | [mdd-er](crates/mdd-er/) | ER 図（テーブル定義 + リレーション） |
 | [mdd-sequence](crates/mdd-sequence/) | シーケンス図 |
 | [mdd-state](crates/mdd-state/) | 状態遷移図 |
+| [mdd-infra](crates/mdd-infra/) | インフラ構成図 |
 
 ## AGENTS.md 向けサンプル
 

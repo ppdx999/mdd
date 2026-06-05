@@ -1,0 +1,6 @@
+node Client type=user
+node WebServer type=server
+node Database type=db
+
+Client -> WebServer : "HTTP"
+WebServer -> Database : "SQL"

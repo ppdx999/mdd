@@ -1,0 +1,27 @@
+group "AWS" {
+  group "VPC" {
+    group "Public Subnet" {
+      node ALB type=lb
+      node Bastion type=server
+    }
+    group "Private Subnet" {
+      node App1 type=server
+      node App2 type=server
+      node RDS type=db
+      node ElastiCache type=cache
+    }
+  }
+  node S3 type=storage
+  node CloudFront type=cdn
+  node SQS type=queue
+}
+
+CloudFront -> ALB : "HTTPS"
+ALB -> App1
+ALB -> App2
+App1 -> RDS
+App2 -> RDS
+App1 -> ElastiCache
+App2 -> ElastiCache
+App1 -> SQS
+S3 -> CloudFront
