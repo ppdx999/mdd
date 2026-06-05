@@ -1,7 +1,6 @@
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
@@ -92,10 +91,9 @@ hr {{ border: none; border-top: 1px solid #ddd; margin: 2em 0; }}
 }
 
 fn open_browser(path: &Path) {
-    #[cfg(target_os = "macos")]
-    let _ = Command::new("open").arg(path).spawn();
-    #[cfg(target_os = "linux")]
-    let _ = Command::new("xdg-open").arg(path).spawn();
+    if let Err(e) = open::that(path) {
+        eprintln!("mdd: Failed to open browser: {}", e);
+    }
 }
 
 pub fn preview(path: &Path) {
