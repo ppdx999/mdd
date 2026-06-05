@@ -177,6 +177,8 @@ const PROCESS_PAD: f64 = 20.0;
 const DS_H_PAD: f64 = 16.0;
 const DS_HEADER_H: f64 = 24.0;
 const DS_MIN_W: f64 = 140.0;
+const DS_COL_GAP: f64 = 12.0;
+const DS_MAX_ROWS: usize = 8;
 
 // Colors
 const COLOR_DARK: &str = "#333";
@@ -302,14 +304,37 @@ fn process_size(label: &str) -> (f64, f64) {
     (d, d)
 }
 
+/// Compute multi-column grid layout for datastore columns.
+/// Returns (num_columns, col_widths, num_rows).
+fn ds_column_layout(columns: &[String]) -> (usize, Vec<f64>, usize) {
+    if columns.is_empty() {
+        return (1, vec![0.0], 0);
+    }
+
+    // Determine number of display columns: ceil(len / DS_MAX_ROWS)
+    let num_cols = ((columns.len() + DS_MAX_ROWS - 1) / DS_MAX_ROWS).max(1);
+    let num_rows = (columns.len() + num_cols - 1) / num_cols;
+
+    // Compute max width per display column
+    let mut col_widths = vec![0.0_f64; num_cols];
+    for (i, col) in columns.iter().enumerate() {
+        let c = i / num_rows; // fill column-first
+        col_widths[c] = col_widths[c].max(text_width(col));
+    }
+
+    (num_cols, col_widths, num_rows)
+}
+
 fn datastore_size(label: &str, columns: &[String]) -> (f64, f64) {
     let header_w = text_width(label) + DS_H_PAD * 2.0;
-    let col_max_w = columns
-        .iter()
-        .map(|c| text_width(c))
-        .fold(0.0_f64, f64::max);
-    let w = header_w.max(col_max_w + DS_H_PAD * 2.0).max(DS_MIN_W);
-    let h = DS_HEADER_H + columns.len() as f64 * LINE_HEIGHT + 8.0;
+    let (num_cols, col_widths, num_rows) = ds_column_layout(columns);
+
+    let inner_w: f64 = col_widths.iter().sum::<f64>()
+        + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
+    let w = header_w
+        .max(inner_w + DS_H_PAD * 2.0)
+        .max(DS_MIN_W);
+    let h = DS_HEADER_H + num_rows as f64 * LINE_HEIGHT + 8.0;
     (w, h)
 }
 
@@ -638,12 +663,23 @@ fn render_datastore(svg: &mut String, x: f64, y: f64, label: &str, columns: &[St
         ));
     }
 
-    // Column names
+    // Column names in multi-column grid
+    let (num_cols, col_widths, num_rows) = ds_column_layout(columns);
+    let inner_w: f64 = col_widths.iter().sum::<f64>()
+        + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
+    let grid_start_x = x + (w - inner_w) / 2.0;
+
     for (i, col) in columns.iter().enumerate() {
+        let display_col = i / num_rows; // fill column-first
+        let display_row = i % num_rows;
+
+        let col_x: f64 = col_widths[..display_col].iter().sum::<f64>()
+            + display_col as f64 * DS_COL_GAP;
+
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-size=\"11\" fill=\"{}\">{}</text>",
-            x + DS_H_PAD,
-            y + DS_HEADER_H + (i as f64 + 0.75) * LINE_HEIGHT,
+            grid_start_x + col_x,
+            y + DS_HEADER_H + (display_row as f64 + 0.75) * LINE_HEIGHT,
             "#555",
             escape_xml(col)
         ));
