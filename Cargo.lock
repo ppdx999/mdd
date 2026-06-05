@@ -166,6 +166,13 @@ name = "mdd-sequence"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-state"
+version = "0.1.0"
+dependencies = [
+ "rust-sugiyama",
+]
+
+[[package]]
 name = "mdd-tree"
 version = "0.1.0"
 dependencies = [

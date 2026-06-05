@@ -70,6 +70,7 @@ make uninstall
 | [mdd-tree](crates/mdd-tree/) | ツリー図（組織図、ディレクトリ構造等） |
 | [mdd-er](crates/mdd-er/) | ER 図（テーブル定義 + リレーション） |
 | [mdd-sequence](crates/mdd-sequence/) | シーケンス図 |
+| [mdd-state](crates/mdd-state/) | 状態遷移図 |
 
 ## AGENTS.md 向けサンプル
 
