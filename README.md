@@ -67,6 +67,7 @@ make uninstall
 |---|---|
 | [mdd-usecase](crates/mdd-usecase/) | ユースケース図 |
 | [mdd-dfd](crates/mdd-dfd/) | DFD（データフロー図） |
+| [mdd-tree](crates/mdd-tree/) | ツリー図（組織図、ディレクトリ構造等） |
 
 ## AGENTS.md 向けサンプル
 

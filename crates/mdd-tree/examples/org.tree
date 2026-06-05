@@ -1,0 +1,23 @@
+node 社長
+
+group "営業部" {
+  node 営業部長
+  node 営業担当A
+  node 営業担当B
+}
+
+group "開発部" {
+  node 開発部長
+  node エンジニアA
+  node エンジニアB
+  node エンジニアC
+}
+
+group "管理部" {
+  node 管理部長
+  node 経理担当
+}
+
+社長 -> "営業部"
+社長 -> "開発部"
+社長 -> "管理部"

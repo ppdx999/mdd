@@ -1,0 +1,6 @@
+node CEO
+node CTO
+node CFO
+
+CEO -> CTO
+CEO -> CFO

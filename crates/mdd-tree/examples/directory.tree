@@ -1,0 +1,21 @@
+node src
+
+group "components" {
+  node Header
+  node Footer
+  node Sidebar
+}
+
+group "pages" {
+  node Home
+  node About
+  node Contact
+}
+
+node utils
+node config
+
+src -> "components"
+src -> "pages"
+src -> utils
+src -> config
