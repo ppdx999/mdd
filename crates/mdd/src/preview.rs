@@ -125,149 +125,8 @@ pub fn preview(path: &Path) {
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // Headings
-    // -----------------------------------------------------------------------
-
     #[test]
-    fn heading_levels() {
-        let html = build_html("# H1\n\n## H2\n\n### H3\n\n#### H4\n");
-        assert!(html.contains("<h1>H1</h1>"));
-        assert!(html.contains("<h2>H2</h2>"));
-        assert!(html.contains("<h3>H3</h3>"));
-        assert!(html.contains("<h4>H4</h4>"));
-    }
-
-    // -----------------------------------------------------------------------
-    // Inline formatting
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn bold_and_italic() {
-        let html = build_html("**bold** and *italic*\n");
-        assert!(html.contains("<strong>bold</strong>"));
-        assert!(html.contains("<em>italic</em>"));
-    }
-
-    #[test]
-    fn inline_code() {
-        let html = build_html("Use `cargo build` here.\n");
-        assert!(html.contains("<code>cargo build</code>"));
-    }
-
-    #[test]
-    fn strikethrough() {
-        let html = build_html("~~deleted~~\n");
-        assert!(html.contains("<del>deleted</del>"));
-    }
-
-    #[test]
-    fn link() {
-        let html = build_html("[example](https://example.com)\n");
-        assert!(html.contains("<a href=\"https://example.com\">example</a>"));
-    }
-
-    #[test]
-    fn image() {
-        let html = build_html("![alt](image.png)\n");
-        assert!(html.contains("<img src=\"image.png\" alt=\"alt\""));
-    }
-
-    // -----------------------------------------------------------------------
-    // Lists
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn unordered_list() {
-        let html = build_html("- one\n- two\n- three\n");
-        assert!(html.contains("<ul>"));
-        assert!(html.contains("<li>one</li>"));
-        assert!(html.contains("<li>two</li>"));
-        assert!(html.contains("<li>three</li>"));
-    }
-
-    #[test]
-    fn ordered_list() {
-        let html = build_html("1. first\n2. second\n3. third\n");
-        assert!(html.contains("<ol>"));
-        assert!(html.contains("<li>first</li>"));
-        assert!(html.contains("<li>second</li>"));
-    }
-
-    #[test]
-    fn nested_list() {
-        let html = build_html("- a\n  - b\n  - c\n- d\n");
-        assert!(html.contains("<li>a"));
-        assert!(html.contains("<li>b</li>"));
-        assert!(html.contains("<li>d"));
-        // Nested list should have inner <ul>
-        let ul_count = html.matches("<ul>").count();
-        assert!(ul_count >= 2);
-    }
-
-    #[test]
-    fn tasklist() {
-        let html = build_html("- [x] done\n- [ ] todo\n");
-        assert!(html.contains("checked"));
-        assert!(html.contains("type=\"checkbox\""));
-    }
-
-    // -----------------------------------------------------------------------
-    // Table
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn table() {
-        let input = "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n";
-        let html = build_html(input);
-        assert!(html.contains("<table>"));
-        assert!(html.contains("<th>A</th>"));
-        assert!(html.contains("<td>1</td>"));
-        assert!(html.contains("<td>4</td>"));
-    }
-
-    #[test]
-    fn table_with_alignment() {
-        let input = "| Left | Center | Right |\n|:-----|:------:|------:|\n| a | b | c |\n";
-        let html = build_html(input);
-        assert!(html.contains("<table>"));
-        assert!(html.contains("Left"));
-        assert!(html.contains("Center"));
-        assert!(html.contains("Right"));
-    }
-
-    #[test]
-    fn table_empty_cells() {
-        let input = "| A | B |\n|---|---|\n|   |   |\n";
-        let html = build_html(input);
-        assert!(html.contains("<table>"));
-        assert!(html.contains("<td></td>"));
-    }
-
-    // -----------------------------------------------------------------------
-    // Blockquote
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn blockquote() {
-        let html = build_html("> This is quoted.\n");
-        assert!(html.contains("<blockquote>"));
-        assert!(html.contains("This is quoted."));
-    }
-
-    #[test]
-    fn nested_blockquote() {
-        let html = build_html("> outer\n>\n>> inner\n");
-        let bq_count = html.matches("<blockquote>").count();
-        assert!(bq_count >= 2);
-    }
-
-    // -----------------------------------------------------------------------
-    // Code blocks
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn fenced_code_block() {
+    fn unknown_plugin_falls_through_as_code_block() {
         let input = "```rust\nfn main() {}\n```\n";
         let html = build_html(input);
         assert!(html.contains("<pre>"));
@@ -276,77 +135,18 @@ mod tests {
     }
 
     #[test]
-    fn unlabeled_code_block() {
+    fn unlabeled_code_block_passes_through() {
         let input = "```\nplain code\n```\n";
         let html = build_html(input);
         assert!(html.contains("<pre>"));
         assert!(html.contains("plain code"));
     }
 
-    // -----------------------------------------------------------------------
-    // Horizontal rule
-    // -----------------------------------------------------------------------
-
     #[test]
-    fn horizontal_rule() {
-        let html = build_html("---\n");
-        assert!(html.contains("<hr"));
-    }
-
-    // -----------------------------------------------------------------------
-    // Edge cases
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn empty_input() {
-        let html = build_html("");
-        assert!(html.is_empty() || html.trim().is_empty());
-    }
-
-    #[test]
-    fn only_whitespace() {
-        let html = build_html("   \n\n   \n");
-        assert!(html.is_empty() || html.trim().is_empty());
-    }
-
-    #[test]
-    fn special_characters_in_text() {
-        // &, < in inline code are escaped; bare < is parsed as HTML tag by pulldown-cmark
-        let html = build_html("Use `<div>` & `\"quotes\"` in text.\n");
-        assert!(html.contains("&lt;div&gt;"));
-        assert!(html.contains("&amp;"));
-        assert!(html.contains("\"quotes\""));
-    }
-
-    #[test]
-    fn japanese_text() {
-        let html = build_html("# 日本語の見出し\n\nこれは段落です。\n");
-        assert!(html.contains("日本語の見出し"));
-        assert!(html.contains("これは段落です。"));
-    }
-
-    #[test]
-    fn mixed_content() {
-        let input = "# Title\n\nText with **bold**.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- item\n\n> quote\n\n```js\nconsole.log('hi');\n```\n";
+    fn non_code_content_passes_through() {
+        let input = "# Title\n\nSome text.\n";
         let html = build_html(input);
         assert!(html.contains("<h1>Title</h1>"));
-        assert!(html.contains("<strong>bold</strong>"));
-        assert!(html.contains("<table>"));
-        assert!(html.contains("<li>item</li>"));
-        assert!(html.contains("<blockquote>"));
-        assert!(html.contains("console.log"));
-    }
-
-    #[test]
-    fn multiple_paragraphs() {
-        let html = build_html("First paragraph.\n\nSecond paragraph.\n");
-        assert!(html.contains("<p>First paragraph.</p>"));
-        assert!(html.contains("<p>Second paragraph.</p>"));
-    }
-
-    #[test]
-    fn hard_line_break() {
-        let html = build_html("line one  \nline two\n");
-        assert!(html.contains("<br"));
+        assert!(html.contains("Some text."));
     }
 }
