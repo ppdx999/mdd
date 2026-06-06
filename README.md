@@ -45,6 +45,22 @@ MDD 本体が担うのは以下のみ:
 
 ## インストール
 
+### ワンライナー（推奨）
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/ppdx999/mdd/main/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+iwr https://raw.githubusercontent.com/ppdx999/mdd/main/install.ps1 -useb | iex
+```
+
+`~/.local/bin/` にインストールされる。`MDD_INSTALL_DIR` 環境変数でインストール先を変更可能。
+
+### ソースからビルド
+
 Rust ツールチェインが必要。
 
 ```sh
