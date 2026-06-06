@@ -1,0 +1,17 @@
+group "Frontend" {
+- React
+- TypeScript
+- CSS
+}
+
+group "Backend" {
+- Rust
+- PostgreSQL
+- Redis
+}
+
+group "Infra" {
+- AWS
+- Docker
+- Terraform
+}

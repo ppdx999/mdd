@@ -177,6 +177,10 @@ name = "mdd-grid"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-group-multi"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-infra"
 version = "0.1.0"
 dependencies = [
