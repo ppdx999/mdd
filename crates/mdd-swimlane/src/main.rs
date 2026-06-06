@@ -219,10 +219,13 @@ fn render_svg(diagram: &Diagram) -> String {
         // Ensure this node is at least at its order position
         node_row[id] = node_row[id].max(node.order);
     }
-    // Push targets of edges down so they come after their sources
+    // Push targets of edges down so they come after their sources.
+    // Skip back-edges (where target was defined before source) to avoid
+    // infinite row inflation from loops.
     for _ in 0..diagram.nodes.len() {
         for edge in &diagram.edges {
-            if node_row[edge.to] <= node_row[edge.from] {
+            let is_back_edge = diagram.nodes[edge.to].order < diagram.nodes[edge.from].order;
+            if !is_back_edge && node_row[edge.to] <= node_row[edge.from] {
                 node_row[edge.to] = node_row[edge.from] + 1;
             }
         }
