@@ -349,7 +349,7 @@ fn layout_elements(
     let edge_density = edge_count as f64 / n; // edges per element
     // complexity considers both total size and edge density:
     // a group with 4 nodes and 8 edges (density=2) should be spacious
-    let complexity = elements.len() as f64 + edge_count as f64 + edge_density * 4.0;
+    let complexity = elements.len() as f64 + edge_count as f64 + edge_density * 8.0;
     // complexity_factor: 1.0 for simple, up to 3.0 for dense
     let complexity_factor = (1.0 + (complexity / 6.0).sqrt() * 0.4).min(3.0);
     let gap_h = GROUP_INNER_GAP * complexity_factor;
