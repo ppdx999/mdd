@@ -148,6 +148,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdd-analysis"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-dfd"
 version = "0.1.0"
 dependencies = [
@@ -177,6 +181,10 @@ name = "mdd-grid"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-group-multi"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-infra"
 version = "0.1.0"
 dependencies = [
@@ -185,6 +193,10 @@ dependencies = [
 
 [[package]]
 name = "mdd-layer"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-ranking"
 version = "0.1.0"
 
 [[package]]
@@ -197,6 +209,10 @@ version = "0.1.0"
 dependencies = [
  "rust-sugiyama",
 ]
+
+[[package]]
+name = "mdd-steps"
+version = "0.1.0"
 
 [[package]]
 name = "mdd-swimlane"
