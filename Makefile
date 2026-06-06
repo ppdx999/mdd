@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er mdd-sequence mdd-state mdd-infra mdd-gantt mdd-flowchart mdd-swimlane mdd-grid mdd-analysis mdd-steps mdd-ranking mdd-group-multi
+=======
+CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er mdd-sequence mdd-state mdd-infra mdd-gantt mdd-flowchart mdd-swimlane mdd-grid mdd-group-multi
+>>>>>>> feat/mdd-group-multi
 
 .PHONY: build test install uninstall clean
 

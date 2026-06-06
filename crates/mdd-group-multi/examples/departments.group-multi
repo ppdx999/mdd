@@ -1,0 +1,45 @@
+columns 3
+
+color "営業部" : blue
+color "開発部" : green
+color "人事部" : purple
+color "経理部" : amber
+color "法務部" : teal
+color "広報部" : orange
+
+group "営業部" {
+- 法人営業
+- 個人営業
+- 営業企画
+- カスタマーサクセス
+}
+
+group "開発部" {
+- フロントエンド
+- バックエンド
+- SRE
+- QA
+}
+
+group "人事部" {
+- 採用
+- 研修
+- 労務
+}
+
+group "経理部" {
+- 財務会計
+- 管理会計
+- 経費精算
+}
+
+group "法務部" {
+- 契約管理
+- コンプライアンス
+}
+
+group "広報部" {
+- プレスリリース
+- SNS運用
+- イベント企画
+}

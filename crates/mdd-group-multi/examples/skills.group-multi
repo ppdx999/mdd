@@ -1,0 +1,57 @@
+columns 4
+
+group "Languages" {
+- Rust
+- TypeScript
+- Python
+- Go
+}
+
+group "Frameworks" {
+- React
+- Next.js
+- Actix Web
+- FastAPI
+}
+
+group "Databases" {
+- PostgreSQL
+- Redis
+- MongoDB
+- DynamoDB
+}
+
+group "Cloud" {
+- AWS
+- GCP
+- Azure
+- Cloudflare
+}
+
+group "DevOps" {
+- Docker
+- Kubernetes
+- Terraform
+- GitHub Actions
+}
+
+group "Testing" {
+- Jest
+- Playwright
+- cargo test
+- pytest
+}
+
+group "Monitoring" {
+- Datadog
+- Grafana
+- Sentry
+- PagerDuty
+}
+
+group "Design" {
+- Figma
+- Storybook
+- Tailwind CSS
+- shadcn/ui
+}
