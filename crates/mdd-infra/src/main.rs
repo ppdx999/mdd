@@ -336,24 +336,26 @@ fn layout_elements(
     // Fall back to grid when there are no edges at this level.
     let mut local_positions: HashMap<usize, (f64, f64)> = HashMap::new();
 
-    if local_edges.is_empty() {
-        // Count how many external edges target nodes at this level
-        let mut incoming_count = 0_usize;
-        for edge in edges {
-            let from_here = name_to_elem_idx.contains_key(&edge.from);
-            let to_here = name_to_elem_idx.contains_key(&edge.to);
-            // External edge = one end is here, the other is not
-            if from_here != to_here {
-                incoming_count += 1;
-            }
+    // Compute complexity: element count + edges touching this level
+    let mut edge_count = 0_usize;
+    for edge in edges {
+        let from_here = name_to_elem_idx.contains_key(&edge.from);
+        let to_here = name_to_elem_idx.contains_key(&edge.to);
+        if from_here || to_here {
+            edge_count += 1;
         }
+    }
+    let complexity = elements.len() + edge_count;
+    // complexity_factor: 1.0 for simple (<=4), up to 2.5 for complex (20+)
+    let complexity_factor = (1.0 + (complexity as f64 / 8.0).sqrt() * 0.4).min(2.5);
+    let gap_h = GROUP_INNER_GAP * complexity_factor;
+    let gap_v = GROUP_INNER_GAP * complexity_factor * 1.2;
 
-        // If many external edges target this group's children, use fewer
-        // columns (2) to reduce edge crossings. Otherwise up to 3.
-        let max_cols = if incoming_count > elem_sizes.len() { 2 } else { 3 };
-        let cols = elem_sizes.len().min(max_cols);
-        let rows = (elem_sizes.len() + cols - 1) / cols;
-        let v_gap = GROUP_INNER_GAP * 1.5; // extra vertical space for incoming edges
+    if local_edges.is_empty() {
+        // Columns: fewer for high complexity (more external edges)
+        let max_cols = if complexity > elements.len() * 2 { 2 } else { 3 };
+        let cols = elements.len().min(max_cols);
+        let rows = (elements.len() + cols - 1) / cols;
 
         let mut col_widths = vec![0.0_f64; cols];
         let mut row_heights = vec![0.0_f64; rows];
@@ -365,8 +367,8 @@ fn layout_elements(
         for i in 0..elem_sizes.len() {
             let col = i % cols;
             let row = i / cols;
-            let cx: f64 = col_widths[..col].iter().sum::<f64>() + col as f64 * GROUP_INNER_GAP;
-            let ry: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * v_gap;
+            let cx: f64 = col_widths[..col].iter().sum::<f64>() + col as f64 * gap_h;
+            let ry: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * gap_v;
             let (ew, eh) = elem_sizes[i];
             let x = cx + (col_widths[col] - ew) / 2.0;
             let y = ry + (row_heights[row] - eh) / 2.0;
@@ -385,12 +387,12 @@ fn layout_elements(
             .map(|(w, h)| w.max(*h))
             .fold(0.0_f64, f64::max);
         let config = Config {
-            vertex_spacing: (max_dim * 0.3).max(20.0) + elements.len() as f64 * 3.0,
+            vertex_spacing: ((max_dim * 0.3).max(20.0) + elements.len() as f64 * 3.0) * complexity_factor,
             ..Config::default()
         };
 
         let layouts = from_vertices_and_edges(&vertices, &local_edges, &config);
-        let component_gap = GROUP_INNER_GAP * 2.0;
+        let component_gap = gap_h * 2.0;
         let mut x_cursor: f64 = 0.0;
 
         for (coords, _w, _h) in &layouts {
