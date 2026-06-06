@@ -1,0 +1,7 @@
+title "サーバー配置"
+pin "US-East" at 150,150
+pin "EU-West" at 300,100
+pin "AP-Tokyo" at 450,160
+route 0 -- 1
+route 1 -- 2
+route 0 -- 2

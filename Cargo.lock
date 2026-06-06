@@ -216,11 +216,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdd-kpi"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-layer"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-list-grid"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-list-h"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-list-v"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-map"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-math"
 version = "0.1.0"
 
 [[package]]

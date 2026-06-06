@@ -1,0 +1,10 @@
+title "拠点マップ"
+width 500
+height 300
+pin "東京本社" at 400,150
+pin "大阪支社" at 280,180
+pin "福岡支社" at 150,220
+pin "札幌支社" at 380,50
+route 0 -- 1
+route 1 -- 2
+route 0 -- 3
