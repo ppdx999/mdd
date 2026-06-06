@@ -156,6 +156,10 @@ name = "mdd-before-after"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-compare"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-cycle"
 version = "0.1.0"
 
@@ -208,6 +212,10 @@ name = "mdd-layer"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-matrix"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-process"
 version = "0.1.0"
 
@@ -217,6 +225,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-ranking"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-scale"
 version = "0.1.0"
 
 [[package]]
@@ -236,6 +248,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-swimlane"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-swot"
 version = "0.1.0"
 
 [[package]]

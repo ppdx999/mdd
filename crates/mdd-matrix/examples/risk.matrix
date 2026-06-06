@@ -1,0 +1,7 @@
+title "リスクマトリクス"
+x-axis "影響度：小" "影響度：大"
+y-axis "発生確率：低" "発生確率：高"
+quadrant 1 : "監視"
+quadrant 2 : "対策必須"
+quadrant 3 : "許容"
+quadrant 4 : "軽減策検討"
