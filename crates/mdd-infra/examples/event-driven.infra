@@ -1,0 +1,44 @@
+node MobileApp type=user
+node WebApp type=user
+
+group "API Gateway" {
+  node Gateway type=lb
+}
+
+group "Event Bus" {
+  node Kafka type=queue
+}
+
+group "Services" {
+  node OrderService type=server
+  node PaymentService type=server
+  node NotifyService type=server
+  node InventoryService type=server
+}
+
+group "Databases" {
+  node OrderDB type=db
+  node PaymentDB type=db
+  node InventoryDB type=db
+}
+
+group "External" {
+  node Stripe type=generic
+  node SendGrid type=generic
+  node Slack type=generic
+}
+
+MobileApp -> Gateway
+WebApp -> Gateway
+Gateway -> OrderService
+OrderService -> Kafka : "OrderCreated"
+Kafka -> PaymentService : "OrderCreated"
+Kafka -> InventoryService : "OrderCreated"
+Kafka -> NotifyService : "OrderCreated"
+PaymentService -> Stripe
+PaymentService -> Kafka : "PaymentCompleted"
+NotifyService -> SendGrid
+NotifyService -> Slack
+OrderService -> OrderDB
+PaymentService -> PaymentDB
+InventoryService -> InventoryDB

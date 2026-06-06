@@ -1,0 +1,30 @@
+node Client type=user
+
+group "Web Tier" {
+  node Nginx1 type=lb
+  node Nginx2 type=lb
+}
+
+group "App Tier" {
+  node App1 type=server
+  node App2 type=server
+  node App3 type=server
+}
+
+group "Data Tier" {
+  node MySQL type=db
+  node Redis type=cache
+}
+
+Client -> Nginx1
+Client -> Nginx2
+Nginx1 -> App1
+Nginx1 -> App2
+Nginx2 -> App2
+Nginx2 -> App3
+App1 -> MySQL
+App2 -> MySQL
+App3 -> MySQL
+App1 -> Redis
+App2 -> Redis
+App3 -> Redis

@@ -1,0 +1,41 @@
+node User type=user
+
+group "Frontend" {
+  node CDN type=cdn
+  node SPA type=server
+}
+
+group "API Layer" {
+  node Gateway type=lb
+  node AuthService type=server
+  node UserService type=server
+  node OrderService type=server
+  node ProductService type=server
+}
+
+group "Data Layer" {
+  node UserDB type=db
+  node OrderDB type=db
+  node ProductDB type=db
+  node Redis type=cache
+  node MessageQueue type=queue
+}
+
+group "Storage" {
+  node ObjectStorage type=storage
+}
+
+User -> CDN
+CDN -> SPA
+SPA -> Gateway : "API calls"
+Gateway -> AuthService : "認証"
+Gateway -> UserService
+Gateway -> OrderService
+Gateway -> ProductService
+AuthService -> UserDB
+UserService -> UserDB
+OrderService -> OrderDB
+ProductService -> ProductDB
+OrderService -> MessageQueue
+ProductService -> Redis
+UserService -> ObjectStorage
