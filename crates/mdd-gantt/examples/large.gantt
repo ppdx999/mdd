@@ -1,0 +1,42 @@
+title ECサイトリニューアル
+unit week
+
+section 企画
+  市場調査 : 2025-01-06, 2w
+  要件定義 : after 市場調査, 3w
+  予算策定 : 2025-01-20, 2w
+
+section デザイン
+  ワイヤーフレーム : after 要件定義, 2w
+  UIデザイン : after ワイヤーフレーム, 3w
+  デザインレビュー : after UIデザイン, 1w
+
+section フロントエンド
+  コンポーネント設計 : after ワイヤーフレーム, 1w
+  トップページ実装 : after コンポーネント設計, 2w
+  商品一覧実装 : after トップページ実装, 2w
+  カート実装 : after 商品一覧実装, 3w
+  決済画面実装 : after カート実装, 2w
+
+section バックエンド
+  DB設計 : after 要件定義, 2w
+  API設計 : after DB設計, 1w
+  認証基盤 : after API設計, 2w
+  商品API : after API設計, 3w
+  注文API : after 商品API, 2w
+  決済連携 : after 注文API, 3w
+
+section インフラ
+  環境構築 : after DB設計, 2w
+  CI/CD構築 : after 環境構築, 1w
+  監視設定 : after CI/CD構築, 1w
+
+section テスト
+  テスト計画 : after API設計, 1w
+  結合テスト : after 決済画面実装, 3w
+  性能テスト : after 結合テスト, 2w
+  UAT : after 性能テスト, 2w
+
+section リリース
+  ステージング : after UAT, 1w
+  本番リリース : after ステージング, 1w
