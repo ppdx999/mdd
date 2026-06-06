@@ -1,0 +1,16 @@
+title "エンジニアスキル"
+set "フロントエンド" {
+  HTML/CSS
+  React
+  UI設計
+}
+set "バックエンド" {
+  DB設計
+  API設計
+  インフラ
+}
+overlap "共通" {
+  TypeScript
+  テスト
+  Git
+}

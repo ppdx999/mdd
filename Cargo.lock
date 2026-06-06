@@ -160,6 +160,10 @@ name = "mdd-compare"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-concept"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-cycle"
 version = "0.1.0"
 
@@ -216,11 +220,19 @@ name = "mdd-matrix"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-mindmap"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-process"
 version = "0.1.0"
 
 [[package]]
 name = "mdd-pyramid"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-radial"
 version = "0.1.0"
 
 [[package]]
@@ -275,6 +287,10 @@ version = "0.1.0"
 dependencies = [
  "rust-sugiyama",
 ]
+
+[[package]]
+name = "mdd-venn"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"
