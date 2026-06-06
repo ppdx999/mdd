@@ -345,11 +345,15 @@ fn layout_elements(
             edge_count += 1;
         }
     }
-    let complexity = elements.len() + edge_count;
-    // complexity_factor: 1.0 for simple (<=4), up to 2.5 for complex (20+)
-    let complexity_factor = (1.0 + (complexity as f64 / 8.0).sqrt() * 0.4).min(2.5);
+    let n = elements.len().max(1) as f64;
+    let edge_density = edge_count as f64 / n; // edges per element
+    // complexity considers both total size and edge density:
+    // a group with 4 nodes and 8 edges (density=2) should be spacious
+    let complexity = elements.len() as f64 + edge_count as f64 + edge_density * 4.0;
+    // complexity_factor: 1.0 for simple, up to 3.0 for dense
+    let complexity_factor = (1.0 + (complexity / 6.0).sqrt() * 0.4).min(3.0);
     let gap_h = GROUP_INNER_GAP * complexity_factor;
-    let gap_v = GROUP_INNER_GAP * complexity_factor * 1.2;
+    let gap_v = GROUP_INNER_GAP * complexity_factor * 1.3;
 
     // Use grid when:
     // - No edges at this level, OR
@@ -360,7 +364,7 @@ fn layout_elements(
 
     if use_grid {
         // Columns: fewer for high complexity (more external edges)
-        let max_cols = if complexity > elements.len() * 2 { 2 } else { 3 };
+        let max_cols = if edge_count > elements.len() { 2 } else { 3 };
         let cols = elements.len().min(max_cols);
         let rows = (elements.len() + cols - 1) / cols;
 
