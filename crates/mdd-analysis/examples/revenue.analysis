@@ -1,0 +1,10 @@
+type stacked-bar
+title "部門別売上構成"
+
+color 国内営業 : blue, #e3f2fd
+color 海外営業 : green, #e8f5e9
+color オンライン : purple, #f3e5f5
+
+bar 2022年 : 国内営業 450, 海外営業 200, オンライン 150
+bar 2023年 : 国内営業 420, 海外営業 280, オンライン 250
+bar 2024年 : 国内営業 400, 海外営業 350, オンライン 380

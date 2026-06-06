@@ -1,0 +1,5 @@
+type stacked-bar
+
+bar Q1 : 製品A 300, 製品B 200, 製品C 100
+bar Q2 : 製品A 350, 製品B 180, 製品C 120
+bar Q3 : 製品A 280, 製品B 250, 製品C 150

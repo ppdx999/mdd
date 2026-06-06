@@ -1,0 +1,11 @@
+type waterfall
+title "プロジェクト予算消化"
+
+item 初期予算 : 500
+item インフラ構築 : -80
+item 開発費 : -200
+subtotal 中間残高
+item テスト費 : -60
+item 予備費追加 : 50
+item 運用移行 : -40
+subtotal 最終残高

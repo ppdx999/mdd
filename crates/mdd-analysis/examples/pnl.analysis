@@ -1,0 +1,12 @@
+type waterfall
+title "損益計算"
+
+item 売上高 : 1000
+item 売上原価 : -400
+subtotal 売上総利益
+item 販管費 : -250
+item 研究開発費 : -80
+subtotal 営業利益
+item 営業外収益 : 30
+item 営業外費用 : -20
+subtotal 経常利益
