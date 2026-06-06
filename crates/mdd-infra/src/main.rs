@@ -351,7 +351,14 @@ fn layout_elements(
     let gap_h = GROUP_INNER_GAP * complexity_factor;
     let gap_v = GROUP_INNER_GAP * complexity_factor * 1.2;
 
-    if local_edges.is_empty() {
+    // Use grid when:
+    // - No edges at this level, OR
+    // - Edge density is low (edges < elements/2): avoids stretching
+    //   groups into long chains when most nodes are independent
+    let use_grid = local_edges.is_empty()
+        || (local_edges.len() * 2 <= elements.len() && elements.len() > 3);
+
+    if use_grid {
         // Columns: fewer for high complexity (more external edges)
         let max_cols = if complexity > elements.len() * 2 { 2 } else { 3 };
         let cols = elements.len().min(max_cols);

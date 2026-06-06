@@ -1,0 +1,42 @@
+node User type=user
+node GlobalLB type=lb
+
+group "Tokyo Region" {
+  node TokyoLB type=lb
+  node TokyoApp1 type=server
+  node TokyoApp2 type=server
+  node TokyoDB type=db
+  node TokyoCache type=cache
+}
+
+group "US Region" {
+  node USLB type=lb
+  node USApp1 type=server
+  node USApp2 type=server
+  node USDB type=db
+  node USCache type=cache
+}
+
+group "Shared" {
+  node CDN type=cdn
+  node S3 type=storage
+  node SQS type=queue
+}
+
+User -> GlobalLB
+GlobalLB -> TokyoLB
+GlobalLB -> USLB
+TokyoLB -> TokyoApp1
+TokyoLB -> TokyoApp2
+TokyoApp1 -> TokyoDB
+TokyoApp2 -> TokyoDB
+TokyoApp1 -> TokyoCache
+USLB -> USApp1
+USLB -> USApp2
+USApp1 -> USDB
+USApp2 -> USDB
+USApp1 -> USCache
+TokyoDB -> USDB : "replication"
+CDN -> S3
+TokyoApp1 -> SQS
+USApp1 -> SQS

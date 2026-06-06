@@ -1,0 +1,49 @@
+node Developer type=user
+
+group "Source" {
+  node GitHub type=generic
+}
+
+group "CI/CD" {
+  node GitHubActions type=server
+  node DockerBuild type=server
+  node ECR type=storage
+}
+
+group "Staging" {
+  node StagingLB type=lb
+  node StagingApp type=server
+  node StagingDB type=db
+}
+
+group "Production" {
+  node ProdLB type=lb
+  node ProdApp1 type=server
+  node ProdApp2 type=server
+  node ProdDB type=db
+  node ProdCache type=cache
+}
+
+group "Monitoring" {
+  node Datadog type=server
+  node PagerDuty type=generic
+}
+
+Developer -> GitHub : "git push"
+GitHub -> GitHubActions : "webhook"
+GitHubActions -> DockerBuild : "build"
+DockerBuild -> ECR : "push image"
+ECR -> StagingApp : "deploy"
+ECR -> ProdApp1 : "deploy"
+ECR -> ProdApp2 : "deploy"
+StagingLB -> StagingApp
+StagingApp -> StagingDB
+ProdLB -> ProdApp1
+ProdLB -> ProdApp2
+ProdApp1 -> ProdDB
+ProdApp2 -> ProdDB
+ProdApp1 -> ProdCache
+ProdApp2 -> ProdCache
+Datadog -> ProdApp1
+Datadog -> ProdApp2
+Datadog -> PagerDuty : "alert"

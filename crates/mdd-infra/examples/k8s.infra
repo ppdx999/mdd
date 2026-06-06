@@ -1,0 +1,43 @@
+node User type=user
+node DNS type=network
+
+group "Kubernetes Cluster" {
+  node Ingress type=lb
+
+  group "Namespace: production" {
+    node FrontendPod1 type=server
+    node FrontendPod2 type=server
+    node APIPod1 type=server
+    node APIPod2 type=server
+    node WorkerPod type=server
+  }
+
+  group "Namespace: monitoring" {
+    node Prometheus type=server
+    node Grafana type=server
+  }
+}
+
+group "Managed Services" {
+  node CloudSQL type=db
+  node Memorystore type=cache
+  node PubSub type=queue
+  node GCS type=storage
+}
+
+User -> DNS
+DNS -> Ingress
+Ingress -> FrontendPod1
+Ingress -> FrontendPod2
+FrontendPod1 -> APIPod1
+FrontendPod2 -> APIPod2
+APIPod1 -> CloudSQL
+APIPod2 -> CloudSQL
+APIPod1 -> Memorystore
+APIPod2 -> Memorystore
+APIPod1 -> PubSub
+WorkerPod -> PubSub
+WorkerPod -> GCS
+Prometheus -> APIPod1
+Prometheus -> APIPod2
+Prometheus -> WorkerPod
