@@ -31,6 +31,28 @@ columns 設計, 実装, テスト
 columns 要件定義, 基本設計, 実装, テスト
 ```
 
+### color
+
+セル値に対する文字色（と任意で背景色）を定義する。全ての色は DSL 上で宣言的に指定する。
+
+```
+color R : blue
+color A : red
+color C : amber
+color I : green
+color ○ : blue
+color △ : amber
+color - : lightgrey
+```
+
+背景色も指定する場合:
+
+```
+color OK : green, #e8f5e9
+```
+
+使える色名: `red`, `blue`, `green`, `amber`, `yellow`, `orange`, `teal`, `purple`, `pink`, `grey`, `lightgrey`, `black`。`#ff0000` のような HEX コードも直接指定可能。
+
 ### row
 
 行ラベルとセル値をカンマ区切りで定義する。
@@ -39,19 +61,6 @@ columns 要件定義, 基本設計, 実装, テスト
 PM : R, A, I, I
 エンジニア : C, R, R, A
 ```
-
-### セル値の色
-
-| 値 | 色 | RACI での意味 |
-|---|---|---|
-| R | 青 | Responsible（実行責任） |
-| A | 赤 | Accountable（説明責任） |
-| C | 黄 | Consulted（協業） |
-| I | 緑 | Informed（報告） |
-| ○ | 青 | あり / 対応 |
-| ◎ | ティール | 主担当 |
-| △ | 黄 | 一部 / 要相談 |
-| × / - | グレー | なし / 対象外 |
 
 ## サンプル
 

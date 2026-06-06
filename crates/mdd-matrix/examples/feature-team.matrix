@@ -1,5 +1,9 @@
 columns 認証, 注文, 在庫, 決済, 通知, 管理画面
 
+color ○ : blue
+color △ : amber
+color - : lightgrey
+
 チームA : ○, ○, -, -, -, -
 チームB : -, -, ○, ○, -, -
 チームC : -, -, -, -, ○, △

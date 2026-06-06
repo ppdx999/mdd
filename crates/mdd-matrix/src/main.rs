@@ -1,8 +1,15 @@
+use std::collections::HashMap;
 use std::io::{self, Read};
 
 // ---------------------------------------------------------------------------
 // Data structures
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct ColorDef {
+    text: String,
+    bg: String,
+}
 
 #[derive(Debug)]
 struct Row {
@@ -14,6 +21,28 @@ struct Row {
 struct Matrix {
     columns: Vec<String>,
     rows: Vec<Row>,
+    colors: HashMap<String, ColorDef>,
+}
+
+// ---------------------------------------------------------------------------
+// Named colors
+// ---------------------------------------------------------------------------
+
+fn resolve_color(name: &str) -> String {
+    match name.trim() {
+        "red" => "#c62828".to_string(),
+        "blue" => "#1565c0".to_string(),
+        "green" => "#2e7d32".to_string(),
+        "amber" | "yellow" => "#f57f17".to_string(),
+        "orange" => "#e65100".to_string(),
+        "teal" => "#00695c".to_string(),
+        "purple" => "#6a1b9a".to_string(),
+        "pink" => "#ad1457".to_string(),
+        "grey" | "gray" => "#9e9e9e".to_string(),
+        "lightgrey" | "lightgray" => "#bdbdbd".to_string(),
+        "black" => "#333333".to_string(),
+        other => other.to_string(), // pass through hex codes like #ff0000
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -23,6 +52,7 @@ struct Matrix {
 fn parse(input: &str) -> Result<Matrix, String> {
     let mut columns: Vec<String> = Vec::new();
     let mut rows: Vec<Row> = Vec::new();
+    let mut colors: HashMap<String, ColorDef> = HashMap::new();
 
     for line in input.lines() {
         let line = line.trim();
@@ -34,6 +64,27 @@ fn parse(input: &str) -> Result<Matrix, String> {
             let rest = line.strip_prefix("columns ").unwrap();
             columns = rest.split(',').map(|s| s.trim().to_string()).collect();
             continue;
+        }
+
+        // color <value> : <text_color>
+        // color <value> : <text_color>, <bg_color>
+        if line.starts_with("color ") {
+            let rest = line.strip_prefix("color ").unwrap();
+            if let Some((value, colors_str)) = rest.split_once(" : ") {
+                let parts: Vec<&str> = colors_str.split(',').collect();
+                let text_color = resolve_color(parts[0].trim());
+                let bg_color = if parts.len() > 1 {
+                    resolve_color(parts[1].trim())
+                } else {
+                    "#fff".to_string()
+                };
+                colors.insert(
+                    value.trim().to_string(),
+                    ColorDef { text: text_color, bg: bg_color },
+                );
+                continue;
+            }
+            return Err(format!("Invalid color syntax: {}", line));
         }
 
         if let Some((label, values_str)) = line.split_once(" : ") {
@@ -55,7 +106,7 @@ fn parse(input: &str) -> Result<Matrix, String> {
         return Err("Missing 'columns' definition".to_string());
     }
 
-    Ok(Matrix { columns, rows })
+    Ok(Matrix { columns, rows, colors })
 }
 
 // ---------------------------------------------------------------------------
@@ -76,23 +127,17 @@ const COLOR_COL_HEADER_TEXT: &str = "#333";
 const COLOR_ROW_HEADER_BG: &str = "#f5f5f5";
 
 // ---------------------------------------------------------------------------
-// Cell color mapping
+// Cell color lookup
 // ---------------------------------------------------------------------------
 
-fn cell_color(value: &str) -> (&'static str, &'static str) {
-    // Returns (background, text_color)
-    // No cell background — color is expressed via text only
-    match value.trim() {
-        "R" => ("#fff", "#1565c0"),  // Responsible - blue text
-        "A" => ("#fff", "#c62828"),  // Accountable - red text
-        "C" => ("#fff", "#f57f17"),  // Consulted - amber text
-        "I" => ("#fff", "#2e7d32"),  // Informed - green text
-        "○" => ("#fff", "#1565c0"),  // yes - blue text
-        "◎" => ("#fff", "#00695c"),  // primary - teal text
-        "△" => ("#fff", "#f57f17"),  // partial - amber text
-        "×" | "-" => ("#fff", "#bdbdbd"), // no - light grey text
-        "" => ("#fff", "#333"),
-        _ => ("#fff", "#333"),
+const DEFAULT_TEXT_COLOR: &str = "#333";
+const DEFAULT_BG_COLOR: &str = "#fff";
+
+fn cell_color<'a>(value: &str, colors: &'a HashMap<String, ColorDef>) -> (String, String) {
+    if let Some(def) = colors.get(value.trim()) {
+        (def.bg.clone(), def.text.clone())
+    } else {
+        (DEFAULT_BG_COLOR.to_string(), DEFAULT_TEXT_COLOR.to_string())
     }
 }
 
@@ -195,7 +240,7 @@ fn render_svg(matrix: &Matrix) -> String {
         let mut cx = table_x + row_label_w;
         for (ci, col_w) in col_widths.iter().enumerate() {
             let val = row.values.get(ci).map(|s| s.as_str()).unwrap_or("");
-            let (bg, text_color) = cell_color(val);
+            let (bg, text_color) = cell_color(val, &matrix.colors);
 
             svg.push_str(&format!(
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
@@ -320,18 +365,28 @@ mod tests {
     }
 
     #[test]
-    fn cell_color_raci() {
-        assert_eq!(cell_color("R").1, "#1565c0");
-        assert_eq!(cell_color("A").1, "#c62828");
-        assert_eq!(cell_color("C").1, "#f57f17");
-        assert_eq!(cell_color("I").1, "#2e7d32");
+    fn cell_color_from_dsl() {
+        let input = "columns A\ncolor R : blue\ncolor - : lightgrey\nX : R\n";
+        let m = parse(input).unwrap();
+        assert_eq!(cell_color("R", &m.colors).1, "#1565c0");
+        assert_eq!(cell_color("-", &m.colors).1, "#bdbdbd");
     }
 
     #[test]
-    fn cell_color_symbols() {
-        assert_eq!(cell_color("○").1, "#1565c0");
-        assert_eq!(cell_color("△").1, "#f57f17");
-        assert_eq!(cell_color("-").1, "#bdbdbd");
+    fn cell_color_with_bg() {
+        let input = "columns A\ncolor OK : green, #e8f5e9\nX : OK\n";
+        let m = parse(input).unwrap();
+        let (bg, text) = cell_color("OK", &m.colors);
+        assert_eq!(text, "#2e7d32");
+        assert_eq!(bg, "#e8f5e9");
+    }
+
+    #[test]
+    fn cell_color_default_for_unknown() {
+        let colors = HashMap::new();
+        let (bg, text) = cell_color("???", &colors);
+        assert_eq!(bg, "#fff");
+        assert_eq!(text, "#333");
     }
 
     #[test]

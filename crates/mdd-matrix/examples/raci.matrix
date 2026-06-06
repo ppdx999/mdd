@@ -1,5 +1,10 @@
 columns 要件定義, 基本設計, 実装, テスト, デプロイ, 運用
 
+color R : blue
+color A : red
+color C : amber
+color I : green
+
 PM : R, A, I, I, A, I
 リードエンジニア : A, R, A, A, R, C
 フロントエンド : C, C, R, R, I, I
