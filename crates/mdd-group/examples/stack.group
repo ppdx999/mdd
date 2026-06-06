@@ -1,0 +1,11 @@
+title "技術スタック"
+group "フロントエンド" {
+  React
+  TypeScript
+  Tailwind CSS
+}
+group "バックエンド" {
+  Rust
+  PostgreSQL
+  Redis
+}

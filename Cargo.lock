@@ -201,6 +201,10 @@ name = "mdd-grid"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-group"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-group-multi"
 version = "0.1.0"
 
@@ -216,6 +220,10 @@ name = "mdd-layer"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-list-v"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-matrix"
 version = "0.1.0"
 
@@ -225,6 +233,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-process"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-puzzle"
 version = "0.1.0"
 
 [[package]]
@@ -264,6 +276,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-swot"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-table"
 version = "0.1.0"
 
 [[package]]
