@@ -337,9 +337,23 @@ fn layout_elements(
     let mut local_positions: HashMap<usize, (f64, f64)> = HashMap::new();
 
     if local_edges.is_empty() {
-        // Grid layout: arrange in rows, up to 4 columns
-        let cols = elem_sizes.len().min(4);
+        // Count how many external edges target nodes at this level
+        let mut incoming_count = 0_usize;
+        for edge in edges {
+            let from_here = name_to_elem_idx.contains_key(&edge.from);
+            let to_here = name_to_elem_idx.contains_key(&edge.to);
+            // External edge = one end is here, the other is not
+            if from_here != to_here {
+                incoming_count += 1;
+            }
+        }
+
+        // If many external edges target this group's children, use fewer
+        // columns (2) to reduce edge crossings. Otherwise up to 3.
+        let max_cols = if incoming_count > elem_sizes.len() { 2 } else { 3 };
+        let cols = elem_sizes.len().min(max_cols);
         let rows = (elem_sizes.len() + cols - 1) / cols;
+        let v_gap = GROUP_INNER_GAP * 1.5; // extra vertical space for incoming edges
 
         let mut col_widths = vec![0.0_f64; cols];
         let mut row_heights = vec![0.0_f64; rows];
@@ -352,7 +366,7 @@ fn layout_elements(
             let col = i % cols;
             let row = i / cols;
             let cx: f64 = col_widths[..col].iter().sum::<f64>() + col as f64 * GROUP_INNER_GAP;
-            let ry: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * GROUP_INNER_GAP;
+            let ry: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * v_gap;
             let (ew, eh) = elem_sizes[i];
             let x = cx + (col_widths[col] - ew) / 2.0;
             let y = ry + (row_heights[row] - eh) / 2.0;
