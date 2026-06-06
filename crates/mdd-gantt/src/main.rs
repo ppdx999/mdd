@@ -391,7 +391,7 @@ fn render_svg(diagram: &Diagram) -> String {
         svg_width, svg_height, svg_width, svg_height
     );
     svg.push_str(&format!(
-        "<style>text {{ font-family: -apple-system, 'Segoe UI', sans-serif; font-size: {}px; }}</style>",
+        "<rect width=\"100%\" height=\"100%\" fill=\"white\"/><style>text {{ font-family: -apple-system, 'Segoe UI', sans-serif; font-size: {}px; }}</style>",
         FONT_SIZE
     ));
 

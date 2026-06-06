@@ -68,15 +68,14 @@ Login -> TwoFactorAuth
 
 ## サンプル
 
-`examples/` ディレクトリにサンプルファイルがある。
+### シンプルな図
 
-```sh
-# シンプルな図
-mdd-usecase < examples/simple.usecase > simple.svg
+![simple](examples/simple.svg)
 
-# 複雑な図（複数アクター、複数パッケージ）
-mdd-usecase < examples/complex.usecase > complex.svg
+### 複雑な図（複数アクター、複数パッケージ）
 
-# 非接続ノードを含む図
-mdd-usecase < examples/disconnected.usecase > disconnected.svg
-```
+![complex](examples/complex.svg)
+
+### 非接続ノードを含む図
+
+![disconnected](examples/disconnected.svg)

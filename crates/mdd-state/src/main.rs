@@ -517,7 +517,7 @@ fn render_svg(diagram: &Diagram) -> String {
         svg_width, svg_height, svg_width, svg_height
     );
     svg.push_str(&format!(
-        "<style>text {{ font-family: sans-serif; font-size: 13px; fill: {}; }}</style>",
+        "<rect width=\"100%\" height=\"100%\" fill=\"white\"/><style>text {{ font-family: sans-serif; font-size: 13px; fill: {}; }}</style>",
         COLOR_DARK
     ));
     svg.push_str(&format!(

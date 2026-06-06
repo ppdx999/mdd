@@ -80,13 +80,18 @@ HandleOrder -> ValidatePayment
 
 ## サンプル
 
-```sh
-# シンプルな図（少なめ）
-mdd-dfd < examples/simple.dfd > simple.svg
+### シンプルな図
 
-# 中規模の図
-mdd-dfd < examples/complex.dfd > complex.svg
+![simple](examples/simple.svg)
 
-# 大規模な図
-mdd-dfd < examples/large.dfd > large.svg
-```
+### 中規模の図
+
+![complex](examples/complex.svg)
+
+### 大規模な図
+
+![large](examples/large.svg)
+
+### 列数の多いデータストア
+
+![many-columns](examples/many-columns.svg)
