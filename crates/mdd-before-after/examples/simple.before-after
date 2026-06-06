@@ -1,0 +1,9 @@
+before "Before" {
+  Manual deploy
+  No tests
+}
+
+after "After" {
+  Auto CI/CD
+  Full test coverage
+}
