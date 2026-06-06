@@ -191,6 +191,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdd-swimlane"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-tree"
 version = "0.1.0"
 dependencies = [

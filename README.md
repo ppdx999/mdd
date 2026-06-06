@@ -117,6 +117,12 @@ make uninstall
 
 ![flowchart](crates/mdd-flowchart/examples/validation.svg)
 
+### スイムレーン図 ([mdd-swimlane](crates/mdd-swimlane/))
+
+レーン（部門/担当者）ごとに分けたフローチャート。業務フローの責任分担を可視化する。
+
+![swimlane](crates/mdd-swimlane/examples/order.svg)
+
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
