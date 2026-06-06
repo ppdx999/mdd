@@ -139,6 +139,12 @@ make uninstall
 
 ![swimlane](crates/mdd-swimlane/examples/order.svg)
 
+### マトリクス図 ([mdd-matrix](crates/mdd-matrix/))
+
+RACI マトリクス、機能×チーム対応表、権限マトリクスなどを色付きセルで可視化する。
+
+![matrix](crates/mdd-matrix/examples/raci.svg)
+
 ## ロードマップ
 
 今後追加予定のプラグイン:
@@ -147,7 +153,6 @@ make uninstall
 |---|---|---|
 | mdd-dependency | 依存関係図 | パッケージ/モジュール/サービス間の依存を可視化。循環依存の発見に |
 | mdd-context-map | コンテキストマップ | DDD のバウンデッドコンテキスト間の関係（upstream/downstream、共有カーネル、ACL 等） |
-| mdd-matrix | マトリクス図 | RACI マトリクス、機能×チーム対応表、権限マトリクスなどを色付きセルで可視化 |
 | mdd-timeline | タイムライン | プロジェクトのマイルストーン、リリース履歴、イベントの時系列可視化 |
 | mdd-block | ブロック図 | シンプルな箱と矢印の汎用図。C4 モデルの Context/Container レベルの概要図に |
 
