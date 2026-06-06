@@ -1,0 +1,12 @@
+group "Frontend" {
+  layer UI Components : "React, Vue"
+  layer State Management : "Redux, Vuex"
+}
+
+group "Backend" {
+  layer API Gateway : "REST, GraphQL"
+  layer Business Logic : "Services, Domain Models"
+  layer Data Access : "ORM, Repository Pattern"
+}
+
+layer Infrastructure : "Database, Cache, Message Queue"
