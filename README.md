@@ -61,18 +61,55 @@ make install
 make uninstall
 ```
 
-## プラグイン
+## 公式プラグイン
 
-| プラグイン | 説明 |
-|---|---|
-| [mdd-usecase](crates/mdd-usecase/) | ユースケース図 |
-| [mdd-dfd](crates/mdd-dfd/) | DFD（データフロー図） |
-| [mdd-tree](crates/mdd-tree/) | ツリー図（組織図、ディレクトリ構造等） |
-| [mdd-er](crates/mdd-er/) | ER 図（テーブル定義 + リレーション） |
-| [mdd-sequence](crates/mdd-sequence/) | シーケンス図 |
-| [mdd-state](crates/mdd-state/) | 状態遷移図 |
-| [mdd-infra](crates/mdd-infra/) | インフラ構成図 |
-| [mdd-gantt](crates/mdd-gantt/) | ガントチャート |
+### ユースケース図 ([mdd-usecase](crates/mdd-usecase/))
+
+アクター、ユースケース、パッケージで構成されるユースケース図。
+
+![usecase](crates/mdd-usecase/examples/complex.svg)
+
+### DFD — データフロー図 ([mdd-dfd](crates/mdd-dfd/))
+
+外部エンティティ、プロセス、データストア間のデータの流れを可視化する。データストアにはテーブル名と列名を記述可能。
+
+![dfd](crates/mdd-dfd/examples/complex.svg)
+
+### ツリー図 ([mdd-tree](crates/mdd-tree/))
+
+組織図、ディレクトリ構造、分類体系などの階層構造をトップダウンで描画する。グループで複数ノードをまとめられる。
+
+![tree](crates/mdd-tree/examples/org.svg)
+
+### ER 図 ([mdd-er](crates/mdd-er/))
+
+テーブル定義（主キー、列名）とリレーション（1:1, 1:N, N:M）を描画する。
+
+![er](crates/mdd-er/examples/ecommerce.svg)
+
+### シーケンス図 ([mdd-sequence](crates/mdd-sequence/))
+
+参加者間のメッセージの時系列を描画する。同期メッセージ（実線）、応答メッセージ（破線）、自己メッセージに対応。
+
+![sequence](crates/mdd-sequence/examples/auth.svg)
+
+### 状態遷移図 ([mdd-state](crates/mdd-state/))
+
+状態マシンの状態とラベル付き遷移を描画する。自己遷移にも対応。
+
+![state](crates/mdd-state/examples/order.svg)
+
+### インフラ構成図 ([mdd-infra](crates/mdd-infra/))
+
+ネストしたグループ（AWS > VPC > サブネット）と種別付きコンポーネント（server, db, lb, cache, queue, storage, cdn 等）で構成されるインフラ構成図。
+
+![infra](crates/mdd-infra/examples/aws.svg)
+
+### ガントチャート ([mdd-gantt](crates/mdd-gantt/))
+
+タスクの開始日・期間・依存関係を時系列で描画する。セクションによるグループ化に対応。
+
+![gantt](crates/mdd-gantt/examples/project.svg)
 
 ## AGENTS.md 向けサンプル
 
