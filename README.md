@@ -139,11 +139,11 @@ make uninstall
 
 ![swimlane](crates/mdd-swimlane/examples/order.svg)
 
-### マトリクス図 ([mdd-matrix](crates/mdd-matrix/))
+### グリッド図 ([mdd-grid](crates/mdd-grid/))
 
-RACI マトリクス、機能×チーム対応表、権限マトリクスなどを色付きセルで可視化する。
+RACI マトリクス、機能×チーム対応表、権限表などを色付きグリッドで可視化する。
 
-![matrix](crates/mdd-matrix/examples/raci.svg)
+![grid](crates/mdd-grid/examples/raci.svg)
 
 ## ロードマップ
 

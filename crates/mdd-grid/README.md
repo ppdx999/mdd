@@ -1,22 +1,25 @@
-# mdd-matrix
+# mdd-grid
 
-`mdd` 用のマトリクス図プラグイン。テキストベースの記法から色付きマトリクス表を SVG で生成する。
+`mdd` 用のグリッド図プラグイン。テキストベースの記法から色付きグリッド表を SVG で生成する。
 
 ## 使い方
 
-標準入力からマトリクス記法を受け取り、標準出力に SVG を出力する。
+標準入力からグリッド記法を受け取り、標準出力に SVG を出力する。
 
 ```sh
-mdd-matrix < examples/raci.matrix > output.svg
+mdd-grid < examples/raci.grid > output.svg
 ```
 
-`mdd` 経由で使う場合は、Markdown のコードブロックに `matrix` を指定する。
+`mdd` 経由で使う場合は、Markdown のコードブロックに `grid` を指定する。
 
 ````md
-```matrix
+```grid
 columns 設計, 実装, テスト
 
-田中 : R, A, C
+color R : blue, #e3f2fd
+color A : red, #ffebee
+
+田中 : R, A, R
 佐藤 : A, R, R
 ```
 ````
@@ -40,15 +43,13 @@ color R : blue
 color A : red
 color C : amber
 color I : green
-color ○ : blue
-color △ : amber
-color - : lightgrey
 ```
 
 背景色も指定する場合:
 
 ```
-color OK : green, #e8f5e9
+color R : blue, #e3f2fd
+color A : red, #ffebee
 ```
 
 使える色名: `red`, `blue`, `green`, `amber`, `yellow`, `orange`, `teal`, `purple`, `pink`, `grey`, `lightgrey`, `black`。`#ff0000` のような HEX コードも直接指定可能。

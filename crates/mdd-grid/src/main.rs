@@ -317,7 +317,7 @@ fn main() {
     let matrix = match parse(&input) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("mdd-matrix: {}", e);
+            eprintln!("mdd-grid: {}", e);
             std::process::exit(1);
         }
     };

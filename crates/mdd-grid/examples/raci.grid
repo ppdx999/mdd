@@ -1,9 +1,9 @@
 columns 要件定義, 基本設計, 実装, テスト, デプロイ, 運用
 
-color R : blue
-color A : red
-color C : amber
-color I : green
+color R : blue, #e3f2fd
+color A : red, #ffebee
+color C : amber, #fff8e1
+color I : green, #e8f5e9
 
 PM : R, A, I, I, A, I
 リードエンジニア : A, R, A, A, R, C

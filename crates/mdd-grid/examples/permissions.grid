@@ -1,8 +1,8 @@
 columns ユーザー管理, 注文管理, 商品管理, レポート, 設定, 請求
 
-color ○ : green
-color △ : amber
-color × : lightgrey
+color ○ : green, #e8f5e9
+color △ : amber, #fff8e1
+color × : lightgrey, #fafafa
 
 管理者 : ○, ○, ○, ○, ○, ○
 マネージャー : △, ○, ○, ○, △, ○
