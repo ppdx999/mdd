@@ -136,8 +136,8 @@ const NODE_V_GAP: f64 = 50.0;
 
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
-const COLOR_LANE_HEADER: &str = "#455a64";
-const COLOR_LANE_HEADER_TEXT: &str = "#fff";
+const COLOR_LANE_HEADER: &str = "#e0e0e0";
+const COLOR_LANE_HEADER_TEXT: &str = "#333";
 const LANE_COLORS: [&str; 4] = ["#fafafa", "#f5f5f5", "#fafafa", "#f5f5f5"];
 
 fn node_colors(kind: &NodeKind) -> (&'static str, &'static str) {
