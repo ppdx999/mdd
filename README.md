@@ -111,6 +111,12 @@ make uninstall
 
 ![gantt](crates/mdd-gantt/examples/project.svg)
 
+### フローチャート ([mdd-flowchart](crates/mdd-flowchart/))
+
+開始/終了（楕円）、処理（矩形）、分岐（ひし形）で構成されるフローチャート。業務フローやアルゴリズムの可視化に。
+
+![flowchart](crates/mdd-flowchart/examples/validation.svg)
+
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。

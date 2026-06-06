@@ -162,6 +162,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdd-flowchart"
+version = "0.1.0"
+dependencies = [
+ "rust-sugiyama",
+]
+
+[[package]]
 name = "mdd-gantt"
 version = "0.1.0"
 
