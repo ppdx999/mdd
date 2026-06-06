@@ -331,47 +331,76 @@ fn layout_elements(
         }
     }
 
-    // Step 4: Run Sugiyama on this level (top-down, no LTR swap)
-    let vertices: Vec<(u32, (f64, f64))> = elem_sizes
-        .iter()
-        .enumerate()
-        .map(|(i, (w, h))| (i as u32, (*w, *h))) // top-down: (w, h) as-is
-        .collect();
-
-    let config = Config {
-        vertex_spacing: 20.0 + elements.len() as f64 * 4.0,
-        ..Config::default()
-    };
-
-    let layouts = from_vertices_and_edges(&vertices, &local_edges, &config);
-
-    // Collect and pack disconnected components
+    // Step 4: Layout this level.
+    // Use Sugiyama (LTR) when edges exist for edge-aware placement.
+    // Fall back to grid when there are no edges at this level.
     let mut local_positions: HashMap<usize, (f64, f64)> = HashMap::new();
-    let mut x_cursor: f64 = 0.0;
-    let component_gap = GROUP_INNER_GAP * 2.0;
 
-    for (coords, _w, _h) in &layouts {
-        let mut comp_min_x = f64::MAX;
-        let mut comp_min_y = f64::MAX;
-        let mut comp_max_x = f64::MIN;
-        let mut comp_max_y = f64::MIN;
+    if local_edges.is_empty() {
+        // Grid layout: arrange in rows, up to 4 columns
+        let cols = elem_sizes.len().min(4);
+        let rows = (elem_sizes.len() + cols - 1) / cols;
 
-        for &(id, (sx, sy)) in coords {
-            // Top-down: x = horizontal, y = vertical (no swap needed)
-            let (w, h) = elem_sizes[id];
-            comp_min_x = comp_min_x.min(sx);
-            comp_min_y = comp_min_y.min(sy);
-            comp_max_x = comp_max_x.max(sx + w);
-            comp_max_y = comp_max_y.max(sy + h);
+        let mut col_widths = vec![0.0_f64; cols];
+        let mut row_heights = vec![0.0_f64; rows];
+        for (i, (w, h)) in elem_sizes.iter().enumerate() {
+            col_widths[i % cols] = col_widths[i % cols].max(*w);
+            row_heights[i / cols] = row_heights[i / cols].max(*h);
         }
 
-        for &(id, (sx, sy)) in coords {
-            let final_x = sx - comp_min_x + x_cursor;
-            let final_y = sy - comp_min_y;
-            local_positions.insert(id, (final_x, final_y));
+        for i in 0..elem_sizes.len() {
+            let col = i % cols;
+            let row = i / cols;
+            let cx: f64 = col_widths[..col].iter().sum::<f64>() + col as f64 * GROUP_INNER_GAP;
+            let ry: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * GROUP_INNER_GAP;
+            let (ew, eh) = elem_sizes[i];
+            let x = cx + (col_widths[col] - ew) / 2.0;
+            let y = ry + (row_heights[row] - eh) / 2.0;
+            local_positions.insert(i, (x, y));
         }
+    } else {
+        // Sugiyama LTR layout for edge-aware placement
+        let vertices: Vec<(u32, (f64, f64))> = elem_sizes
+            .iter()
+            .enumerate()
+            .map(|(i, (w, h))| (i as u32, (*h, *w))) // swap for LTR
+            .collect();
 
-        x_cursor += (comp_max_x - comp_min_x) + component_gap;
+        let max_dim = elem_sizes
+            .iter()
+            .map(|(w, h)| w.max(*h))
+            .fold(0.0_f64, f64::max);
+        let config = Config {
+            vertex_spacing: (max_dim * 0.3).max(20.0) + elements.len() as f64 * 3.0,
+            ..Config::default()
+        };
+
+        let layouts = from_vertices_and_edges(&vertices, &local_edges, &config);
+        let component_gap = GROUP_INNER_GAP * 2.0;
+        let mut x_cursor: f64 = 0.0;
+
+        for (coords, _w, _h) in &layouts {
+            let mut comp_min_x = f64::MAX;
+            let mut comp_min_y = f64::MAX;
+            let mut comp_max_x = f64::MIN;
+
+            for &(id, (sx, sy)) in coords {
+                let final_x = sy; // swap back for LTR
+                let final_y = sx;
+                let (w, _h) = elem_sizes[id];
+                comp_min_x = comp_min_x.min(final_x);
+                comp_min_y = comp_min_y.min(final_y);
+                comp_max_x = comp_max_x.max(final_x + w);
+            }
+
+            for &(id, (sx, sy)) in coords {
+                let final_x = sy - comp_min_x + x_cursor;
+                let final_y = sx - comp_min_y;
+                local_positions.insert(id, (final_x, final_y));
+            }
+
+            x_cursor += (comp_max_x - comp_min_x) + component_gap;
+        }
     }
 
     // Step 5: Compute total bounding box and place elements
@@ -670,7 +699,8 @@ fn render_svg(diagram: &Diagram) -> String {
     // Render groups (back to front)
     render_groups_recursive(&mut svg, &diagram.top_level, &diagram.nodes, &diagram.groups, &positions);
 
-    // Build node bounds for edge routing
+    // Build node bounds for edge routing (nodes only, not groups —
+    // edges are allowed to cross group borders since they're dashed)
     let all_bounds: Vec<(String, f64, f64, f64, f64)> = diagram
         .nodes
         .iter()
