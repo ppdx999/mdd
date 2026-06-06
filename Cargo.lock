@@ -181,6 +181,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdd-funnel"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-gantt"
 version = "0.1.0"
 
@@ -201,6 +205,14 @@ dependencies = [
 
 [[package]]
 name = "mdd-layer"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-process"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-pyramid"
 version = "0.1.0"
 
 [[package]]
@@ -236,6 +248,10 @@ version = "0.1.0"
 dependencies = [
  "rust-sugiyama",
 ]
+
+[[package]]
+name = "mdd-triangle"
+version = "0.1.0"
 
 [[package]]
 name = "mdd-usecase"

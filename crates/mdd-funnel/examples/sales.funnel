@@ -1,0 +1,6 @@
+title "営業ファネル"
+stage リード獲得 : 1000
+stage 商談化 : 400
+stage 提案 : 200
+stage 見積 : 100
+stage 受注 : 40

@@ -1,0 +1,7 @@
+title "QCD"
+node 品質
+node コスト
+node 納期
+edge 0 -- 1 : "トレードオフ"
+edge 1 -- 2 : "トレードオフ"
+edge 0 -- 2 : "トレードオフ"
