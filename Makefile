@@ -1,4 +1,4 @@
-CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er mdd-sequence mdd-state mdd-infra
+CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er mdd-sequence mdd-state mdd-infra mdd-gantt
 
 .PHONY: build test install uninstall clean
 
