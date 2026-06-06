@@ -70,10 +70,10 @@ const MIN_COL_W: f64 = 80.0;
 const ROW_LABEL_MIN_W: f64 = 100.0;
 
 const COLOR_DARK: &str = "#333";
-const COLOR_GRID: &str = "#ccc";
-const COLOR_COL_HEADER_BG: &str = "#455a64";
-const COLOR_COL_HEADER_TEXT: &str = "#fff";
-const COLOR_ROW_HEADER_BG: &str = "#eceff1";
+const COLOR_GRID: &str = "#ddd";
+const COLOR_COL_HEADER_BG: &str = "#e8eaf6";
+const COLOR_COL_HEADER_TEXT: &str = "#333";
+const COLOR_ROW_HEADER_BG: &str = "#f5f5f5";
 
 // ---------------------------------------------------------------------------
 // Cell color mapping
@@ -81,17 +81,18 @@ const COLOR_ROW_HEADER_BG: &str = "#eceff1";
 
 fn cell_color(value: &str) -> (&'static str, &'static str) {
     // Returns (background, text_color)
+    // No cell background — color is expressed via text only
     match value.trim() {
-        "R" => ("#bbdefb", "#0d47a1"),  // Responsible - blue
-        "A" => ("#ffcdd2", "#b71c1c"),  // Accountable - red
-        "C" => ("#fff9c4", "#f57f17"),  // Consulted - yellow
-        "I" => ("#c8e6c9", "#1b5e20"),  // Informed - green
-        "○" => ("#bbdefb", "#0d47a1"),  // yes - blue
-        "◎" => ("#b2dfdb", "#004d40"),  // primary - teal
-        "△" => ("#fff9c4", "#f57f17"),  // partial - yellow
-        "×" | "-" => ("#f5f5f5", "#9e9e9e"), // no - grey
-        "" => ("#ffffff", "#333"),
-        _ => ("#ffffff", "#333"),        // default - white
+        "R" => ("#fff", "#1565c0"),  // Responsible - blue text
+        "A" => ("#fff", "#c62828"),  // Accountable - red text
+        "C" => ("#fff", "#f57f17"),  // Consulted - amber text
+        "I" => ("#fff", "#2e7d32"),  // Informed - green text
+        "○" => ("#fff", "#1565c0"),  // yes - blue text
+        "◎" => ("#fff", "#00695c"),  // primary - teal text
+        "△" => ("#fff", "#f57f17"),  // partial - amber text
+        "×" | "-" => ("#fff", "#bdbdbd"), // no - light grey text
+        "" => ("#fff", "#333"),
+        _ => ("#fff", "#333"),
     }
 }
 
@@ -320,17 +321,17 @@ mod tests {
 
     #[test]
     fn cell_color_raci() {
-        assert_eq!(cell_color("R").0, "#bbdefb");
-        assert_eq!(cell_color("A").0, "#ffcdd2");
-        assert_eq!(cell_color("C").0, "#fff9c4");
-        assert_eq!(cell_color("I").0, "#c8e6c9");
+        assert_eq!(cell_color("R").1, "#1565c0");
+        assert_eq!(cell_color("A").1, "#c62828");
+        assert_eq!(cell_color("C").1, "#f57f17");
+        assert_eq!(cell_color("I").1, "#2e7d32");
     }
 
     #[test]
     fn cell_color_symbols() {
-        assert_eq!(cell_color("○").0, "#bbdefb");
-        assert_eq!(cell_color("△").0, "#fff9c4");
-        assert_eq!(cell_color("-").0, "#f5f5f5");
+        assert_eq!(cell_color("○").1, "#1565c0");
+        assert_eq!(cell_color("△").1, "#f57f17");
+        assert_eq!(cell_color("-").1, "#bdbdbd");
     }
 
     #[test]
