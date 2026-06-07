@@ -307,32 +307,45 @@ fn render_svg(map: &MindMap) -> String {
                 escape_xml(&branch.text)
             ));
 
-            // Sub-items
-            let mut sub_y = by + BRANCH_H + BRANCH_GAP_Y;
-            for child in &branch.children {
-                let sw = sub_item_width(child);
-                let sub_x = bx + 16.0;
+            // Sub-items with vertical spine + horizontal connectors
+            if !branch.children.is_empty() {
+                let spine_x = bx + 8.0;
+                let mut sub_y = by + BRANCH_H + BRANCH_GAP_Y;
 
-                // Connection from branch to sub-item
+                // Vertical spine from bottom of branch to last child
+                let last_child_y = sub_y + (branch.children.len() - 1) as f64 * (SUB_ITEM_H + 4.0);
                 svg.push_str(&format!(
                     "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                    bx + 8.0, by + BRANCH_H,
-                    sub_x, sub_y + SUB_ITEM_H / 2.0,
+                    spine_x, by + BRANCH_H,
+                    spine_x, last_child_y + SUB_ITEM_H / 2.0,
                     accent
                 ));
 
-                svg.push_str(&format!(
-                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" opacity=\"0.7\"/>",
-                    sub_x, sub_y, sw, SUB_ITEM_H, bg, accent
-                ));
-                svg.push_str(&format!(
-                    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\">{}</text>",
-                    sub_x + sw / 2.0,
-                    sub_y + SUB_ITEM_H / 2.0 + 4.0,
-                    SUB_FONT_SIZE,
-                    escape_xml(&child.text)
-                ));
-                sub_y += SUB_ITEM_H + 4.0;
+                for child in &branch.children {
+                    let sw = sub_item_width(child);
+                    let sub_x = bx + 16.0;
+
+                    // Horizontal connector from spine to sub-item
+                    svg.push_str(&format!(
+                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                        spine_x, sub_y + SUB_ITEM_H / 2.0,
+                        sub_x, sub_y + SUB_ITEM_H / 2.0,
+                        accent
+                    ));
+
+                    svg.push_str(&format!(
+                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" opacity=\"0.7\"/>",
+                        sub_x, sub_y, sw, SUB_ITEM_H, bg, accent
+                    ));
+                    svg.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\">{}</text>",
+                        sub_x + sw / 2.0,
+                        sub_y + SUB_ITEM_H / 2.0 + 4.0,
+                        SUB_FONT_SIZE,
+                        escape_xml(&child.text)
+                    ));
+                    sub_y += SUB_ITEM_H + 4.0;
+                }
             }
 
             cur_y += branch_total_height(branch) + BRANCH_GAP_Y;
@@ -372,32 +385,45 @@ fn render_svg(map: &MindMap) -> String {
                 escape_xml(&branch.text)
             ));
 
-            // Sub-items
-            let mut sub_y = by + BRANCH_H + BRANCH_GAP_Y;
-            for child in &branch.children {
-                let sw = sub_item_width(child);
-                let sub_x = bx - 16.0;
+            // Sub-items with vertical spine + horizontal connectors
+            if !branch.children.is_empty() {
+                let spine_x = bx + node_w - 8.0;
+                let mut sub_y = by + BRANCH_H + BRANCH_GAP_Y;
 
-                // Connection from branch to sub-item
+                // Vertical spine from bottom of branch to last child
+                let last_child_y = sub_y + (branch.children.len() - 1) as f64 * (SUB_ITEM_H + 4.0);
                 svg.push_str(&format!(
                     "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                    bx + node_w - 8.0, by + BRANCH_H,
-                    sub_x + sw, sub_y + SUB_ITEM_H / 2.0,
+                    spine_x, by + BRANCH_H,
+                    spine_x, last_child_y + SUB_ITEM_H / 2.0,
                     accent
                 ));
 
-                svg.push_str(&format!(
-                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" opacity=\"0.7\"/>",
-                    sub_x, sub_y, sw, SUB_ITEM_H, bg, accent
-                ));
-                svg.push_str(&format!(
-                    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\">{}</text>",
-                    sub_x + sw / 2.0,
-                    sub_y + SUB_ITEM_H / 2.0 + 4.0,
-                    SUB_FONT_SIZE,
-                    escape_xml(&child.text)
-                ));
-                sub_y += SUB_ITEM_H + 4.0;
+                for child in &branch.children {
+                    let sw = sub_item_width(child);
+                    let sub_x = bx - 16.0;
+
+                    // Horizontal connector from spine to sub-item
+                    svg.push_str(&format!(
+                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                        spine_x, sub_y + SUB_ITEM_H / 2.0,
+                        sub_x + sw, sub_y + SUB_ITEM_H / 2.0,
+                        accent
+                    ));
+
+                    svg.push_str(&format!(
+                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" opacity=\"0.7\"/>",
+                        sub_x, sub_y, sw, SUB_ITEM_H, bg, accent
+                    ));
+                    svg.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\">{}</text>",
+                        sub_x + sw / 2.0,
+                        sub_y + SUB_ITEM_H / 2.0 + 4.0,
+                        SUB_FONT_SIZE,
+                        escape_xml(&child.text)
+                    ));
+                    sub_y += SUB_ITEM_H + 4.0;
+                }
             }
 
             cur_y += branch_total_height(branch) + BRANCH_GAP_Y;
