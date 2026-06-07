@@ -280,13 +280,39 @@ fn render_svg(diagram: &Diagram) -> String {
             escape_xml(&step.name)
         ));
 
-        // Description outside the node, radiating outward
+        // Description outside the node with radial relation line
         if !step.description.is_empty() {
             let angle = -std::f64::consts::FRAC_PI_2 + angle_step * i as f64;
             let dir_x = angle.cos();
             let dir_y = angle.sin();
-            let desc_base_x = nx + dir_x * (w / 2.0 + DESC_OFFSET);
-            let desc_base_y = ny + dir_y * (h / 2.0 + DESC_OFFSET);
+
+            // Line length scales with description width
+            let max_line_w = step.description.iter()
+                .map(|d| text_width(d) * (DESC_FONT_SIZE / 13.0))
+                .fold(0.0_f64, f64::max);
+            let line_len = DESC_OFFSET + max_line_w * 0.3 + 20.0;
+
+            // Line start: node edge
+            let line_start_x = nx + dir_x * (w / 2.0);
+            let line_start_y = ny + dir_y * (h / 2.0);
+            // Line end: outward
+            let line_end_x = nx + dir_x * (w / 2.0 + line_len);
+            let line_end_y = ny + dir_y * (h / 2.0 + line_len);
+
+            // Radial line
+            svg.push_str(&format!(
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+                line_start_x, line_start_y, line_end_x, line_end_y, "#ccc"
+            ));
+            // Dot at node edge
+            svg.push_str(&format!(
+                "<circle cx=\"{}\" cy=\"{}\" r=\"2.5\" fill=\"{}\"/>",
+                line_start_x, line_start_y, stroke
+            ));
+
+            // Description text at end of line
+            let desc_base_x = line_end_x + dir_x * 8.0;
+            let desc_base_y = line_end_y + dir_y * 8.0;
 
             let anchor = if dir_x.abs() < 0.3 {
                 "middle"
@@ -296,11 +322,12 @@ fn render_svg(diagram: &Diagram) -> String {
                 "end"
             };
 
+            let text_offset_y = -(step.description.len() as f64 - 1.0) * DESC_LINE_HEIGHT * 0.5;
             for (j, desc_line) in step.description.iter().enumerate() {
                 svg.push_str(&format!(
                     "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     desc_base_x,
-                    desc_base_y + j as f64 * DESC_LINE_HEIGHT + DESC_FONT_SIZE * 0.35,
+                    desc_base_y + text_offset_y + j as f64 * DESC_LINE_HEIGHT + DESC_FONT_SIZE * 0.35,
                     anchor,
                     DESC_FONT_SIZE,
                     COLOR_DESC,
