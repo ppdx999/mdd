@@ -327,8 +327,11 @@ name = "mdd"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "miniz_oxide",
  "open",
+ "pdf-writer",
  "pulldown-cmark",
+ "resvg",
 ]
 
 [[package]]
@@ -458,15 +461,6 @@ version = "0.1.0"
 [[package]]
 name = "mdd-org"
 version = "0.1.0"
-
-[[package]]
-name = "mdd-pdf"
-version = "0.1.0"
-dependencies = [
- "miniz_oxide",
- "pdf-writer",
- "resvg",
-]
 
 [[package]]
 name = "mdd-persona"

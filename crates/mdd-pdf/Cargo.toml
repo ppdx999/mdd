@@ -1,9 +1,0 @@
-[package]
-name = "mdd-pdf"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-resvg = "0.45"
-pdf-writer = "0.13"
-miniz_oxide = "0.8"

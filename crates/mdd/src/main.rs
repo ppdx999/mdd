@@ -1,6 +1,7 @@
+mod pdf;
 mod plugin;
 mod preview;
-mod process;
+pub(crate) mod process;
 
 use std::fs;
 use std::path::Path;
@@ -27,9 +28,14 @@ fn main() {
             let path = Path::new(&args[2]);
             preview::preview(path);
         }
+        3 if args[1] == "pdf" => {
+            let path = Path::new(&args[2]);
+            pdf::generate_pdf(path);
+        }
         _ => {
             eprintln!("Usage: mdd <file.md>");
             eprintln!("       mdd preview <file.md>");
+            eprintln!("       mdd pdf <file.md> > output.pdf");
             std::process::exit(1);
         }
     }
