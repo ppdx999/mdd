@@ -75,15 +75,15 @@ const BADGE_RADIUS: f64 = 14.0;
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#999";
 
-// Step colors: cycle through these pastel backgrounds
-const STEP_COLORS: &[(&str, &str)] = &[
-    ("#e3f2fd", "#1565c0"), // light blue
-    ("#e8f5e9", "#2e7d32"), // light green
-    ("#fff8e1", "#f57f17"), // light yellow
-    ("#f3e5f5", "#7b1fa2"), // light purple
-    ("#e0f2f1", "#00695c"), // light teal
-    ("#fce4ec", "#c62828"), // light pink
-    ("#e8eaf6", "#283593"), // light indigo
+// Step colors: (desc_bg, title_bg, accent)
+const STEP_COLORS: &[(&str, &str, &str)] = &[
+    ("#f0f7ff", "#90caf9", "#1565c0"), // blue
+    ("#f0f9f1", "#a5d6a7", "#2e7d32"), // green
+    ("#fffef2", "#ffe082", "#f57f17"), // yellow
+    ("#faf2fc", "#ce93d8", "#7b1fa2"), // purple
+    ("#f0faf9", "#80cbc4", "#00695c"), // teal
+    ("#fdf2f4", "#ef9a9a", "#c62828"), // pink
+    ("#f2f3fa", "#9fa8da", "#283593"), // indigo
 ];
 
 // ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ fn render_svg(diagram: &Diagram) -> String {
     for (i, step) in diagram.steps.iter().enumerate() {
         let x = PADDING + i as f64 * STEP_OFFSET_X;
         let y = PADDING + (n - 1 - i) as f64 * STEP_OFFSET_Y;
-        let (fill, stroke) = STEP_COLORS[i % STEP_COLORS.len()];
+        let (fill, stroke, accent) = STEP_COLORS[i % STEP_COLORS.len()];
 
         // Step rectangle with rounded corners
         svg.push_str(&format!(
@@ -185,7 +185,7 @@ fn render_svg(diagram: &Diagram) -> String {
         };
         svg.push_str(&format!(
             "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" />",
-            badge_x, badge_y, BADGE_RADIUS, stroke
+            badge_x, badge_y, BADGE_RADIUS, accent
         ));
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"white\">{}</text>",

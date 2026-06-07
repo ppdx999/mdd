@@ -137,14 +137,18 @@ const TITLE_HEIGHT: f64 = 24.0;
 const TITLE_GAP: f64 = 16.0;
 const BULLET_RADIUS: f64 = 3.0;
 
-// Quadrant colors: (background, accent)
-const S_BG: &str = "#e3f2fd";
+// Quadrant colors: (desc_bg, title_bg, accent)
+const S_BG: &str = "#f0f7ff";
+const S_TITLE: &str = "#90caf9";
 const S_ACCENT: &str = "#1565c0";
-const W_BG: &str = "#fce4ec";
+const W_BG: &str = "#fdf2f4";
+const W_TITLE: &str = "#ef9a9a";
 const W_ACCENT: &str = "#c62828";
-const O_BG: &str = "#e8f5e9";
+const O_BG: &str = "#f0f9f1";
+const O_TITLE: &str = "#a5d6a7";
 const O_ACCENT: &str = "#2e7d32";
-const T_BG: &str = "#fff8e1";
+const T_BG: &str = "#fffef2";
+const T_TITLE: &str = "#ffe082";
 const T_ACCENT: &str = "#f57f17";
 
 fn text_width(s: &str) -> f64 {
@@ -231,6 +235,7 @@ fn render_svg(swot: &Swot) -> String {
         "S - Strengths",
         &swot.strengths,
         S_BG,
+        S_TITLE,
         S_ACCENT,
     );
 
@@ -244,6 +249,7 @@ fn render_svg(swot: &Swot) -> String {
         "W - Weaknesses",
         &swot.weaknesses,
         W_BG,
+        W_TITLE,
         W_ACCENT,
     );
 
@@ -257,6 +263,7 @@ fn render_svg(swot: &Swot) -> String {
         "O - Opportunities",
         &swot.opportunities,
         O_BG,
+        O_TITLE,
         O_ACCENT,
     );
 
@@ -270,6 +277,7 @@ fn render_svg(swot: &Swot) -> String {
         "T - Threats",
         &swot.threats,
         T_BG,
+        T_TITLE,
         T_ACCENT,
     );
 
@@ -286,6 +294,7 @@ fn render_quadrant(
     header: &str,
     items: &[String],
     bg_color: &str,
+    title_color: &str,
     accent_color: &str,
 ) {
     // Quadrant background
@@ -297,7 +306,7 @@ fn render_quadrant(
     // Header background
     svg.push_str(&format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\"/>",
-        x, y, w, HEADER_HEIGHT, accent_color
+        x, y, w, HEADER_HEIGHT, title_color
     ));
     // Fill bottom corners of header
     svg.push_str(&format!(
@@ -306,15 +315,16 @@ fn render_quadrant(
         y + HEADER_HEIGHT / 2.0,
         w,
         HEADER_HEIGHT / 2.0,
-        accent_color
+        title_color
     ));
 
     // Header text
     svg.push_str(&format!(
-        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"white\">{}</text>",
+        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
         x + w / 2.0,
         y + HEADER_HEIGHT / 2.0 + 5.0,
         HEADER_FONT_SIZE,
+        accent_color,
         escape_xml(header)
     ));
 

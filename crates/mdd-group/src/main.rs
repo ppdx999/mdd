@@ -139,11 +139,12 @@ const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
 const COLOR_DARK: &str = "#333";
 
-const COLORS: &[(&str, &str)] = &[
-    ("#e3f2fd", "#1565c0"),
-    ("#e8f5e9", "#2e7d32"),
-    ("#fff8e1", "#f57f17"),
-    ("#f3e5f5", "#7b1fa2"),
+// Colors: (desc_bg, title_bg, accent)
+const COLORS: &[(&str, &str, &str)] = &[
+    ("#f0f7ff", "#90caf9", "#1565c0"),
+    ("#f0f9f1", "#a5d6a7", "#2e7d32"),
+    ("#fffef2", "#ffe082", "#f57f17"),
+    ("#faf2fc", "#ce93d8", "#7b1fa2"),
 ];
 
 const GROUP_MIN_WIDTH: f64 = 160.0;
@@ -241,18 +242,18 @@ fn render_svg(groups: &Groups) -> String {
     let mut x = PADDING;
     for (i, group) in groups.groups.iter().enumerate() {
         let w = group_widths[i];
-        let (bg_color, accent_color) = COLORS[i % COLORS.len()];
+        let (bg_color, title_color, accent_color) = COLORS[i % COLORS.len()];
 
         // Outer rounded rect
         svg.push_str(&format!(
             "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-            x, content_y, w, group_h, bg_color, accent_color
+            x, content_y, w, group_h, bg_color, title_color
         ));
 
         // Header bar (top rounded corners)
         svg.push_str(&format!(
             "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\"/>",
-            x, content_y, w, HEADER_HEIGHT, accent_color
+            x, content_y, w, HEADER_HEIGHT, title_color
         ));
         // Fill bottom corners of header
         svg.push_str(&format!(
@@ -261,14 +262,15 @@ fn render_svg(groups: &Groups) -> String {
             content_y + HEADER_HEIGHT / 2.0,
             w,
             HEADER_HEIGHT / 2.0,
-            accent_color
+            title_color
         ));
 
         // Header text
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" fill=\"white\" font-weight=\"bold\">{}</text>",
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" fill=\"{}\" font-weight=\"bold\">{}</text>",
             x + w / 2.0,
             content_y + HEADER_HEIGHT / 2.0 + 5.0,
+            accent_color,
             escape_xml(&group.name)
         ));
 
