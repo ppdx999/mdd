@@ -1,0 +1,15 @@
+title "組織図"
+member CEO : "代表取締役"
+member CTO : "技術統括"
+member CFO : "財務統括"
+member VP_Eng : "エンジニアリング部長"
+member VP_Product : "プロダクト部長"
+member Lead_FE : "フロントエンドリード"
+member Lead_BE : "バックエンドリード"
+
+CEO -> CTO
+CEO -> CFO
+CTO -> VP_Eng
+CTO -> VP_Product
+VP_Eng -> Lead_FE
+VP_Eng -> Lead_BE

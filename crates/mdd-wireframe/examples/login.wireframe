@@ -1,0 +1,11 @@
+title "ログインページ"
+image "ロゴ"
+header ログイン
+text "アカウントにログインしてください"
+---
+input "メールアドレス"
+input "パスワード"
+button ログイン
+---
+text "アカウントをお持ちでない方"
+button 新規登録

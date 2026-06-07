@@ -156,6 +156,10 @@ name = "mdd-before-after"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-changelog"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-compare"
 version = "0.1.0"
 
@@ -180,6 +184,10 @@ version = "0.1.0"
 dependencies = [
  "rust-sugiyama",
 ]
+
+[[package]]
+name = "mdd-faq"
+version = "0.1.0"
 
 [[package]]
 name = "mdd-flowchart"
@@ -214,6 +222,14 @@ version = "0.1.0"
 dependencies = [
  "rust-sugiyama",
 ]
+
+[[package]]
+name = "mdd-journey"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-kanban"
+version = "0.1.0"
 
 [[package]]
 name = "mdd-kpi"
@@ -252,6 +268,22 @@ name = "mdd-mindmap"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-org"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-persona"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-pie"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-pricetable"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-process"
 version = "0.1.0"
 
@@ -261,6 +293,14 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-pyramid"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-quote"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-radar"
 version = "0.1.0"
 
 [[package]]
@@ -277,6 +317,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-sequence"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-slack"
 version = "0.1.0"
 
 [[package]]
@@ -307,6 +351,10 @@ name = "mdd-timeline"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-todo"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-tree"
 version = "0.1.0"
 dependencies = [
@@ -318,6 +366,10 @@ name = "mdd-triangle"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-tweet"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-usecase"
 version = "0.1.0"
 dependencies = [
@@ -326,6 +378,10 @@ dependencies = [
 
 [[package]]
 name = "mdd-venn"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-wireframe"
 version = "0.1.0"
 
 [[package]]

@@ -1,0 +1,14 @@
+title "Sprint 3"
+column Todo
+card ユーザー通知 : "feature"
+card バグ修正 #234 : "bug"
+card ドキュメント更新
+
+column In Progress
+card API リファクタリング : "refactor"
+card 検索機能改善 : "feature"
+
+column Done
+card ログイン画面 : "feature"
+card CI/CD 設定 : "infra"
+card パフォーマンス改善 : "perf"

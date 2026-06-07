@@ -1,0 +1,12 @@
+title "リリースノート"
+release v2.1.0 : "2025-06-01"
+- add ダークモード対応
+- add 多言語サポート
+- improve パフォーマンス最適化
+- fix ログイン時のエラー修正
+
+release v2.0.0 : "2025-05-01"
+- add 新しいダッシュボード
+- change API v2 に移行
+- remove 旧API廃止
+- security XSS脆弱性の修正
