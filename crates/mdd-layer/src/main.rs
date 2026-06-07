@@ -7,7 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug, Clone)]
 struct Layer {
     name: String,
-    description: String,
+    description: Vec<String>,
     color: String,
 }
 
@@ -77,9 +77,9 @@ fn parse_items(lines: &[&str], start: usize, in_group: bool) -> Result<(Vec<Item
 
         if line.starts_with("layer ") {
             let rest = line.strip_prefix("layer ").unwrap();
-            let layer = parse_layer(rest)?;
+            let (layer, consumed) = parse_layer(rest, lines, i)?;
             items.push(Item::Layer(layer));
-            i += 1;
+            i += 1 + consumed;
             continue;
         }
 
@@ -93,7 +93,7 @@ fn parse_items(lines: &[&str], start: usize, in_group: bool) -> Result<(Vec<Item
     Ok((items, i))
 }
 
-fn parse_layer(rest: &str) -> Result<Layer, String> {
+fn parse_layer(rest: &str, lines: &[&str], current: usize) -> Result<(Layer, usize), String> {
     // layer Name : "description" color=#xxx
     // layer Name : "description"
     // layer Name color=#xxx
@@ -106,17 +106,42 @@ fn parse_layer(rest: &str) -> Result<Layer, String> {
         (rest.trim(), String::new())
     };
 
-    let (name, description) = if let Some((n, d)) = main_part.split_once(" : ") {
-        (n.trim().to_string(), extract_quoted(d.trim()).unwrap_or(d.trim().to_string()))
+    let (name, description, consumed) = if let Some((n, d)) = main_part.split_once(" : ") {
+        let d = d.trim();
+        if d.starts_with('"') {
+            let (desc, consumed) = parse_multiline_desc(d, lines, current)?;
+            (n.trim().to_string(), desc, consumed)
+        } else {
+            (n.trim().to_string(), vec![d.to_string()], 0)
+        }
     } else {
-        (main_part.to_string(), String::new())
+        (main_part.to_string(), Vec::new(), 0)
     };
 
     if name.is_empty() {
         return Err("Layer name cannot be empty".to_string());
     }
 
-    Ok(Layer { name, description, color })
+    Ok((Layer { name, description, color }, consumed))
+}
+
+fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
+    let content = start.strip_prefix('"').unwrap_or(start);
+    if let Some(end) = content.find('"') {
+        return Ok((vec![content[..end].to_string()], 0));
+    }
+    let mut desc_lines = vec![content.to_string()];
+    let mut extra = 0;
+    for j in (current + 1)..lines.len() {
+        extra += 1;
+        let line = lines[j].trim();
+        if line.ends_with('"') {
+            desc_lines.push(line[..line.len() - 1].to_string());
+            return Ok((desc_lines, extra));
+        }
+        desc_lines.push(line.to_string());
+    }
+    Err("Unterminated description (missing closing \")".to_string())
 }
 
 fn extract_quoted(s: &str) -> Option<String> {
@@ -185,8 +210,8 @@ fn max_desc_width(items: &[Item]) -> f64 {
     for item in items {
         match item {
             Item::Layer(l) => {
-                if !l.description.is_empty() {
-                    max_w = max_w.max(text_width(&l.description));
+                for line in &l.description {
+                    max_w = max_w.max(text_width(line));
                 }
             }
             Item::Group { items, .. } => {
@@ -334,15 +359,18 @@ fn render_items(
                         line_start_x, line_y
                     ));
 
-                    // Description text
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-                        desc_x,
-                        line_y + DESC_FONT_SIZE * 0.35,
-                        DESC_FONT_SIZE,
-                        COLOR_DESC,
-                        escape_xml(&layer.description)
-                    ));
+                    // Description text (multi-line)
+                    let desc_start_y = line_y - (layer.description.len() as f64 - 1.0) * DESC_FONT_SIZE * 0.7;
+                    for (j, desc_line) in layer.description.iter().enumerate() {
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                            desc_x,
+                            desc_start_y + j as f64 * DESC_FONT_SIZE * 1.4 + DESC_FONT_SIZE * 0.35,
+                            DESC_FONT_SIZE,
+                            COLOR_DESC,
+                            escape_xml(desc_line)
+                        ));
+                    }
                 }
 
                 y += LAYER_HEIGHT;
@@ -440,7 +468,19 @@ mod tests {
         match &d.items[0] {
             Item::Layer(l) => {
                 assert_eq!(l.name, "UI");
-                assert_eq!(l.description, "Controllers, Views");
+                assert_eq!(l.description, vec!["Controllers, Views"]);
+            }
+            _ => panic!("Expected Layer"),
+        }
+    }
+
+    #[test]
+    fn parse_multiline_description() {
+        let input = "layer UI : \"Controllers\nViews\nHelpers\"\n";
+        let d = parse(input).unwrap();
+        match &d.items[0] {
+            Item::Layer(l) => {
+                assert_eq!(l.description, vec!["Controllers", "Views", "Helpers"]);
             }
             _ => panic!("Expected Layer"),
         }

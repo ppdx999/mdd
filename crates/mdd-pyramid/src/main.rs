@@ -7,7 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Level {
     label: String,
-    description: Option<String>,
+    description: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -23,10 +23,13 @@ struct Pyramid {
 fn parse(input: &str) -> Result<Pyramid, String> {
     let mut title: Option<String> = None;
     let mut levels: Vec<Level> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let trimmed = line.trim();
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
         if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
@@ -34,6 +37,7 @@ fn parse(input: &str) -> Result<Pyramid, String> {
         if trimmed.starts_with("title ") {
             let rest = trimmed.strip_prefix("title ").unwrap().trim();
             title = Some(strip_quotes(rest).to_string());
+            i += 1;
             continue;
         }
 
@@ -43,18 +47,17 @@ fn parse(input: &str) -> Result<Pyramid, String> {
             let rest = trimmed.strip_prefix("level ").unwrap().trim();
             if let Some(colon_pos) = rest.find(" : ") {
                 let label = rest[..colon_pos].trim().to_string();
-                let desc = rest[colon_pos + 3..].trim();
-                let desc = strip_quotes(desc).to_string();
-                levels.push(Level {
-                    label,
-                    description: Some(desc),
-                });
+                let desc_part = rest[colon_pos + 3..].trim();
+                let (desc, consumed) = parse_multiline_desc(desc_part, &lines, i)?;
+                i += consumed;
+                levels.push(Level { label, description: desc });
             } else {
                 levels.push(Level {
                     label: rest.to_string(),
-                    description: None,
+                    description: Vec::new(),
                 });
             }
+            i += 1;
             continue;
         }
 
@@ -66,6 +69,25 @@ fn parse(input: &str) -> Result<Pyramid, String> {
     }
 
     Ok(Pyramid { title, levels })
+}
+
+fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
+    let content = start.strip_prefix('"').unwrap_or(start);
+    if let Some(end) = content.find('"') {
+        return Ok((vec![content[..end].to_string()], 0));
+    }
+    let mut desc_lines = vec![content.to_string()];
+    let mut extra = 0;
+    for j in (current + 1)..lines.len() {
+        extra += 1;
+        let line = lines[j].trim();
+        if line.ends_with('"') {
+            desc_lines.push(line[..line.len() - 1].to_string());
+            return Ok((desc_lines, extra));
+        }
+        desc_lines.push(line.to_string());
+    }
+    Err("Unterminated description (missing closing \")".to_string())
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -122,12 +144,12 @@ fn escape_xml(s: &str) -> String {
 fn render_svg(pyramid: &Pyramid) -> String {
     let n = pyramid.levels.len();
 
-    let has_desc = pyramid.levels.iter().any(|l| l.description.is_some());
+    let has_desc = pyramid.levels.iter().any(|l| !l.description.is_empty());
     let desc_area_w = if has_desc {
         let max_desc_w = pyramid
             .levels
             .iter()
-            .filter_map(|l| l.description.as_ref())
+            .flat_map(|l| l.description.iter())
             .map(|d| text_width(d))
             .fold(0.0_f64, f64::max);
         DESC_GAP + max_desc_w + 16.0
@@ -214,7 +236,8 @@ fn render_svg(pyramid: &Pyramid) -> String {
         ));
 
         // Description on the right side with horizontal line
-        if let Some(ref desc) = pyramid.levels[i].description {
+        if !pyramid.levels[i].description.is_empty() {
+            let desc = &pyramid.levels[i].description;
             let line_y = top_y + LEVEL_HEIGHT / 2.0;
             let line_start_x = center_x + bot_half_w;
             let desc_x = PADDING + MAX_WIDTH + DESC_GAP;
@@ -230,15 +253,18 @@ fn render_svg(pyramid: &Pyramid) -> String {
                 line_start_x, line_y, fg
             ));
 
-            // Description text
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-                desc_x,
-                line_y + DESC_FONT_SIZE * 0.35,
-                DESC_FONT_SIZE,
-                COLOR_DESC,
-                escape_xml(desc)
-            ));
+            // Description text (multi-line)
+            let desc_start_y = line_y - (desc.len() as f64 - 1.0) * DESC_FONT_SIZE * 0.7;
+            for (j, line) in desc.iter().enumerate() {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                    desc_x,
+                    desc_start_y + j as f64 * DESC_FONT_SIZE * 1.4 + DESC_FONT_SIZE * 0.35,
+                    DESC_FONT_SIZE,
+                    COLOR_DESC,
+                    escape_xml(line)
+                ));
+            }
         }
     }
 
@@ -289,7 +315,7 @@ level Bottom
         assert_eq!(p.levels[0].label, "Top");
         assert_eq!(p.levels[1].label, "Middle");
         assert_eq!(p.levels[2].label, "Bottom");
-        assert!(p.levels[0].description.is_none());
+        assert!(p.levels[0].description.is_empty());
     }
 
     #[test]
@@ -302,15 +328,17 @@ level Operations : "Daily execution"
         let p = parse(input).unwrap();
         assert_eq!(p.levels.len(), 3);
         assert_eq!(p.levels[0].label, "Strategy");
-        assert_eq!(
-            p.levels[0].description.as_deref(),
-            Some("Long-term direction")
-        );
+        assert_eq!(p.levels[0].description, vec!["Long-term direction"]);
         assert_eq!(p.levels[2].label, "Operations");
-        assert_eq!(
-            p.levels[2].description.as_deref(),
-            Some("Daily execution")
-        );
+        assert_eq!(p.levels[2].description, vec!["Daily execution"]);
+    }
+
+    #[test]
+    fn parse_multiline_desc() {
+        let input = "level Top : \"Line one\nLine two\"\nlevel Bottom\n";
+        let p = parse(input).unwrap();
+        assert_eq!(p.levels[0].description, vec!["Line one", "Line two"]);
+        assert!(p.levels[1].description.is_empty());
     }
 
     #[test]

@@ -8,7 +8,7 @@ use std::io::{self, Read};
 struct Stage {
     label: String,
     value: Option<f64>,
-    description: Option<String>,
+    description: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -24,10 +24,13 @@ struct Funnel {
 fn parse(input: &str) -> Result<Funnel, String> {
     let mut title: Option<String> = None;
     let mut stages: Vec<Stage> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let trimmed = line.trim();
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
         if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
@@ -35,6 +38,7 @@ fn parse(input: &str) -> Result<Funnel, String> {
         if trimmed.starts_with("title ") {
             let rest = trimmed.strip_prefix("title ").unwrap().trim();
             title = Some(strip_quotes(rest).to_string());
+            i += 1;
             continue;
         }
 
@@ -47,21 +51,21 @@ fn parse(input: &str) -> Result<Funnel, String> {
                     stages.push(Stage {
                         label: parts[0].trim().to_string(),
                         value: None,
-                        description: None,
+                        description: Vec::new(),
                     });
                 }
                 2 => {
                     let label = parts[0].trim().to_string();
                     let second = parts[1].trim();
                     if second.starts_with('"') {
-                        // stage Label : "desc"
+                        let (desc, consumed) = parse_multiline_desc(second, &lines, i)?;
+                        i += consumed;
                         stages.push(Stage {
                             label,
                             value: None,
-                            description: Some(strip_quotes(second).to_string()),
+                            description: desc,
                         });
                     } else {
-                        // stage Label : value
                         let value = second
                             .parse::<f64>()
                             .map_err(|_| format!("Invalid value: {}", second))?;
@@ -71,12 +75,11 @@ fn parse(input: &str) -> Result<Funnel, String> {
                         stages.push(Stage {
                             label,
                             value: Some(value),
-                            description: None,
+                            description: Vec::new(),
                         });
                     }
                 }
                 3 => {
-                    // stage Label : value : "desc"
                     let label = parts[0].trim().to_string();
                     let value_str = parts[1].trim();
                     let value = value_str
@@ -85,15 +88,18 @@ fn parse(input: &str) -> Result<Funnel, String> {
                     if value < 0.0 {
                         return Err(format!("Negative value: {}", value));
                     }
-                    let desc = strip_quotes(parts[2].trim()).to_string();
+                    let third = parts[2].trim();
+                    let (desc, consumed) = parse_multiline_desc(third, &lines, i)?;
+                    i += consumed;
                     stages.push(Stage {
                         label,
                         value: Some(value),
-                        description: Some(desc),
+                        description: desc,
                     });
                 }
                 _ => unreachable!(),
             }
+            i += 1;
             continue;
         }
 
@@ -105,6 +111,29 @@ fn parse(input: &str) -> Result<Funnel, String> {
     }
 
     Ok(Funnel { title, stages })
+}
+
+/// Parse a quoted description that may span multiple lines.
+/// Returns (lines, extra_lines_consumed).
+fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
+    let content = start.strip_prefix('"').unwrap_or(start);
+    // Single-line case: closing quote on same line
+    if let Some(end) = content.find('"') {
+        return Ok((vec![content[..end].to_string()], 0));
+    }
+    // Multi-line: accumulate until closing quote
+    let mut desc_lines = vec![content.to_string()];
+    let mut extra = 0;
+    for j in (current + 1)..lines.len() {
+        extra += 1;
+        let line = lines[j].trim();
+        if line.ends_with('"') {
+            desc_lines.push(line[..line.len() - 1].to_string());
+            return Ok((desc_lines, extra));
+        }
+        desc_lines.push(line.to_string());
+    }
+    Err("Unterminated description (missing closing \")".to_string())
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -176,12 +205,12 @@ fn render_svg(funnel: &Funnel) -> String {
     // Compute widths for each stage
     let widths: Vec<f64> = compute_widths(funnel);
 
-    let has_desc = funnel.stages.iter().any(|s| s.description.is_some());
+    let has_desc = funnel.stages.iter().any(|s| !s.description.is_empty());
     let desc_area_w = if has_desc {
         let max_desc_w = funnel
             .stages
             .iter()
-            .filter_map(|s| s.description.as_ref())
+            .flat_map(|s| s.description.iter())
             .map(|d| text_width(d))
             .fold(0.0_f64, f64::max);
         DESC_GAP + max_desc_w + 16.0
@@ -301,7 +330,7 @@ fn render_svg(funnel: &Funnel) -> String {
         }
 
         // Description on the right side with horizontal line
-        if let Some(ref desc) = stage.description {
+        if !stage.description.is_empty() {
             let line_y = y_top + STAGE_HEIGHT / 2.0;
             let line_start_x = center_x + top_w / 2.0;
             let desc_x = PADDING + MAX_WIDTH + DESC_GAP;
@@ -317,15 +346,18 @@ fn render_svg(funnel: &Funnel) -> String {
                 line_start_x, line_y, text_color
             ));
 
-            // Description text
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-                desc_x,
-                line_y + DESC_FONT_SIZE * 0.35,
-                DESC_FONT_SIZE,
-                COLOR_DESC,
-                escape_xml(desc)
-            ));
+            // Description text (multi-line)
+            let desc_start_y = line_y - (stage.description.len() as f64 - 1.0) * DESC_FONT_SIZE * 0.7;
+            for (j, line) in stage.description.iter().enumerate() {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                    desc_x,
+                    desc_start_y + j as f64 * DESC_FONT_SIZE * 1.4 + DESC_FONT_SIZE * 0.35,
+                    DESC_FONT_SIZE,
+                    COLOR_DESC,
+                    escape_xml(line)
+                ));
+            }
         }
     }
 
@@ -419,7 +451,7 @@ mod tests {
         assert_eq!(f.stages[1].label, "B");
         assert_eq!(f.stages[2].label, "C");
         assert!(f.stages[0].value.is_none());
-        assert!(f.stages[0].description.is_none());
+        assert!(f.stages[0].description.is_empty());
     }
 
     #[test]
@@ -442,7 +474,7 @@ stage Customers : 100
     fn parse_with_description() {
         let input = "stage A : \"First step\"\nstage B : \"Second step\"\n";
         let f = parse(input).unwrap();
-        assert_eq!(f.stages[0].description.as_deref(), Some("First step"));
+        assert_eq!(f.stages[0].description, vec!["First step"]);
         assert!(f.stages[0].value.is_none());
     }
 
@@ -451,7 +483,14 @@ stage Customers : 100
         let input = "stage A : 1000 : \"Top of funnel\"\nstage B : 500 : \"Middle\"\n";
         let f = parse(input).unwrap();
         assert_eq!(f.stages[0].value, Some(1000.0));
-        assert_eq!(f.stages[0].description.as_deref(), Some("Top of funnel"));
+        assert_eq!(f.stages[0].description, vec!["Top of funnel"]);
+    }
+
+    #[test]
+    fn parse_multiline_description() {
+        let input = "stage A : \"Line one\nLine two\nLine three\"\nstage B\n";
+        let f = parse(input).unwrap();
+        assert_eq!(f.stages[0].description, vec!["Line one", "Line two", "Line three"]);
     }
 
     #[test]
