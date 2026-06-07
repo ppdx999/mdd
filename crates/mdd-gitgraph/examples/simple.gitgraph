@@ -1,0 +1,9 @@
+commit "Initial commit"
+commit "Add feature A"
+branch develop
+checkout develop
+commit "Start feature B"
+commit "Complete feature B"
+checkout main
+merge develop
+commit "Release" tag "v1.0"

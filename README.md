@@ -403,6 +403,12 @@ Q&A 形式のよくある質問。Q/A バッジ付きのカードレイアウト
 
 ![org](crates/mdd-org/examples/company.svg)
 
+### Git ブランチ図 ([mdd-gitgraph](crates/mdd-gitgraph/))
+
+Git のブランチ、コミット、マージ、タグを可視化する。フィーチャーブランチ戦略の説明などに。
+
+![gitgraph](crates/mdd-gitgraph/examples/feature-branch.svg)
+
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
@@ -1002,5 +1008,17 @@ member CTO : "技術"
 member CFO : "財務"
 CEO -> CTO
 CEO -> CFO
+```
+
+### Git ブランチ図
+
+```gitgraph
+commit "Initial commit"
+branch feature
+checkout feature
+commit "Add feature"
+checkout main
+merge feature
+commit "Release" tag "v1.0"
 ```
 ````
