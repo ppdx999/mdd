@@ -83,14 +83,17 @@ fn strip_quotes(s: &str) -> &str {
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
-const DESC_FONT_SIZE: f64 = 11.0;
+const DESC_FONT_SIZE: f64 = 12.0;
 const COLOR_DARK: &str = "#333";
+const COLOR_DESC: &str = "#666";
+const DESC_LINE_COLOR: &str = "#ccc";
 
 const LEVEL_HEIGHT: f64 = 50.0;
 const MAX_WIDTH: f64 = 500.0;
 const PADDING: f64 = 40.0;
 const TITLE_HEIGHT: f64 = 24.0;
 const TITLE_GAP: f64 = 16.0;
+const DESC_GAP: f64 = 30.0;
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -119,15 +122,28 @@ fn escape_xml(s: &str) -> String {
 fn render_svg(pyramid: &Pyramid) -> String {
     let n = pyramid.levels.len();
 
+    let has_desc = pyramid.levels.iter().any(|l| l.description.is_some());
+    let desc_area_w = if has_desc {
+        let max_desc_w = pyramid
+            .levels
+            .iter()
+            .filter_map(|l| l.description.as_ref())
+            .map(|d| text_width(d))
+            .fold(0.0_f64, f64::max);
+        DESC_GAP + max_desc_w + 16.0
+    } else {
+        0.0
+    };
+
     let title_space = if pyramid.title.is_some() {
         TITLE_HEIGHT + TITLE_GAP
     } else {
         0.0
     };
 
-    let total_w = PADDING * 2.0 + MAX_WIDTH;
+    let total_w = PADDING * 2.0 + MAX_WIDTH + desc_area_w;
     let total_h = PADDING * 2.0 + title_space + n as f64 * LEVEL_HEIGHT;
-    let center_x = total_w / 2.0;
+    let center_x = PADDING + MAX_WIDTH / 2.0;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -190,26 +206,38 @@ fn render_svg(pyramid: &Pyramid) -> String {
 
         // Label text centered in the band
         let label = &pyramid.levels[i].label;
-        let label_y = if pyramid.levels[i].description.is_some() {
-            top_y + LEVEL_HEIGHT / 2.0 - 2.0
-        } else {
-            top_y + LEVEL_HEIGHT / 2.0 + 5.0
-        };
-
-        // Check if text fits in the band
-        let _tw = text_width(label);
+        let label_y = top_y + LEVEL_HEIGHT / 2.0 + 5.0;
 
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" fill=\"{}\" font-weight=\"bold\">{}</text>",
             center_x, label_y, fg, escape_xml(label)
         ));
 
-        // Description
+        // Description on the right side with horizontal line
         if let Some(ref desc) = pyramid.levels[i].description {
-            let desc_y = top_y + LEVEL_HEIGHT / 2.0 + 14.0;
+            let line_y = top_y + LEVEL_HEIGHT / 2.0;
+            let line_start_x = center_x + bot_half_w;
+            let desc_x = PADDING + MAX_WIDTH + DESC_GAP;
+
+            // Horizontal line
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" fill=\"{}\" font-size=\"{}\">{}</text>",
-                center_x, desc_y, fg, DESC_FONT_SIZE, escape_xml(desc)
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+                line_start_x, line_y, desc_x - 8.0, line_y, DESC_LINE_COLOR
+            ));
+            // Small dot at the start of line
+            svg.push_str(&format!(
+                "<circle cx=\"{}\" cy=\"{}\" r=\"2.5\" fill=\"{}\"/>",
+                line_start_x, line_y, fg
+            ));
+
+            // Description text
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                desc_x,
+                line_y + DESC_FONT_SIZE * 0.35,
+                DESC_FONT_SIZE,
+                COLOR_DESC,
+                escape_xml(desc)
             ));
         }
     }

@@ -8,6 +8,7 @@ use std::io::{self, Read};
 struct Stage {
     label: String,
     value: Option<f64>,
+    description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -37,27 +38,61 @@ fn parse(input: &str) -> Result<Funnel, String> {
             continue;
         }
 
-        // stage Label : value  OR  stage Label
+        // stage Label : value : "desc"  OR  stage Label : "desc"  OR  stage Label : value  OR  stage Label
         if trimmed.starts_with("stage ") {
             let rest = trimmed.strip_prefix("stage ").unwrap().trim();
-            if let Some(colon_pos) = rest.rfind(':') {
-                let label = rest[..colon_pos].trim().to_string();
-                let value_str = rest[colon_pos + 1..].trim();
-                let value = value_str
-                    .parse::<f64>()
-                    .map_err(|_| format!("Invalid value: {}", value_str))?;
-                if value < 0.0 {
-                    return Err(format!("Negative value: {}", value));
+            let parts: Vec<&str> = rest.splitn(3, " : ").collect();
+            match parts.len() {
+                1 => {
+                    stages.push(Stage {
+                        label: parts[0].trim().to_string(),
+                        value: None,
+                        description: None,
+                    });
                 }
-                stages.push(Stage {
-                    label,
-                    value: Some(value),
-                });
-            } else {
-                stages.push(Stage {
-                    label: rest.to_string(),
-                    value: None,
-                });
+                2 => {
+                    let label = parts[0].trim().to_string();
+                    let second = parts[1].trim();
+                    if second.starts_with('"') {
+                        // stage Label : "desc"
+                        stages.push(Stage {
+                            label,
+                            value: None,
+                            description: Some(strip_quotes(second).to_string()),
+                        });
+                    } else {
+                        // stage Label : value
+                        let value = second
+                            .parse::<f64>()
+                            .map_err(|_| format!("Invalid value: {}", second))?;
+                        if value < 0.0 {
+                            return Err(format!("Negative value: {}", value));
+                        }
+                        stages.push(Stage {
+                            label,
+                            value: Some(value),
+                            description: None,
+                        });
+                    }
+                }
+                3 => {
+                    // stage Label : value : "desc"
+                    let label = parts[0].trim().to_string();
+                    let value_str = parts[1].trim();
+                    let value = value_str
+                        .parse::<f64>()
+                        .map_err(|_| format!("Invalid value: {}", value_str))?;
+                    if value < 0.0 {
+                        return Err(format!("Negative value: {}", value));
+                    }
+                    let desc = strip_quotes(parts[2].trim()).to_string();
+                    stages.push(Stage {
+                        label,
+                        value: Some(value),
+                        description: Some(desc),
+                    });
+                }
+                _ => unreachable!(),
             }
             continue;
         }
@@ -93,8 +128,12 @@ const TITLE_HEIGHT: f64 = 24.0;
 const TITLE_GAP: f64 = 16.0;
 const LABEL_FONT_SIZE: f64 = 14.0;
 const VALUE_FONT_SIZE: f64 = 12.0;
+const DESC_FONT_SIZE: f64 = 12.0;
 const FONT_SIZE: f64 = 13.0;
 const COLOR_DARK: &str = "#333";
+const COLOR_DESC: &str = "#666";
+const DESC_GAP: f64 = 30.0;
+const DESC_LINE_COLOR: &str = "#ccc";
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -137,6 +176,19 @@ fn render_svg(funnel: &Funnel) -> String {
     // Compute widths for each stage
     let widths: Vec<f64> = compute_widths(funnel);
 
+    let has_desc = funnel.stages.iter().any(|s| s.description.is_some());
+    let desc_area_w = if has_desc {
+        let max_desc_w = funnel
+            .stages
+            .iter()
+            .filter_map(|s| s.description.as_ref())
+            .map(|d| text_width(d))
+            .fold(0.0_f64, f64::max);
+        DESC_GAP + max_desc_w + 16.0
+    } else {
+        0.0
+    };
+
     let title_space = if funnel.title.is_some() {
         TITLE_HEIGHT + TITLE_GAP
     } else {
@@ -145,7 +197,7 @@ fn render_svg(funnel: &Funnel) -> String {
 
     let total_h =
         PADDING + title_space + n as f64 * STAGE_HEIGHT + (n - 1) as f64 * STAGE_GAP + PADDING;
-    let total_w = PADDING * 2.0 + MAX_WIDTH;
+    let total_w = PADDING * 2.0 + MAX_WIDTH + desc_area_w;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -157,7 +209,7 @@ fn render_svg(funnel: &Funnel) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    let center_x = total_w / 2.0;
+    let center_x = PADDING + MAX_WIDTH / 2.0;
 
     // Title
     let content_y = if let Some(ref title) = funnel.title {
@@ -245,6 +297,34 @@ fn render_svg(funnel: &Funnel) -> String {
                 LABEL_FONT_SIZE,
                 text_color,
                 escape_xml(&stage.label)
+            ));
+        }
+
+        // Description on the right side with horizontal line
+        if let Some(ref desc) = stage.description {
+            let line_y = y_top + STAGE_HEIGHT / 2.0;
+            let line_start_x = center_x + top_w / 2.0;
+            let desc_x = PADDING + MAX_WIDTH + DESC_GAP;
+
+            // Horizontal line
+            svg.push_str(&format!(
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+                line_start_x, line_y, desc_x - 8.0, line_y, DESC_LINE_COLOR
+            ));
+            // Small dot at the start of line
+            svg.push_str(&format!(
+                "<circle cx=\"{}\" cy=\"{}\" r=\"2.5\" fill=\"{}\"/>",
+                line_start_x, line_y, text_color
+            ));
+
+            // Description text
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                desc_x,
+                line_y + DESC_FONT_SIZE * 0.35,
+                DESC_FONT_SIZE,
+                COLOR_DESC,
+                escape_xml(desc)
             ));
         }
     }
@@ -339,6 +419,7 @@ mod tests {
         assert_eq!(f.stages[1].label, "B");
         assert_eq!(f.stages[2].label, "C");
         assert!(f.stages[0].value.is_none());
+        assert!(f.stages[0].description.is_none());
     }
 
     #[test]
@@ -355,6 +436,22 @@ stage Customers : 100
         assert_eq!(f.stages[0].label, "Leads");
         assert_eq!(f.stages[0].value, Some(1000.0));
         assert_eq!(f.stages[2].value, Some(100.0));
+    }
+
+    #[test]
+    fn parse_with_description() {
+        let input = "stage A : \"First step\"\nstage B : \"Second step\"\n";
+        let f = parse(input).unwrap();
+        assert_eq!(f.stages[0].description.as_deref(), Some("First step"));
+        assert!(f.stages[0].value.is_none());
+    }
+
+    #[test]
+    fn parse_with_value_and_description() {
+        let input = "stage A : 1000 : \"Top of funnel\"\nstage B : 500 : \"Middle\"\n";
+        let f = parse(input).unwrap();
+        assert_eq!(f.stages[0].value, Some(1000.0));
+        assert_eq!(f.stages[0].description.as_deref(), Some("Top of funnel"));
     }
 
     #[test]

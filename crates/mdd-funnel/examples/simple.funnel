@@ -1,4 +1,4 @@
-stage 認知
-stage 興味
-stage 検討
-stage 購入
+stage 認知 : "広告・SNSで知る"
+stage 興味 : "サイト訪問・資料請求"
+stage 検討 : "比較・評価"
+stage 購入 : "契約・導入"
