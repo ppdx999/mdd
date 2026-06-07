@@ -7,6 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Step {
     name: String,
+    description: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -22,26 +23,42 @@ struct Diagram {
 fn parse(input: &str) -> Result<Diagram, String> {
     let mut title: Option<String> = None;
     let mut steps: Vec<Step> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let line = line.trim();
-        if line.is_empty() {
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
-        if let Some(rest) = line.strip_prefix("title ") {
+        if let Some(rest) = trimmed.strip_prefix("title ") {
             title = Some(rest.trim().to_string());
+            i += 1;
             continue;
         }
 
-        if let Some(rest) = line.strip_prefix("step ") {
-            steps.push(Step {
-                name: rest.trim().to_string(),
-            });
+        if let Some(rest) = trimmed.strip_prefix("step ") {
+            let rest = rest.trim();
+            if let Some((label, desc_part)) = rest.split_once(" : ") {
+                let (desc, consumed) = parse_multiline_desc(desc_part.trim(), &lines, i)?;
+                i += consumed;
+                steps.push(Step {
+                    name: label.trim().to_string(),
+                    description: desc,
+                });
+            } else {
+                steps.push(Step {
+                    name: rest.to_string(),
+                    description: Vec::new(),
+                });
+            }
+            i += 1;
             continue;
         }
 
-        return Err(format!("Unknown syntax: {}", line));
+        return Err(format!("Unknown syntax: {}", trimmed));
     }
 
     if steps.len() < 2 {
@@ -49,6 +66,25 @@ fn parse(input: &str) -> Result<Diagram, String> {
     }
 
     Ok(Diagram { title, steps })
+}
+
+fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
+    let content = start.strip_prefix('"').unwrap_or(start);
+    if let Some(end) = content.find('"') {
+        return Ok((vec![content[..end].to_string()], 0));
+    }
+    let mut desc_lines = vec![content.to_string()];
+    let mut extra = 0;
+    for j in (current + 1)..lines.len() {
+        extra += 1;
+        let line = lines[j].trim();
+        if line.ends_with('"') {
+            desc_lines.push(line[..line.len() - 1].to_string());
+            return Ok((desc_lines, extra));
+        }
+        desc_lines.push(line.to_string());
+    }
+    Err("Unterminated description (missing closing \")".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +104,10 @@ const NODE_RADIUS: f64 = 8.0;
 
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
+const COLOR_DESC: &str = "#666";
+const DESC_FONT_SIZE: f64 = 11.0;
+const DESC_LINE_HEIGHT: f64 = 14.0;
+const DESC_OFFSET: f64 = 12.0;
 
 // Cycle-specific color palette (pastel tones per AGENTS.md)
 const STEP_COLORS: &[(&str, &str)] = &[
@@ -132,17 +172,35 @@ fn render_svg(diagram: &Diagram) -> String {
     let cx = radius + PADDING + max_node_w / 2.0;
     let cy = radius + PADDING + max_node_h / 2.0;
 
-    // Compute node center positions (start from top, go clockwise)
+    // Extra padding for descriptions
+    let has_desc = diagram.steps.iter().any(|s| !s.description.is_empty());
+    let desc_extra = if has_desc {
+        let max_desc_lines = diagram.steps.iter()
+            .map(|s| s.description.len())
+            .max()
+            .unwrap_or(0);
+        let max_desc_w = diagram.steps.iter()
+            .flat_map(|s| s.description.iter())
+            .map(|d| text_width(d) * (DESC_FONT_SIZE / 13.0))
+            .fold(0.0_f64, f64::max);
+        max_desc_w.max(max_desc_lines as f64 * DESC_LINE_HEIGHT) + DESC_OFFSET + 16.0
+    } else {
+        0.0
+    };
+
+    // SVG dimensions
+    let svg_width = cx * 2.0 + desc_extra;
+    let svg_height = cy * 2.0 + desc_extra;
+    let cx = cx + desc_extra / 2.0;
+    let cy = cy + desc_extra / 2.0;
+
+    // Recompute positions with adjusted center
     let positions: Vec<(f64, f64)> = (0..n)
         .map(|i| {
             let angle = -std::f64::consts::FRAC_PI_2 + angle_step * i as f64;
             (cx + radius * angle.cos(), cy + radius * angle.sin())
         })
         .collect();
-
-    // SVG dimensions
-    let svg_width = cx * 2.0;
-    let svg_height = cy * 2.0;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -221,6 +279,35 @@ fn render_svg(diagram: &Diagram) -> String {
             ny + LINE_HEIGHT * 0.35,
             escape_xml(&step.name)
         ));
+
+        // Description outside the node, radiating outward
+        if !step.description.is_empty() {
+            let angle = -std::f64::consts::FRAC_PI_2 + angle_step * i as f64;
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
+            let desc_base_x = nx + dir_x * (w / 2.0 + DESC_OFFSET);
+            let desc_base_y = ny + dir_y * (h / 2.0 + DESC_OFFSET);
+
+            let anchor = if dir_x.abs() < 0.3 {
+                "middle"
+            } else if dir_x > 0.0 {
+                "start"
+            } else {
+                "end"
+            };
+
+            for (j, desc_line) in step.description.iter().enumerate() {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                    desc_base_x,
+                    desc_base_y + j as f64 * DESC_LINE_HEIGHT + DESC_FONT_SIZE * 0.35,
+                    anchor,
+                    DESC_FONT_SIZE,
+                    COLOR_DESC,
+                    escape_xml(desc_line)
+                ));
+            }
+        }
     }
 
     svg.push_str("</svg>");
@@ -345,6 +432,21 @@ mod tests {
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("marker-end=\"url(#arrow)\""));
+    }
+
+    #[test]
+    fn parse_with_description() {
+        let input = "step A : \"Do thing\"\nstep B\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.steps[0].description, vec!["Do thing"]);
+        assert!(d.steps[1].description.is_empty());
+    }
+
+    #[test]
+    fn parse_multiline_description() {
+        let input = "step A : \"Line one\nLine two\"\nstep B\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.steps[0].description, vec!["Line one", "Line two"]);
     }
 
     #[test]
