@@ -227,6 +227,57 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn emoji_to_unicode(code: &str) -> &str {
+    match code {
+        ":+1:" | ":thumbsup:" => "\u{1F44D}",
+        ":-1:" | ":thumbsdown:" => "\u{1F44E}",
+        ":heart:" => "\u{2764}\u{FE0F}",
+        ":tada:" => "\u{1F389}",
+        ":rocket:" => "\u{1F680}",
+        ":fire:" => "\u{1F525}",
+        ":eyes:" => "\u{1F440}",
+        ":wave:" => "\u{1F44B}",
+        ":clap:" => "\u{1F44F}",
+        ":100:" => "\u{1F4AF}",
+        ":star:" => "\u{2B50}",
+        ":sparkles:" => "\u{2728}",
+        ":check:" | ":white_check_mark:" => "\u{2705}",
+        ":x:" | ":cross_mark:" => "\u{274C}",
+        ":warning:" => "\u{26A0}\u{FE0F}",
+        ":bulb:" => "\u{1F4A1}",
+        ":memo:" => "\u{1F4DD}",
+        ":bug:" => "\u{1F41B}",
+        ":wrench:" => "\u{1F527}",
+        ":gear:" => "\u{2699}\u{FE0F}",
+        ":lock:" => "\u{1F512}",
+        ":key:" => "\u{1F511}",
+        ":bell:" => "\u{1F514}",
+        ":mega:" => "\u{1F4E3}",
+        ":pray:" => "\u{1F64F}",
+        ":muscle:" => "\u{1F4AA}",
+        ":thinking:" | ":thinking_face:" => "\u{1F914}",
+        ":smile:" | ":smiley:" => "\u{1F604}",
+        ":laugh:" | ":laughing:" => "\u{1F606}",
+        ":cry:" | ":sob:" => "\u{1F62D}",
+        ":angry:" => "\u{1F620}",
+        ":sunglasses:" => "\u{1F60E}",
+        ":raised_hands:" => "\u{1F64C}",
+        ":point_up:" => "\u{261D}\u{FE0F}",
+        ":ok_hand:" => "\u{1F44C}",
+        ":handshake:" => "\u{1F91D}",
+        ":coffee:" => "\u{2615}",
+        ":beer:" => "\u{1F37A}",
+        ":pizza:" => "\u{1F355}",
+        ":party_popper:" => "\u{1F389}",
+        ":confetti_ball:" => "\u{1F38A}",
+        ":trophy:" => "\u{1F3C6}",
+        ":medal:" => "\u{1F3C5}",
+        ":chart_with_upwards_trend:" | ":chart_up:" => "\u{1F4C8}",
+        ":chart_with_downwards_trend:" | ":chart_down:" => "\u{1F4C9}",
+        _ => code, // fallback: show as-is
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -377,7 +428,8 @@ fn render_svg(diagram: &Diagram) -> String {
             cy += 6.0;
             let mut rx = text_x;
             for reaction in &msg.reactions {
-                let label = format!("{} {}", reaction.emoji, reaction.count);
+                let emoji = emoji_to_unicode(&reaction.emoji);
+                let label = format!("{} {}", emoji, reaction.count);
                 let rw = text_width(&label) * (REACTION_FONT_SIZE / FONT_SIZE) + REACTION_H_PAD * 2.0;
 
                 svg.push_str(&format!(
