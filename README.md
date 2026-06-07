@@ -319,10 +319,6 @@ Markdown の表より視覚的にリッチな SVG テーブル。ヘッダー色
 
 ![math](crates/mdd-math/examples/physics.svg)
 
-## ロードマップ
-
-全プラグインの実装状況は [ROADMAP.md](ROADMAP.md) を参照。
-
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
