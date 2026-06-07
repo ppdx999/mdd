@@ -185,13 +185,14 @@ fn render_svg(diagram: &Diagram) -> String {
         };
         svg.push_str(&format!(
             "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" />",
-            badge_x, badge_y, BADGE_RADIUS, accent
+            badge_x, badge_y, BADGE_RADIUS, stroke
         ));
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"white\">{}</text>",
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
             badge_x,
             badge_y + FONT_SIZE * 0.35,
             FONT_SIZE,
+            accent,
             i + 1
         ));
 
