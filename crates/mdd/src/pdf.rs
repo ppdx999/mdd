@@ -277,7 +277,7 @@ fn build_pdf(pages: &[Page], scale: f64) -> Vec<u8> {
         content.restore_state();
         pdf.stream(content_ref, &content.finish());
 
-        let compressed = miniz_oxide::deflate::compress_to_vec(pixels, 6);
+        let compressed = miniz_oxide::deflate::compress_to_vec_zlib(pixels, 6);
         let mut image = pdf.image_xobject(image_ref, &compressed);
         image.filter(pdf_writer::Filter::FlateDecode);
         image.width(*pw as i32);
