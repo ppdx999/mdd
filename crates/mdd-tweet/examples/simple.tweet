@@ -1,0 +1,5 @@
+post "Alice" @alice : "Hello world! This is my first post."
+likes 42
+
+post "Bob" @bob : "Welcome to the platform!"
+likes 5

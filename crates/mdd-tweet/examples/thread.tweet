@@ -1,0 +1,12 @@
+post "田中太郎" @tanaka_dev : "Rust で CLI ツールを作ってみた。
+パフォーマンスが驚くほど良い。
+型安全で安心感がある。"
+likes 128
+retweets 34
+time "2025-06-07 10:30"
+
+post "鈴木花子" @suzuki_design : "UIデザインのトレンドが変わってきた。
+ミニマルからリッチへ。"
+likes 256
+retweets 89
+time "2025-06-07 11:45"

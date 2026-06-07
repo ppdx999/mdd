@@ -331,6 +331,12 @@ Markdown の表より視覚的にリッチな SVG テーブル。ヘッダー色
 
 ![persona](crates/mdd-persona/examples/team.svg)
 
+### ツイート風投稿 ([mdd-tweet](crates/mdd-tweet/))
+
+Twitter/X 風のカード形式で投稿を表示。アバター、いいね、リツイート、日時に対応。
+
+![tweet](crates/mdd-tweet/examples/thread.svg)
+
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
@@ -815,5 +821,14 @@ title "Sprint 1"
 actor Customer : "使いやすくしてほしい"
 actor Developer : "技術的負債を解消したい"
 actor Manager : "コストを抑えたい"
+```
+
+### ツイート風投稿
+
+```tweet
+post "Alice" @alice : "Hello world!"
+likes 42
+retweets 10
+time "2025-06-07 10:30"
 ```
 ````
