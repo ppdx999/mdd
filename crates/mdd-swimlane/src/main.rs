@@ -169,8 +169,9 @@ fn node_size(node: &Node) -> (f64, f64) {
     let (w, h) = node_rect_size(&node.name);
     match node.kind {
         NodeKind::Decision => {
-            let diag = w.max(h) * 1.1 + 16.0;
-            (diag, diag)
+            let dw = w * 1.3 + 16.0;
+            let dh = h * 1.1 + 8.0;
+            (dw, dh)
         }
         _ => (w, h),
     }
