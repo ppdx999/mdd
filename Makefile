@@ -1,4 +1,4 @@
-CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er mdd-sequence mdd-state mdd-infra mdd-gantt mdd-flowchart mdd-swimlane mdd-grid mdd-analysis mdd-steps mdd-ranking mdd-group-multi mdd-layer mdd-timeline mdd-before-after mdd-cycle mdd-process mdd-funnel mdd-pyramid mdd-triangle mdd-matrix mdd-compare mdd-scale mdd-swot mdd-venn mdd-radial mdd-concept mdd-mindmap mdd-puzzle mdd-group mdd-table mdd-list-v mdd-list-h mdd-list-grid mdd-kpi mdd-map mdd-math mdd-todo mdd-persona mdd-tweet
+CRATES := mdd mdd-usecase mdd-dfd mdd-tree mdd-er mdd-sequence mdd-state mdd-infra mdd-gantt mdd-flowchart mdd-swimlane mdd-grid mdd-analysis mdd-steps mdd-ranking mdd-group-multi mdd-layer mdd-timeline mdd-before-after mdd-cycle mdd-process mdd-funnel mdd-pyramid mdd-triangle mdd-matrix mdd-compare mdd-scale mdd-swot mdd-venn mdd-radial mdd-concept mdd-mindmap mdd-puzzle mdd-group mdd-table mdd-list-v mdd-list-h mdd-list-grid mdd-kpi mdd-map mdd-math mdd-todo mdd-persona mdd-tweet mdd-slack
 
 .PHONY: build test install uninstall clean
 

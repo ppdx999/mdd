@@ -1,0 +1,16 @@
+channel #dev-team
+msg "田中太郎" : "デプロイ完了しました！
+ステージング環境で確認お願いします。"
+time "10:30 AM"
+react :+1: 4
+react :rocket: 2
+thread 3
+
+msg "鈴木花子" : "確認しました。LGTMです！"
+time "10:45 AM"
+react :white_check_mark: 1
+
+msg "佐藤次郎" : "パフォーマンスも問題なさそうです。
+本番反映して大丈夫だと思います。"
+time "11:00 AM"
+react :tada: 3

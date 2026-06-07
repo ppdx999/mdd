@@ -1,0 +1,7 @@
+channel #general
+msg "Alice" : "Good morning everyone!"
+time "9:00 AM"
+react :wave: 5
+
+msg "Bob" : "Morning! Ready for standup?"
+time "9:05 AM"
