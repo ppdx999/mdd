@@ -122,9 +122,9 @@ const ROW_LABEL_MIN_W: f64 = 100.0;
 
 const COLOR_DARK: &str = "#333";
 const COLOR_GRID: &str = "#ddd";
-const COLOR_COL_HEADER_BG: &str = "#f2f3fa";
+const COLOR_COL_HEADER_BG: &str = "#f7f8fc";
 const COLOR_COL_HEADER_TEXT: &str = "#333";
-const COLOR_ROW_HEADER_BG: &str = "#fafafa";
+const COLOR_ROW_HEADER_BG: &str = "#fcfcfc";
 
 // ---------------------------------------------------------------------------
 // Cell color lookup
