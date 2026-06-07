@@ -325,6 +325,12 @@ Markdown の表より視覚的にリッチな SVG テーブル。ヘッダー色
 
 ![todo](crates/mdd-todo/examples/sprint.svg)
 
+### ペルソナ・アクター図 ([mdd-persona](crates/mdd-persona/))
+
+棒人間アクターとラベル、吹き出しでユーザーの声やステークホルダーの意見を可視化する。
+
+![persona](crates/mdd-persona/examples/team.svg)
+
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
@@ -801,5 +807,13 @@ title "Sprint 1"
 [x] ログイン画面
 [ ] パスワードリセット : "メール送信機能"
 [ ] 管理画面
+```
+
+### ペルソナ・アクター図
+
+```persona
+actor Customer : "使いやすくしてほしい"
+actor Developer : "技術的負債を解消したい"
+actor Manager : "コストを抑えたい"
 ```
 ````

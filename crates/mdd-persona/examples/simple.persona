@@ -1,0 +1,3 @@
+actor Customer : "使いやすくしてほしい"
+actor Developer : "技術的負債を解消したい"
+actor Manager : "コストを抑えたい"
