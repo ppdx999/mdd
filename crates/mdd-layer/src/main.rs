@@ -134,16 +134,17 @@ fn extract_quoted(s: &str) -> Option<String> {
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
-const DESC_FONT_SIZE: f64 = 11.0;
+const DESC_FONT_SIZE: f64 = 12.0;
 
 const LAYER_HEIGHT: f64 = 48.0;
-const LAYER_HEIGHT_WITH_DESC: f64 = 60.0;
 const LAYER_H_PAD: f64 = 24.0;
 const LAYER_GAP: f64 = 2.0;
 const PADDING: f64 = 20.0;
 const GROUP_PAD: f64 = 12.0;
 const GROUP_HEADER: f64 = 28.0;
 const MIN_LAYER_WIDTH: f64 = 200.0;
+const DESC_GAP: f64 = 30.0;
+const DESC_LINE_COLOR: &str = "#ccc";
 
 const DEFAULT_COLORS: &[&str] = &[
     "#e3f2fd", // light blue
@@ -179,8 +180,21 @@ fn has_any_description(items: &[Item]) -> bool {
     })
 }
 
-fn layer_height(has_desc: bool) -> f64 {
-    if has_desc { LAYER_HEIGHT_WITH_DESC } else { LAYER_HEIGHT }
+fn max_desc_width(items: &[Item]) -> f64 {
+    let mut max_w: f64 = 0.0;
+    for item in items {
+        match item {
+            Item::Layer(l) => {
+                if !l.description.is_empty() {
+                    max_w = max_w.max(text_width(&l.description));
+                }
+            }
+            Item::Group { items, .. } => {
+                max_w = max_w.max(max_desc_width(items));
+            }
+        }
+    }
+    max_w
 }
 
 fn max_layer_width(items: &[Item]) -> f64 {
@@ -189,12 +203,7 @@ fn max_layer_width(items: &[Item]) -> f64 {
         match item {
             Item::Layer(l) => {
                 let name_w = text_width(&l.name) + LAYER_H_PAD * 2.0;
-                let desc_w = if l.description.is_empty() {
-                    0.0
-                } else {
-                    text_width(&l.description) * (DESC_FONT_SIZE / FONT_SIZE) + LAYER_H_PAD * 2.0
-                };
-                max_w = max_w.max(name_w).max(desc_w);
+                max_w = max_w.max(name_w);
             }
             Item::Group { name, items } => {
                 let inner_w = max_layer_width(items);
@@ -207,16 +216,16 @@ fn max_layer_width(items: &[Item]) -> f64 {
     max_w
 }
 
-fn items_height(items: &[Item], lh: f64) -> f64 {
+fn items_height(items: &[Item]) -> f64 {
     let mut h = 0.0;
     for (i, item) in items.iter().enumerate() {
         if i > 0 {
             h += LAYER_GAP;
         }
         match item {
-            Item::Layer(_) => h += lh,
+            Item::Layer(_) => h += LAYER_HEIGHT,
             Item::Group { items: sub, .. } => {
-                h += GROUP_HEADER + GROUP_PAD + items_height(sub, lh) + GROUP_PAD;
+                h += GROUP_HEADER + GROUP_PAD + items_height(sub) + GROUP_PAD;
             }
         }
     }
@@ -233,12 +242,19 @@ fn color_for_index(idx: usize) -> &'static str {
 
 fn render_svg(diagram: &Diagram) -> String {
     let has_desc = has_any_description(&diagram.items);
-    let lh = layer_height(has_desc);
     let layer_w = max_layer_width(&diagram.items);
-    let content_h = items_height(&diagram.items, lh);
+    let content_h = items_height(&diagram.items);
 
-    let total_w = PADDING * 2.0 + layer_w;
+    let desc_area_w = if has_desc {
+        DESC_GAP + max_desc_width(&diagram.items) + 16.0
+    } else {
+        0.0
+    };
+
+    let total_w = PADDING * 2.0 + layer_w + desc_area_w;
     let total_h = PADDING * 2.0 + content_h;
+
+    let desc_x = PADDING + layer_w + DESC_GAP;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -257,8 +273,7 @@ fn render_svg(diagram: &Diagram) -> String {
         PADDING,
         PADDING,
         layer_w,
-        lh,
-        has_desc,
+        desc_x,
         &mut color_idx,
     );
 
@@ -272,8 +287,7 @@ fn render_items(
     x: f64,
     start_y: f64,
     layer_w: f64,
-    lh: f64,
-    has_desc: bool,
+    desc_x: f64,
     color_idx: &mut usize,
 ) {
     let mut y = start_y;
@@ -293,40 +307,48 @@ fn render_items(
 
                 svg.push_str(&format!(
                     "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"#ccc\" stroke-width=\"1\"/>",
-                    x, y, layer_w, lh, bg
+                    x, y, layer_w, LAYER_HEIGHT, bg
                 ));
 
-                if has_desc && !layer.description.is_empty() {
-                    // Name centered vertically in upper portion
+                // Name centered
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
+                    x + layer_w / 2.0,
+                    y + LAYER_HEIGHT / 2.0 + 5.0,
+                    escape_xml(&layer.name)
+                ));
+
+                // Description on the right side with horizontal line
+                if !layer.description.is_empty() {
+                    let line_y = y + LAYER_HEIGHT / 2.0;
+                    let line_start_x = x + layer_w;
+
+                    // Horizontal line
                     svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
-                        x + layer_w / 2.0,
-                        y + lh / 2.0 - 4.0,
-                        escape_xml(&layer.name)
+                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+                        line_start_x, line_y, desc_x - 8.0, line_y, DESC_LINE_COLOR
                     ));
-                    // Description below name
+                    // Small dot at the start of line
                     svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" fill=\"{}\">{}</text>",
-                        x + layer_w / 2.0,
-                        y + lh / 2.0 + 12.0,
+                        "<circle cx=\"{}\" cy=\"{}\" r=\"2.5\" fill=\"#999\"/>",
+                        line_start_x, line_y
+                    ));
+
+                    // Description text
+                    svg.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                        desc_x,
+                        line_y + DESC_FONT_SIZE * 0.35,
                         DESC_FONT_SIZE,
                         COLOR_DESC,
                         escape_xml(&layer.description)
                     ));
-                } else {
-                    // Name centered
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
-                        x + layer_w / 2.0,
-                        y + lh / 2.0 + 5.0,
-                        escape_xml(&layer.name)
-                    ));
                 }
 
-                y += lh;
+                y += LAYER_HEIGHT;
             }
             Item::Group { name, items: sub } => {
-                let group_h = GROUP_HEADER + GROUP_PAD + items_height(sub, lh) + GROUP_PAD;
+                let group_h = GROUP_HEADER + GROUP_PAD + items_height(sub) + GROUP_PAD;
 
                 // Group background
                 svg.push_str(&format!(
@@ -350,8 +372,7 @@ fn render_items(
                     x + GROUP_PAD,
                     y + GROUP_HEADER + GROUP_PAD,
                     layer_w - GROUP_PAD * 2.0,
-                    lh,
-                    has_desc,
+                    desc_x,
                     color_idx,
                 );
 
