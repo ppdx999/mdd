@@ -319,6 +319,12 @@ Markdown の表より視覚的にリッチな SVG テーブル。ヘッダー色
 
 ![math](crates/mdd-math/examples/physics.svg)
 
+### TODO リスト ([mdd-todo](crates/mdd-todo/))
+
+チェックボックス付きのタスクリスト。完了タスクは取り消し線で表示。説明の追加に対応。
+
+![todo](crates/mdd-todo/examples/sprint.svg)
+
 ## AGENTS.md 向けサンプル
 
 AI エージェントにドキュメント内で図を生成させる際、`AGENTS.md` に以下のような記述を追加すると効果的。
