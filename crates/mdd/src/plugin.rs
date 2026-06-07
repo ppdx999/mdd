@@ -7,7 +7,15 @@ use std::fs;
 
 pub fn run_plugin(name: &str, input: &str) -> Result<String, String> {
     let cmd_name = format!("mdd-{}", name);
-    let mut child = Command::new(&cmd_name)
+
+    // Try to find the plugin next to the mdd binary first, then fall back to PATH
+    let cmd_path = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(&cmd_name)))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| PathBuf::from(&cmd_name));
+
+    let mut child = Command::new(&cmd_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
