@@ -136,16 +136,16 @@ const NODE_V_GAP: f64 = 50.0;
 
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
-const COLOR_LANE_HEADER: &str = "#e0e0e0";
+const COLOR_LANE_HEADER: &str = "#e8e8e8";
 const COLOR_LANE_HEADER_TEXT: &str = "#333";
-const LANE_COLORS: [&str; 4] = ["#fafafa", "#f5f5f5", "#fafafa", "#f5f5f5"];
+const LANE_COLORS: [&str; 4] = ["#fcfcfc", "#f9f9f9", "#fcfcfc", "#f9f9f9"];
 
 fn node_colors(kind: &NodeKind) -> (&'static str, &'static str) {
     match kind {
-        NodeKind::Start => ("#e8f5e9", "#2e7d32"),
-        NodeKind::End => ("#f5f5f5", "#616161"),
-        NodeKind::Process => ("#e3f2fd", "#1565c0"),
-        NodeKind::Decision => ("#fff8e1", "#f57f17"),
+        NodeKind::Start => ("#f0f9f1", "#2e7d32"),
+        NodeKind::End => ("#f9f9f9", "#616161"),
+        NodeKind::Process => ("#f0f7ff", "#1565c0"),
+        NodeKind::Decision => ("#fffef2", "#f57f17"),
     }
 }
 
