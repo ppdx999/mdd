@@ -372,4 +372,434 @@ HandleOrder -> Orders : "注文データ"
 HandleOrder -> ValidatePayment : "支払い依頼"
 ValidatePayment -> PaymentGateway : "決済リクエスト"
 ```
+
+### ツリー図
+
+```tree
+node CEO
+node CTO
+node CFO
+
+CEO -> CTO
+CEO -> CFO
+```
+
+### ER 図
+
+```er
+table Users {
+  * id
+  name
+  email
+}
+
+table Posts {
+  * id
+  user_id
+  title
+  body
+}
+
+Users 1--* Posts
+```
+
+### シーケンス図
+
+```sequence
+Alice -> Bob : "Hello"
+Bob --> Alice : "Hi there"
+```
+
+### 状態遷移図
+
+```state
+state 待機中
+state 処理中
+state 完了
+
+待機中 -> 処理中 : "開始"
+処理中 -> 完了 : "成功"
+```
+
+### インフラ構成図
+
+```infra
+node Client type=user
+node WebServer type=server
+node Database type=db
+
+Client -> WebServer : "HTTP"
+WebServer -> Database : "SQL"
+```
+
+### ガントチャート
+
+```gantt
+title スプリント1
+unit day
+
+タスクA : 2025-01-06, 3d
+タスクB : 2025-01-06, 5d
+タスクC : after タスクA, 4d
+```
+
+### フローチャート
+
+```flowchart
+start 開始
+process 処理
+end 終了
+
+開始 -> 処理
+処理 -> 終了
+```
+
+### スイムレーン図
+
+```swimlane
+lane 顧客
+lane 営業部
+
+顧客: start 問い合わせ
+営業部: process 受付対応
+営業部: end 回答
+
+問い合わせ -> 受付対応
+受付対応 -> 回答
+```
+
+### グリッド図
+
+```grid
+columns 認証, 注文, 決済
+
+color ○ : blue, #e3f2fd
+color △ : amber, #fff8e1
+color - : lightgrey, #fafafa
+
+チームA : ○, ○, -
+チームB : -, -, ○
+```
+
+### 分析図
+
+```analysis
+type stacked-bar
+
+bar Q1 : 製品A 300, 製品B 200
+bar Q2 : 製品A 350, 製品B 180
+```
+
+### ステップ図
+
+```steps
+step 計画
+step 実行
+step 評価
+```
+
+### ランキング図
+
+```ranking
+商品A : 1500
+商品B : 1200
+商品C : 900
+```
+
+### グループ図（多数要素）
+
+```group-multi
+group "Frontend" {
+- React
+- TypeScript
+}
+
+group "Backend" {
+- Rust
+- PostgreSQL
+}
+```
+
+### レイヤー図
+
+```layer
+layer プレゼンテーション層
+layer ビジネスロジック層 : "サービス、ドメインモデル"
+layer データアクセス層
+```
+
+### タイムライン
+
+```timeline
+2025-01-15 : 企画開始
+2025-03-01 : 開発着手
+2025-06-01 : リリース
+```
+
+### ビフォーアフター図
+
+```before-after
+before "Before" {
+  Manual deploy
+  No tests
+}
+
+after "After" {
+  Auto CI/CD
+  Full test coverage
+}
+```
+
+### サイクル図
+
+```cycle
+step 計画 : "目標設定"
+step 実行 : "計画に基づき実施"
+step 評価 : "結果の測定"
+step 改善 : "改善策の立案"
+```
+
+### プロセスフロー図
+
+```process
+step 企画 : "要件定義"
+step 設計
+step 実装
+step テスト
+step リリース
+```
+
+### ファネル図
+
+```funnel
+title "営業ファネル"
+stage リード獲得 : 1000
+stage 商談化 : 400
+stage 受注 : 40
+```
+
+### ピラミッド図
+
+```pyramid
+level ビジョン : "企業の存在意義"
+level 戦略 : "長期的な方向性"
+level 実行 : "日々のオペレーション"
+```
+
+### トライアングル図
+
+```triangle
+title "QCD"
+node 品質
+node コスト
+node 納期
+edge 0 -- 1 : "トレードオフ"
+edge 1 -- 2 : "トレードオフ"
+edge 0 -- 2 : "トレードオフ"
+```
+
+### マトリクス図
+
+```matrix
+title "リスクマトリクス"
+x-axis "影響度：小" "影響度：大"
+y-axis "発生確率：低" "発生確率：高"
+quadrant 1 : "監視"
+quadrant 2 : "対策必須"
+quadrant 3 : "許容"
+quadrant 4 : "軽減策検討"
+```
+
+### 比較図
+
+```compare
+title "プラン比較"
+option "ベーシック" {
+  月額980円
+  ストレージ 10GB
+}
+option "プロ" {
+  月額2,980円
+  ストレージ 100GB
+  API利用可
+}
+```
+
+### 規模比較図
+
+```scale
+title "ストレージ容量"
+unit "TB"
+item 本番DB : 500
+item バックアップ : 300
+item ログ : 150
+```
+
+### SWOT 分析図
+
+```swot
+strengths {
+  高い品質
+  低価格
+}
+weaknesses {
+  機能が少ない
+}
+opportunities {
+  新興国市場
+}
+threats {
+  競合の新製品
+}
+```
+
+### ベン図
+
+```venn
+set "フロントエンド" {
+  React
+  UI設計
+}
+set "バックエンド" {
+  DB設計
+  API設計
+}
+overlap "共通" {
+  TypeScript
+  Git
+}
+```
+
+### 放射図
+
+```radial
+center "マーケティング"
+spoke 製品 (Product)
+spoke 価格 (Price)
+spoke 流通 (Place)
+spoke 販促 (Promotion)
+```
+
+### 相関図・概念図
+
+```concept
+node 設計
+node 実装
+node テスト
+link 設計 -> 実装 : "仕様"
+link 実装 -> テスト : "成果物"
+link テスト -> 設計 : "改善要求"
+```
+
+### マインドマップ
+
+```mindmap
+center "プロジェクト計画"
+  スコープ
+    機能一覧
+    優先順位
+  スケジュール
+    マイルストーン
+  リソース
+    チーム構成
+    予算
+```
+
+### パズル・ハニカム図
+
+```puzzle
+piece 戦略
+piece 人材
+piece 技術
+piece プロセス
+```
+
+### グループ図
+
+```group
+group "フロントエンド" {
+  React
+  TypeScript
+}
+group "バックエンド" {
+  Rust
+  PostgreSQL
+}
+```
+
+### テーブル
+
+```table
+title "開発スケジュール"
+| フェーズ | 期間 | 担当 |
+| 要件定義 | 2週間 | PM |
+| 設計 | 3週間 | Tech Lead |
+| 実装 | 6週間 | 開発チーム |
+```
+
+### 縦型リスト
+
+```list-v
+title "導入手順"
+item "アカウント作成" : "メールアドレスで登録"
+item "初期設定" : "プロフィール設定"
+item "運用開始"
+```
+
+### 横型カードリスト
+
+```list-h
+title "サービス一覧"
+card "コンサルティング" : "戦略立案から実行支援"
+card "開発" : "Webアプリ開発"
+card "運用" : "24/7監視・保守"
+```
+
+### グリッドリスト
+
+```list-grid
+title "チェックリスト"
+columns 2
+item "コードレビュー完了"
+item "テスト全件パス"
+item "ドキュメント更新"
+item "ステージング検証"
+```
+
+### KPI カード
+
+```kpi
+title "サーバー状況"
+metric "稼働率" : "99.97%"
+metric "応答時間" : "142ms"
+metric "エラー率" : "0.02%"
+```
+
+### 地図・マップ
+
+```map
+title "サーバー配置"
+pin "US-East" at 150,150
+pin "EU-West" at 300,100
+pin "AP-Tokyo" at 450,160
+route 0 -- 1
+route 1 -- 2
+```
+
+### 数式
+
+```math
+E = mc²
+F = ma
+```
+
+### TODO リスト
+
+```todo
+title "Sprint 1"
+[x] ユーザー認証
+[x] ログイン画面
+[ ] パスワードリセット : "メール送信機能"
+[ ] 管理画面
+```
 ````
