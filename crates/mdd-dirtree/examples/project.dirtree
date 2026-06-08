@@ -1,0 +1,28 @@
+my-app/ : "プロジェクトルート"
+  src/ : "ソースコード"
+    components/ : "UIコンポーネント"
+      Header.tsx : "ヘッダーコンポーネント
+ナビゲーション含む"
+      Footer.tsx
+      Button.tsx : "汎用ボタン"
+    hooks/ : "カスタムフック"
+      useAuth.ts : "認証状態管理"
+      useFetch.ts : "データ取得"
+    utils/
+      format.ts
+      validate.ts : "バリデーション関数
+入力検証・型チェック"
+    App.tsx : "ルートコンポーネント"
+    index.ts : "エントリポイント"
+  public/
+    index.html
+    favicon.ico
+  tests/ : "テストコード"
+    components/
+      Header.test.tsx
+      Button.test.tsx
+    hooks/
+      useAuth.test.ts
+  package.json : "依存関係定義"
+  tsconfig.json : "TypeScript設定"
+  README.md : "プロジェクト説明"

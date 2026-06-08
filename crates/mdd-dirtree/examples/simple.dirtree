@@ -1,0 +1,6 @@
+src/
+  main.rs : "エントリポイント"
+  lib.rs : "ライブラリルート"
+  config.rs
+Cargo.toml : "依存関係"
+README.md
