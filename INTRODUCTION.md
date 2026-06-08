@@ -129,10 +129,12 @@ after "MDD" {
 title 基幹システム刷新PJ
 unit day
 
-要件定義 : 2025-04-01, 15d
-基本設計 : after 要件定義, 15d
-開発 : after 基本設計, 30d
-テスト : after 開発, 15d
+要件定義 : 2025-04-01, 3d
+基本設計 : after 要件定義, 3d
+詳細設計 : after 基本設計, 2d
+開発 : after 詳細設計, 5d
+テスト : after 開発, 3d
+移行 : after テスト, 2d
 ```
 
 # どんな図が作れる？ — ER図
