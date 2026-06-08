@@ -1,3 +1,10 @@
+# MDD
+
+```title
+title "MDD — Markdown with Diagrams"
+subtitle "テキストから図を生成する軽量プリプロセッサ"
+```
+
 # 図の生成はすごく便利
 
 認知負荷を下げるために、テキストだけでは伝わりにくい情報を図にすると便利。
