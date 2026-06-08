@@ -123,104 +123,160 @@ after "MDD" {
 }
 ```
 
-# どんな図が作れる？ — フロー系
+# どんな図が作れる？ — プロジェクト計画
 
-```flowchart
-start 開始
-process 要件定義
-process 設計
-process 実装
-process テスト
-end リリース
+```gantt
+title 基幹システム刷新PJ
+unit day
 
-開始 -> 要件定義
-要件定義 -> 設計
-設計 -> 実装
-実装 -> テスト
-テスト -> リリース
+section フェーズ1
+要件定義 : 2025-04-01, 20d
+業務フロー整理 : 2025-04-01, 15d
+RFP作成 : after 要件定義, 10d
+
+section フェーズ2
+基本設計 : after RFP作成, 25d
+詳細設計 : after 基本設計, 20d
+
+section フェーズ3
+開発 : after 詳細設計, 40d
+単体テスト : after 開発, 15d
+結合テスト : after 単体テスト, 15d
+```
+
+# どんな図が作れる？ — ER図
+
+```er
+table 顧客マスタ {
+  * 顧客ID
+  顧客名
+  メールアドレス
+  電話番号
+}
+
+table 受注 {
+  * 受注ID
+  顧客ID
+  受注日
+  合計金額
+  ステータス
+}
+
+table 受注明細 {
+  * 明細ID
+  受注ID
+  商品ID
+  数量
+  単価
+}
+
+table 商品マスタ {
+  * 商品ID
+  商品名
+  カテゴリ
+  定価
+}
+
+顧客マスタ 1--* 受注
+受注 1--* 受注明細
+商品マスタ 1--* 受注明細
+```
+
+# どんな図が作れる？ — 業務フロー
+
+```swimlane
+lane 顧客
+lane 営業部
+lane 経理部
+lane 物流部
+
+顧客: start 注文
+営業部: process 受注処理
+営業部: decision 在庫確認
+経理部: process 請求書発行
+物流部: process 出荷手配
+物流部: process 配送
+顧客: end 受領
+
+注文 -> 受注処理
+受注処理 -> 在庫確認
+在庫確認 -> 請求書発行 : "在庫あり"
+請求書発行 -> 出荷手配
+出荷手配 -> 配送
+配送 -> 受領
 ```
 
 # どんな図が作れる？ — 組織図
 
 ```org
-title "エンジニアリング組織"
-member CTO : "技術統括"
-member VP_Eng : "開発部長"
-member VP_Product : "プロダクト部長"
-member FE_Lead : "FEリード"
-member BE_Lead : "BEリード"
-CTO -> VP_Eng
-CTO -> VP_Product
-VP_Eng -> FE_Lead
-VP_Eng -> BE_Lead
+title "プロジェクト体制図"
+member PM : "プロジェクトマネージャー"
+member AP_Lead : "APリーダー"
+member Infra_Lead : "インフラリーダー"
+member QA_Lead : "QAリーダー"
+member AP1 : "AP開発メンバー"
+member AP2 : "AP開発メンバー"
+member Infra1 : "インフラメンバー"
+member QA1 : "QAメンバー"
+PM -> AP_Lead
+PM -> Infra_Lead
+PM -> QA_Lead
+AP_Lead -> AP1
+AP_Lead -> AP2
+Infra_Lead -> Infra1
+QA_Lead -> QA1
 ```
 
-# どんな図が作れる？ — 分析系
+# どんな図が作れる？ — 技術比較
 
-```pie
-title "売上構成"
-slice SaaS : 45
-slice コンサル : 30
-slice ライセンス : 15
-slice その他 : 10
+```compare
+title "フレームワーク比較"
+option "Spring Boot" {
+  言語: Java
+  実績: 豊富
+  学習コスト: 中
+  エコシステム: 大規模
+  保守性: 高い
+}
+option "Ruby on Rails" {
+  言語: Ruby
+  実績: 豊富
+  学習コスト: 低
+  エコシステム: 中規模
+  保守性: 中
+}
+option "Next.js" {
+  言語: TypeScript
+  実績: 増加中
+  学習コスト: 中
+  エコシステム: 大規模
+  保守性: 高い
+}
 ```
 
-# どんな図が作れる？ — レーダーチャート
+# どんな図が作れる？ — タイムライン
 
-```radar
-title "技術スタック評価"
-axis 速度
-axis 安全性
-axis 学習コスト
-axis エコシステム
-axis 保守性
-data "Rust" : 95, 95, 40, 60, 85
-data "Go" : 85, 70, 80, 75, 75
-```
+```timeline
+title "基幹システム刷新ロードマップ"
 
-# どんな図が作れる？ — カンバン
-
-```kanban
-title "Sprint Board"
-column Backlog
-card 認証機能 : "feature"
-card 検索改善 : "feature"
-
-column In Progress
-card API設計 : "task"
-
-column Review
-card ログイン画面 : "feature"
-
-column Done
-card DB設計 : "task"
-card CI/CD構築 : "infra"
+2025-04 : 要件定義開始
+2025-07 : 基本設計完了
+2025-09 : 詳細設計完了
+2026-01 : 開発完了
+2026-03 : 結合テスト完了
+2026-04 : ユーザー受入テスト
+2026-06 : 本番移行
+2026-07 : 旧システム停止
 ```
 
 # どんな図が作れる？ — まだまだ
 
 ```kpi
-title "53種類のプラグイン"
-metric "フロー系" : "8種類"
-metric "構造・階層系" : "7種類"
-metric "比較・分析系" : "10種類"
-metric "関係・概念系" : "9種類"
-metric "レイアウト系" : "9種類"
-metric "特殊系" : "10種類"
-```
-
-# ユーザーの声
-
-```quote
-quote "AIにDSLを書かせるだけで図が出る。
-ドキュメント作成が劇的に速くなった。"
-author "エンジニア"
-role "スタートアップCTO"
-
-quote "Gitで差分レビューできるのが最高。
-図の変更理由がコミットログに残る。"
-author "テックリード"
-role "大手SaaS企業"
+title "55種類以上のプラグイン"
+metric "フロー・業務系" : "フローチャート, スイムレーン, ガント, etc"
+metric "構造・設計系" : "ER図, 組織図, レイヤー図, ツリー, etc"
+metric "比較・分析系" : "比較表, SWOT, レーダー, 円グラフ, etc"
+metric "その他" : "Git図, カンバン, FAQ, 料金表, etc"
 ```
 
 # このスライドの正体
