@@ -52,7 +52,8 @@ fn parse_ml(start: &str, lines: &[&str], cur: usize) -> Result<(Vec<String>, usi
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
 
 const CW: f64 = 8.0; const CJK: f64 = 14.0; const CARD_W: f64 = 400.0; const PAD: f64 = 24.0;
-const Q_H: f64 = 32.0; const A_LINE_H: f64 = 18.0; const A_PAD: f64 = 10.0; const ITEM_GAP: f64 = 8.0;
+const Q_H: f64 = 32.0; const A_LINE_H: f64 = 18.0; const A_PAD: f64 = 10.0;
+const DIVIDER_PAD: f64 = 12.0;
 fn tw(s: &str) -> f64 { s.chars().map(|c| if c.is_ascii() { CW } else { CJK }).sum() }
 fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;").replace('"',"&quot;") }
 
@@ -65,7 +66,7 @@ fn render_svg(faq: &Faq) -> String {
         qw.max(aw)
     }).fold(CARD_W, f64::max);
     let title_space = if faq.title.is_some() { 40.0 } else { 0.0 };
-    let total_items_h: f64 = faq.items.iter().map(|qa| qa_h(qa)).sum::<f64>() + (faq.items.len()-1) as f64 * ITEM_GAP;
+    let total_items_h: f64 = faq.items.iter().map(|qa| qa_h(qa)).sum::<f64>() + (faq.items.len().saturating_sub(1)) as f64 * (DIVIDER_PAD * 2.0);
     let total_w = PAD * 2.0 + card_w;
     let total_h = PAD * 2.0 + title_space + total_items_h;
 
@@ -79,21 +80,31 @@ fn render_svg(faq: &Faq) -> String {
         y += title_space;
     }
 
-    for qa in &faq.items {
+    for (i, qa) in faq.items.iter().enumerate() {
         let h = qa_h(qa);
-        svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"#fafafa\" stroke=\"#e8e8e8\" stroke-width=\"1\"/>", PAD, y, card_w, h));
-        // Q badge
-        svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#1565c0\"/>", PAD + 12.0, y + Q_H / 2.0 - 11.0));
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"white\">Q</text>", PAD + 23.0, y + Q_H / 2.0 + 5.0));
+
+        // Q badge (light background)
+        svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#e3f2fd\" stroke=\"#90caf9\" stroke-width=\"1\"/>", PAD + 12.0, y + Q_H / 2.0 - 11.0));
+        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"#1565c0\">Q</text>", PAD + 23.0, y + Q_H / 2.0 + 5.0));
         svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"13\" font-weight=\"bold\">{}</text>", PAD + 42.0, y + Q_H / 2.0 + 5.0, ex(&qa.question)));
-        // A
+
+        // A badge (light background)
         let ay = y + Q_H + A_PAD;
-        svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#2e7d32\"/>", PAD + 12.0, ay - 2.0));
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"white\">A</text>", PAD + 23.0, ay + 14.0));
+        svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#e8f5e9\" stroke=\"#a5d6a7\" stroke-width=\"1\"/>", PAD + 12.0, ay - 2.0));
+        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"#2e7d32\">A</text>", PAD + 23.0, ay + 14.0));
         for (j, line) in qa.answer.iter().enumerate() {
             svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#555\">{}</text>", PAD + 42.0, ay + j as f64 * A_LINE_H + 14.0, ex(line)));
         }
-        y += h + ITEM_GAP;
+
+        y += h;
+
+        // Divider line between items (not after the last one)
+        if i < faq.items.len() - 1 {
+            y += DIVIDER_PAD;
+            svg.push_str(&format!("<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e8e8e8\" stroke-width=\"1\"/>",
+                PAD + 12.0, y, PAD + card_w - 12.0, y));
+            y += DIVIDER_PAD;
+        }
     }
 
     svg.push_str("</svg>");
