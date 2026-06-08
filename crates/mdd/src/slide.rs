@@ -98,7 +98,7 @@ const BODY_FONT_SIZE: f64 = 14.0;
 const BODY_LINE_HEIGHT: f64 = 22.0;
 const BLOCK_GAP: f64 = 20.0;
 const MIN_PAGE_W: f64 = 600.0;
-const MIN_PAGE_H: f64 = 560.0;
+const MIN_PAGE_H: f64 = 680.0;
 const TITLE_BOTTOM_PAD: f64 = 16.0;
 
 fn escape_xml(s: &str) -> String {
@@ -155,7 +155,15 @@ fn build_page_svg(page: &Page, fixed_width: f64) -> String {
         }
     }
 
-    let page_h = (content_h + PAGE_PAD * 2.0).max(MIN_PAGE_H);
+    let natural_h = content_h + PAGE_PAD * 2.0;
+    let page_h = natural_h.max(MIN_PAGE_H);
+
+    // Vertical centering: if page is taller than content, offset y
+    let y_offset = if page_h > natural_h {
+        (page_h - natural_h) / 2.0
+    } else {
+        0.0
+    };
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -164,7 +172,7 @@ fn build_page_svg(page: &Page, fixed_width: f64) -> String {
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>");
 
-    let mut y = PAGE_PAD;
+    let mut y = PAGE_PAD + y_offset;
 
     if !page.title.is_empty() {
         svg.push_str(&format!(
