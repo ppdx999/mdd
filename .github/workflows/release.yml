@@ -123,5 +123,7 @@ jobs:
           MDD_VERSION: ${{ github.ref_name }}
         run: |
           .\install.ps1
-          $output = & "$env:USERPROFILE\.local\bin\mdd.exe" 2>&1 | Out-String
-          if ($output -notmatch "Usage:") { exit 1 }
+          $mdd = "$env:USERPROFILE\.local\bin\mdd.exe"
+          if (-not (Test-Path $mdd)) { Write-Error "mdd.exe not found"; exit 1 }
+          $output = cmd /c "`"$mdd`" 2>&1"
+          if ($output -notmatch "Usage:") { Write-Host "Unexpected output: $output"; exit 1 }
