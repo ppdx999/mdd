@@ -147,7 +147,21 @@ struct SpacingConfig {
 
 fn compute_spacing(diagram: &Diagram) -> SpacingConfig {
     let complexity = diagram.nodes.len() + diagram.edges.len();
-    let factor = if complexity <= 10 {
+
+    // Check if the graph is linear (no branching)
+    let max_out_degree = {
+        let mut out: HashMap<usize, usize> = HashMap::new();
+        for e in &diagram.edges {
+            *out.entry(e.from).or_insert(0) += 1;
+        }
+        out.values().copied().max().unwrap_or(1)
+    };
+    let is_linear = max_out_degree <= 1;
+
+    let factor = if is_linear {
+        // Compact spacing for linear flows
+        0.6 + (complexity as f64 / 40.0).sqrt() * 0.3
+    } else if complexity <= 10 {
         1.0 + (complexity as f64 / 20.0).sqrt() * 0.4
     } else if complexity <= 30 {
         1.0 + (complexity as f64 / 10.0).sqrt() * 0.6
