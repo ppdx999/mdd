@@ -54,6 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/ppdx999/mdd/main/install.sh | sh
 
 ```powershell
 # Windows (PowerShell)
+# Windowsのインストーラーは不安定です。うまく動かない場合はAIにインストールさせてください
 iwr https://raw.githubusercontent.com/ppdx999/mdd/main/install.ps1 -useb | iex
 ```
 
