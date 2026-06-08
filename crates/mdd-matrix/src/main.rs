@@ -272,7 +272,31 @@ fn render_svg(matrix: &Matrix) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-matrix - Render a 2x2 matrix diagram as SVG
+
+Usage: mdd-matrix < input.matrix
+
+Optionally label axes:
+  x-axis \"<left>\" \"<right>\"
+  y-axis \"<bottom>\" \"<top>\"
+Populate quadrants (1=top-left, 2=top-right, 3=bottom-left, 4=bottom-right):
+  quadrant <N> : \"<item>\" \"<item>\" ...
+
+Example:
+  x-axis \"Low\" \"High\"
+  y-axis \"Small\" \"Large\"
+  quadrant 1 : \"Plan\"
+  quadrant 2 : \"Act now\"
+  quadrant 3 : \"Ignore\"
+  quadrant 4 : \"Delegate\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -109,7 +109,29 @@ fn render_svg(diagram: &Diagram) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-quote - Render quote cards as SVG
+
+Usage: mdd-quote < input.quote
+
+Each quote block starts with: quote \"text\"
+Optionally followed by: author \"name\" and role \"title\".
+
+Example:
+  quote \"This tool is amazing!\"
+  author \"Alice\"
+  role \"Engineer\"
+
+  quote \"Highly recommended.\"
+  author \"Bob\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

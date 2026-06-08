@@ -419,7 +419,39 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-swimlane - Render a swimlane (cross-functional) flowchart as SVG
+
+Usage: mdd-swimlane < input.swimlane
+
+Define lanes with \"lane Name\". Add nodes to a lane:
+  Lane: start Name
+  Lane: process Name
+  Lane: decision Name
+  Lane: end Name
+
+Then connect nodes with edges:
+  From -> To
+  From -> To : \"label\"
+
+Example:
+  lane Customer
+  lane Support
+
+  Customer: start Request
+  Support: process Handle
+  Customer: end Done
+
+  Request -> Handle
+  Handle -> Done
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
 

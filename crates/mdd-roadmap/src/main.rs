@@ -261,7 +261,30 @@ fn render_svg(diagram: &Diagram) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-roadmap - Render a roadmap (staircase milestones) as SVG
+
+Usage: mdd-roadmap < input.roadmap
+
+Each line is a milestone name. Milestones are displayed as ascending
+steps from bottom-left to top-right.
+
+Add a description with braces: Name { description }
+Multi-line descriptions use a block: Name {\\n  line1\\n  line2\\n}
+
+Example:
+  Plan
+  Design { Create wireframes }
+  Build
+  Launch
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

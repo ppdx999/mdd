@@ -474,7 +474,32 @@ fn render_svg(diagram: &Diagram) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-slack - Render a Slack-style chat mockup as SVG
+
+Usage: mdd-slack < input.slack
+
+Use \"channel #name\" to set an optional channel header.
+Define messages with: msg \"Name\" : \"body text\"
+After a message, add optional metadata:
+  time \"10:30 AM\"
+  react :emoji: count
+  thread N
+
+Example:
+  channel #general
+  msg \"Alice\" : \"Good morning!\"
+  time \"9:00 AM\"
+  react :wave: 3
+  msg \"Bob\" : \"Morning!\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

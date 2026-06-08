@@ -95,7 +95,31 @@ fn render_svg(pt: &PriceTable) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-pricetable - Render a pricing table as SVG
+
+Usage: mdd-pricetable < input.pricetable
+
+Define plans with \"plan Name : Price\" followed by \"- feature\" lines.
+Use \"plan*\" instead of \"plan\" to highlight a recommended plan.
+
+Example:
+  plan Free : \"$0/mo\"
+  - 5 users
+  - 1GB storage
+
+  plan* Pro : \"$10/mo\"
+  - Unlimited users
+  - 100GB storage
+  - API access
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

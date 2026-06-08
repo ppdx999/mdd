@@ -144,7 +144,26 @@ fn render_svg(arrow: &Arrow) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-arrow - Render a directional arrow as SVG
+
+Usage: mdd-arrow < input.arrow
+
+Directives:
+  direction <down|up|right|left>   Arrow direction (default: down)
+  label \"<text>\"                   Optional label alongside the arrow
+
+Example:
+  direction down
+  label \"next step\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

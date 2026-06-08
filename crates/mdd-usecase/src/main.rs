@@ -575,7 +575,27 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+const HELP: &str = "\
+mdd-usecase - Render a use-case diagram as SVG
+
+Usage: mdd-usecase < input.usecase
+
+Define actors with \"actor Name\" and use cases with \"usecase Name\".
+Connect them with \"Name -> Name\". Group use cases in a package
+with \"package Name { ... }\".
+
+Example:
+  actor Customer
+  usecase Login
+  Customer -> Login
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

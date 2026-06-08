@@ -344,7 +344,30 @@ fn render_svg(diagram: &Diagram) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-persona - Render persona stick figures as SVG
+
+Usage: mdd-persona < input.persona
+
+Each line defines an actor as a stick figure with optional label
+and speech bubble:
+  actor \"Name\"
+  actor \"Name\" : \"Label\"
+  actor \"Name\" : \"Speech bubble text\"
+  actor \"Name\" : \"Label\" : \"Speech bubble text\"
+
+Example:
+  actor Customer : \"I want it simple!\"
+  actor Developer : \"Let me fix the bugs\"
+  actor Manager : \"Keep costs down\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

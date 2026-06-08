@@ -869,7 +869,34 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-er - Render an entity-relationship diagram as SVG
+
+Usage: mdd-er < input.er
+
+Define tables with columns (prefix \"* \" for primary keys),
+then relate them with cardinality notation: 1--1, 1--*, *--1, *--*.
+
+Example:
+  table Users {
+    * id
+    name
+    email
+  }
+  table Posts {
+    * id
+    user_id
+    title
+  }
+  Users 1--* Posts
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

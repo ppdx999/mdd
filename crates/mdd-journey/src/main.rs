@@ -90,7 +90,28 @@ fn render_svg(j: &Journey) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-journey - Render a customer journey map as SVG
+
+Usage: mdd-journey < input.journey
+
+Optionally set a persona with \"persona <name>\".
+Each stage is defined as: stage <name> : <action> : <emotion(1-5)>
+Emotion is an integer from 1 (negative) to 5 (positive).
+
+Example:
+  persona \"New user\"
+  stage Awareness : \"See an ad\" : 3
+  stage Search : \"Search product\" : 4
+  stage Purchase : \"Buy item\" : 2
+  stage Use : \"Use product\" : 5
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

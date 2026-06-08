@@ -165,7 +165,27 @@ fn render_svg(puzzle: &Puzzle) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-puzzle - Render a puzzle (hexagon grid) diagram as SVG
+
+Usage: mdd-puzzle < input.puzzle
+
+Each line is a piece label, rendered as a hexagon in a grid.
+At least 2 pieces are required.
+
+Example:
+  Strategy
+  People
+  Technology
+  Process
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -110,7 +110,27 @@ fn render_svg(pie: &Pie) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-pie - Render a pie chart as SVG
+
+Usage: mdd-pie < input.pie
+
+Each line defines a slice with: slice Label : value
+Values are proportional (they don't need to sum to 100).
+At least 2 slices are required.
+
+Example:
+  slice Apples : 40
+  slice Oranges : 35
+  slice Bananas : 25
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

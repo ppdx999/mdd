@@ -94,7 +94,30 @@ fn render_svg(cl: &Changelog) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-changelog - Render a changelog as SVG
+
+Usage: mdd-changelog < input.changelog
+
+Each release starts with \"release <version>\" optionally followed
+by \" : <date>\". Changes are listed as \"- <kind> <text>\" where
+kind is one of: add, fix, change, remove, improve, security.
+
+Example:
+  release v1.0 : \"2025-01-01\"
+  - add New feature
+  - fix Bug fix
+
+  release v0.9
+  - change Refactored API
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

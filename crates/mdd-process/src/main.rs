@@ -237,7 +237,28 @@ fn render_svg(process: &Process) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-process - Render a process flow as SVG
+
+Usage: mdd-process < input.process
+
+Each line is a step in a left-to-right flow connected by arrows.
+Add \" : description\" after a step name to add a description.
+At least 2 steps are required.
+
+Example:
+  Plan
+  Build
+  Test
+  Deploy
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

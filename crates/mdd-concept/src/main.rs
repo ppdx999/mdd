@@ -308,7 +308,30 @@ fn render_svg(concept: &Concept) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-concept - Render a concept map as SVG
+
+Usage: mdd-concept < input.concept
+
+Define nodes and links between them. Nodes are laid out in a
+circle. Links can be directed (->) or undirected (--) with
+an optional label.
+
+Example:
+  node Design
+  node Code
+  node Test
+  link Design -> Code : \"spec\"
+  link Code -> Test : \"build\"
+  link Test -> Design : \"feedback\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -242,7 +242,27 @@ fn render_svg(table: &Table) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-table - Render a table as SVG
+
+Usage: mdd-table < input.table
+
+Rows are pipe-delimited. The first row becomes the header.
+At least one data row is required after the header.
+
+Example:
+  | Name  | Role   | Status |
+  | Alice | Dev    | Active |
+  | Bob   | QA     | Active |
+  | Carol | PM     | Away   |
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -261,7 +261,29 @@ fn render_svg(block: &CodeBlock) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-code - Render a syntax-highlighted code block as SVG
+
+Usage: mdd-code < input.code
+
+Optionally set the language with \"lang <name>\" before a \"---\"
+separator. Everything after the separator (or all lines if no
+separator) is rendered as code with line numbers.
+
+Example:
+  lang rust
+  ---
+  fn main() {
+      println!(\"hello\");
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

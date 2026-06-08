@@ -640,7 +640,31 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-flowchart - Render a flowchart as SVG
+
+Usage: mdd-flowchart < input.flowchart
+
+Define nodes with a type prefix (start, end, process, decision),
+then connect them with \"->\" edges. Add labels with \" : \".
+
+Example:
+  start Begin
+  process DoWork
+  decision OK?
+  end Done
+
+  Begin -> DoWork
+  DoWork -> OK?
+  OK? -> Done : \"Yes\"
+  OK? -> DoWork : \"No\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
 

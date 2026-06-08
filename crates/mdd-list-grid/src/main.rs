@@ -254,7 +254,28 @@ fn render_svg(grid: &ListGrid) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-list-grid - Render items in a grid layout as SVG
+
+Usage: mdd-list-grid < input.list-grid
+
+Optionally set the number of columns (default 3):
+  columns <N>
+Each item is: item \"<label>\" [: \"<description>\"]
+
+Example:
+  columns 2
+  item \"VS Code\" : \"Code editor\"
+  item \"Git\" : \"Version control\"
+  item \"Docker\" : \"Containers\"
+  item \"Slack\" : \"Communication\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -1026,7 +1026,29 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-infra - Render an infrastructure diagram as SVG
+
+Usage: mdd-infra < input.infra
+
+Define nodes with \"node Name [type=TYPE]\" where TYPE is one of:
+server, db, lb, cache, queue, storage, cdn, network, user.
+Group nodes with \"group \"Name\" { ... }\" (nesting allowed).
+Connect nodes with \"A -> B\" or \"A -> B : \"label\"\".
+
+Example:
+  node Client type=user
+  node WebServer type=server
+  node Database type=db
+  Client -> WebServer : \"HTTP\"
+  WebServer -> Database : \"SQL\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

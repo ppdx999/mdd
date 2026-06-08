@@ -261,7 +261,29 @@ fn render_svg(todo: &TodoList) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-todo - Render a todo/checklist as SVG
+
+Usage: mdd-todo < input.todo
+
+Each line is a task prefixed with [x] (done) or [ ] (pending).
+Use \" : description\" after a task name to add a description.
+Multi-line descriptions continue on indented lines.
+
+Example:
+  [x] Requirements
+  [x] Design
+  [ ] Implementation
+  [ ] Testing
+  [ ] Deploy
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

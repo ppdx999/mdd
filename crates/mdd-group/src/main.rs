@@ -271,7 +271,30 @@ fn render_svg(groups: &Groups) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-group - Render grouped items as SVG cards
+
+Usage: mdd-group < input.group
+
+Define up to 4 groups with \"group \"Name\" { ... }\". Each line
+inside a group is an item. Groups are displayed side by side.
+
+Example:
+  group \"Frontend\" {
+    React
+    TypeScript
+  }
+  group \"Backend\" {
+    Rust
+    PostgreSQL
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -105,7 +105,28 @@ fn render_svg(faq: &Faq) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-faq - Render a FAQ (Q&A list) as SVG
+
+Usage: mdd-faq < input.faq
+
+Each Q&A pair starts with \"q\" followed by the question, then \"a\"
+followed by the answer. Wrap text in quotes. Multi-line answers
+use a closing quote on a subsequent line.
+
+Example:
+  q \"What is mdd?\"
+  a \"A text-to-diagram tool.\"
+
+  q \"Is it free?\"
+  a \"Yes, it is free.\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

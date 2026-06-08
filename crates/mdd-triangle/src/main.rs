@@ -259,7 +259,30 @@ fn render_svg(tri: &Triangle) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-triangle - Render a triangle diagram as SVG
+
+Usage: mdd-triangle < input.triangle
+
+Define exactly 3 nodes with \"node Label\". Optionally connect
+them with \"edge I -- J\" or \"edge I -- J : label\" where I and J
+are 0-based node indices.
+
+Example:
+  node Quality
+  node Cost
+  node Speed
+  edge 0 -- 1 : \"Trade-off\"
+  edge 1 -- 2 : \"Trade-off\"
+  edge 0 -- 2 : \"Trade-off\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

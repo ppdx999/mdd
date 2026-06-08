@@ -307,7 +307,28 @@ fn render_svg(repo: &Repo) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-github - Render a GitHub repository card as SVG
+
+Usage: mdd-github < input.github
+
+Required: \"repo owner/name\". Optional fields: desc, lang,
+stars, forks, license. Wrap descriptions in quotes.
+
+Example:
+  repo user/my-project
+  desc \"A useful tool\"
+  lang Rust
+  stars 100
+  forks 10
+  license MIT
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

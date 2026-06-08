@@ -308,7 +308,31 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-group-multi - Render multiple groups in a grid layout as SVG
+
+Usage: mdd-group-multi < input.group-multi
+
+Define groups with \"group \"Name\" { ... }\" containing \"- item\" lines.
+Set column count with \"columns N\" (default: 3). Optionally set
+group colors with \"color \"Name\" : color\".
+
+Example:
+  group \"Frontend\" {
+  - React
+  - TypeScript
+  }
+  group \"Backend\" {
+  - Rust
+  - PostgreSQL
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

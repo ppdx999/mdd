@@ -319,7 +319,41 @@ fn render_quadrant(
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-swot - Render a SWOT analysis matrix as SVG
+
+Usage: mdd-swot < input.swot
+
+Define four sections (all optional, but at least one must have items):
+  strengths { ... }
+  weaknesses { ... }
+  opportunities { ... }
+  threats { ... }
+
+Each line inside a section is one bullet item.
+
+Example:
+  strengths {
+    Strong brand
+    Skilled team
+  }
+  weaknesses {
+    Limited budget
+  }
+  opportunities {
+    Growing market
+  }
+  threats {
+    New competitors
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

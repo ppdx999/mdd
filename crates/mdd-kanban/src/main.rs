@@ -151,7 +151,28 @@ fn render_svg(board: &Board) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-kanban - Render a kanban board as SVG
+
+Usage: mdd-kanban < input.kanban
+
+Define columns with \"column <name>\", then add cards beneath them.
+Cards use: card <text> [: <label>]
+An optional label after \" : \" is shown as a colored tag.
+
+Example:
+  column Todo
+  card Design API : feature
+  card Fix bug #42 : bug
+  column Done
+  card Login page : feature
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

@@ -1038,7 +1038,32 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-dfd - Render a data flow diagram as SVG
+
+Usage: mdd-dfd < input.dfd
+
+Define entities (rectangles), processes (circles), and datastores
+(open-ended rectangles with optional columns). Connect them with
+\"->\" edges, optionally labelled with \" : <label>\".
+
+Example:
+  entity Customer
+  process HandleOrder
+  datastore Orders {
+    order_id
+    total
+  }
+  Customer -> HandleOrder : \"order\"
+  HandleOrder -> Orders : \"save\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

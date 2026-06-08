@@ -382,7 +382,28 @@ fn render_svg(tree: &DirTree) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-dirtree - Render a directory tree as SVG
+
+Usage: mdd-dirtree < input.dirtree
+
+Indent with 2 spaces per level. Directories end with \"/\".
+Add descriptions with \" : \\\"text\\\"\".
+
+Example:
+  src/
+    main.rs : \"entry point\"
+    lib.rs
+  Cargo.toml
+  README.md
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

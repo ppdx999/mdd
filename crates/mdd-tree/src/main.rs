@@ -485,7 +485,28 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-tree - Render a tree/org-chart diagram as SVG
+
+Usage: mdd-tree < input.tree
+
+Define nodes with \"node Label\" and connect them with \"A -> B\".
+Use \"group Name { node X; node Y }\" to group nodes together.
+
+Example:
+  node CEO
+  node CTO
+  node CFO
+  CEO -> CTO
+  CEO -> CFO
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

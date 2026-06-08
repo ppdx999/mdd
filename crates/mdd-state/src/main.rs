@@ -678,7 +678,32 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-state - Render a state machine diagram as SVG
+
+Usage: mdd-state < input.state
+
+Declare states with \"state Name\", then define transitions:
+  From -> To : \"label\"
+  From -> To              (no label)
+Self-transitions (A -> A) are supported.
+
+Example:
+  state Idle
+  state Running
+  state Done
+
+  Idle -> Running : \"start\"
+  Running -> Done : \"finish\"
+  Running -> Idle : \"cancel\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

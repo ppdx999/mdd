@@ -237,7 +237,27 @@ fn render_svg(list: &ListH) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-list-h - Render a horizontal card list as SVG
+
+Usage: mdd-list-h < input.list-h
+
+Each card is: card \"<label>\" [: \"<description>\"]
+Use \"|\" inside the description for multi-line text.
+At least 2 cards are required.
+
+Example:
+  card \"Challenge\" : \"Embrace failure\"
+  card \"Integrity\" : \"Stay honest\"
+  card \"Teamwork\" : \"Achieve together\"
+  card \"Growth\" : \"Keep learning\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

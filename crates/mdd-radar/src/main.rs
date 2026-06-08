@@ -161,7 +161,29 @@ fn render_svg(radar: &Radar) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-radar - Render a radar (spider) chart as SVG
+
+Usage: mdd-radar < input.radar
+
+Define axes with \"axis Name\" (at least 3 required).
+Add datasets with \"data Name : v1, v2, ...\" (values 0-100).
+Each dataset must have one value per axis.
+
+Example:
+  axis Frontend
+  axis Backend
+  axis Infra
+  data Alice : 90, 70, 50
+  data Bob : 60, 90, 80
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

@@ -245,7 +245,29 @@ fn format_value(value: f64, unit: Option<&str>) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-ranking - Render a ranked bar chart as SVG
+
+Usage: mdd-ranking < input.ranking
+
+Each line defines an item as \"label : value\". Items are displayed
+in the order given, with ranked badges (1st, 2nd, 3rd, ...).
+
+Optionally use \"unit\" to append a unit string to values.
+
+Example:
+  unit \"pts\"
+  Alice : 1500
+  Bob : 1200
+  Carol : 900
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

@@ -308,7 +308,27 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-grid - Render a grid/matrix table as SVG
+
+Usage: mdd-grid < input.grid
+
+Define columns first, then rows with comma-separated values.
+Optionally define cell colors with \"color VALUE : text_color[, bg_color]\".
+
+Example:
+  columns Design, Impl, Test
+  color R : blue, #e3f2fd
+  color A : red, #ffebee
+  Alice : R, A, I
+  Bob : A, R, R
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

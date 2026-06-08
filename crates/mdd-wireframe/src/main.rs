@@ -307,7 +307,30 @@ fn render_elements(elements: &[Element], svg: &mut String, cy: &mut f64, inner_x
     }
 }
 
+const HELP: &str = "\
+mdd-wireframe - Render a wireframe mockup as SVG
+
+Usage: mdd-wireframe < input.wireframe
+
+Each line is a UI element. Supported elements:
+  header, subheader, text, link, button, input, textarea,
+  select, checkbox, radio, toggle, image, avatar, progress,
+  nav (items separated by |), table (columns separated by |),
+  card-begin/card-end, --- (divider), - item (list)
+
+Example:
+  header Login
+  input \"Email\"
+  input \"Password\"
+  button Login
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

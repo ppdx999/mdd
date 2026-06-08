@@ -407,7 +407,30 @@ fn render_svg(map: &MindMap) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-mindmap - Render a mind map as SVG
+
+Usage: mdd-mindmap < input.mindmap
+
+First line declares the center node with: center \"Topic\"
+Branches are indented 2 spaces, sub-items 4 spaces.
+
+Example:
+  center \"Project\"
+    Design
+      Colors
+      Layout
+    Backend
+      API
+      Database
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

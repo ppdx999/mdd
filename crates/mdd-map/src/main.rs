@@ -284,7 +284,30 @@ fn render_svg(map: &Map) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-map - Render a pin map as SVG
+
+Usage: mdd-map < input.map
+
+Optionally set canvas size (defaults 500x350):
+  width <N>
+  height <N>
+Place pins: pin \"<label>\" at <x>,<y>
+Connect pins by index: route <from> -- <to>
+
+Example:
+  pin \"US-East\" at 150,150
+  pin \"EU-West\" at 300,100
+  pin \"AP-Tokyo\" at 450,160
+  route 0 -- 1
+  route 1 -- 2
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

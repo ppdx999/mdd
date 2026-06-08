@@ -89,7 +89,25 @@ fn render_svg(t: &Title) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-title - Render a title slide as SVG
+
+Usage: mdd-title < input.title
+
+The first line is the title text. Optionally add a subtitle
+with \"subtitle\" on the next line. Quotes around text are optional.
+
+Example:
+  \"My Presentation\"
+  subtitle \"A brief overview\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

@@ -370,7 +370,32 @@ fn render_section(
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-before-after - Render a before/after comparison as SVG
+
+Usage: mdd-before-after < input.before-after
+
+Define a \"before\" and an \"after\" section, each with a label
+and a list of items. Arrows connect corresponding items.
+
+Example:
+  before \"Before\" {
+    Manual deploy
+    No tests
+  }
+
+  after \"After\" {
+    Auto CI/CD
+    Full test coverage
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

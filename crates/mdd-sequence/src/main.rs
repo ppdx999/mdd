@@ -355,7 +355,28 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-sequence - Render a sequence diagram as SVG
+
+Usage: mdd-sequence < input.sequence
+
+Declare participants with \"participant Name\" (optional, auto-created
+on first use). Define messages between participants:
+  A -> B : \"label\"     solid arrow
+  A --> B : \"label\"    dashed arrow (e.g. response)
+Self-messages (A -> A) are also supported.
+
+Example:
+  Alice -> Bob : \"Hello\"
+  Bob --> Alice : \"Hi there\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

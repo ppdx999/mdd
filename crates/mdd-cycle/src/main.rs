@@ -340,7 +340,30 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-cycle - Render a cycle diagram as SVG
+
+Usage: mdd-cycle < input.cycle
+
+Each line is a step in the cycle. Steps are connected in order,
+with the last step looping back to the first.
+
+Use \" : description\" after a step name to add a description.
+Multi-line descriptions continue on indented lines.
+
+Example:
+  Plan
+  Do
+  Check
+  Act
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

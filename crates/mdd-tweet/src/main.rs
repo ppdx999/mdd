@@ -378,7 +378,29 @@ fn render_svg(diagram: &Diagram) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-tweet - Render tweet/post cards as SVG
+
+Usage: mdd-tweet < input.tweet
+
+Each post starts with: post \"Name\" @handle : \"body text\"
+After a post, add optional metadata lines:
+  likes N, retweets N, time \"datetime string\"
+
+Example:
+  post \"Alice\" @alice : \"Hello world!\"
+  likes 42
+
+  post \"Bob\" @bob : \"Welcome!\"
+  likes 5
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

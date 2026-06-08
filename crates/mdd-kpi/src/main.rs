@@ -235,7 +235,26 @@ fn render_svg(kpi: &Kpi) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-kpi - Render KPI metric cards as SVG
+
+Usage: mdd-kpi < input.kpi
+
+Each line defines a metric card:
+  metric \"<label>\" : \"<value>\" [: \"<change>\"]
+The optional change field is colored green for \"+\" / red for \"-\".
+
+Example:
+  metric \"Uptime\" : \"99.97%\"
+  metric \"Latency\" : \"142ms\" : \"-12%\"
+  metric \"Errors\" : \"0.02%\" : \"+0.01%\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

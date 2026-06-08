@@ -327,7 +327,35 @@ fn render_items_at(svg: &mut String, x: f64, start_y: f64, items: &[String], col
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-venn - Render a Venn diagram as SVG
+
+Usage: mdd-venn < input.venn
+
+Define 2 or 3 sets with \"set Name { items... }\".
+Optionally define overlapping items with \"overlap Name { items... }\".
+
+Example:
+  set \"Frontend\" {
+    HTML/CSS
+    React
+  }
+  set \"Backend\" {
+    DB design
+    API design
+  }
+  overlap \"Shared\" {
+    TypeScript
+    Git
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

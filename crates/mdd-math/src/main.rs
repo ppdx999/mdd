@@ -116,7 +116,25 @@ fn render_svg(math: &Math) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-math - Render math expressions as SVG
+
+Usage: mdd-math < input.math
+
+Each non-empty line is rendered as a centered expression.
+Lines may optionally start with \"expr:\" prefix.
+
+Example:
+  E = mc²
+  F = ma
+  p = mv
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

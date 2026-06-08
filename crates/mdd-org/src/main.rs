@@ -137,7 +137,28 @@ fn render_svg(org: &Org) -> String {
     svg
 }
 
+const HELP: &str = "\
+mdd-org - Render an org chart as SVG
+
+Usage: mdd-org < input.org
+
+Define members with \"member Name\" or \"member Name : Role\".
+Connect them with \"Parent -> Child\".
+
+Example:
+  member CEO : \"Chief Executive\"
+  member CTO : \"Chief Technology\"
+  member Dev
+  CEO -> CTO
+  CTO -> Dev
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).expect("Failed to read stdin");
     match parse(&input) {

@@ -225,7 +225,30 @@ fn render_svg(scale: &Scale) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-scale - Render a comparative scale (horizontal bar chart) as SVG
+
+Usage: mdd-scale < input.scale
+
+Define items with \"item Label : value\". At least 2 items required.
+Values must be non-negative numbers.
+
+Optionally use \"unit\" to label the values.
+
+Example:
+  unit \"TB\"
+  item Production : 500
+  item Backup : 300
+  item Logs : 150
+  item Cache : 50
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

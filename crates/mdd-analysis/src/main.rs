@@ -636,7 +636,34 @@ fn render_waterfall(
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-analysis - Render a stacked-bar or waterfall chart as SVG
+
+Usage: mdd-analysis < input.analysis
+
+Start with \"type stacked-bar\" or \"type waterfall\".
+
+For stacked-bar, each bar line lists segments:
+  bar <label> : <segment> <value>, <segment> <value>, ...
+
+For waterfall, use item/subtotal lines:
+  item <label> : <value>
+  subtotal <label>
+
+Optional: color <name> : <text_color>, <bg_color>
+
+Example:
+  type stacked-bar
+  bar Q1 : Product A 300, Product B 200
+  bar Q2 : Product A 350, Product B 180
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

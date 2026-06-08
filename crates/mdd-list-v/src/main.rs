@@ -282,7 +282,27 @@ fn render_svg(list: &ListV) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-list-v - Render a vertical list as SVG
+
+Usage: mdd-list-v < input.list-v
+
+Ordered items:   N. \"<label>\" [: \"<description>\"]
+Unordered items: - \"<label>\" [: \"<description>\"]
+Ordered and unordered items can be mixed.
+
+Example:
+  1. \"Create account\" : \"Register with email\"
+  2. \"Initial setup\" : \"Configure profile\"
+  3. \"Invite team\" : \"Add members\"
+  4. \"Go live\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

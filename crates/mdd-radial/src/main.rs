@@ -204,7 +204,29 @@ fn render_svg(radial: &Radial) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-radial - Render a radial (hub-and-spoke) diagram as SVG
+
+Usage: mdd-radial < input.radial
+
+Use \"center\" to define the central node and \"spoke\" for each
+surrounding node. At least 2 spokes are required.
+Quoted strings are supported for the center label.
+
+Example:
+  center \"Marketing\"
+  spoke Product
+  spoke Price
+  spoke Place
+  spoke Promotion
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

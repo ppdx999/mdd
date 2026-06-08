@@ -421,7 +421,28 @@ fn escape_xml(s: &str) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-layer - Render a layer diagram as SVG
+
+Usage: mdd-layer < input.layer
+
+Each line defines a layer: layer <name> [: \"description\"] [color=#hex]
+Layers are stacked top to bottom. Group layers with:
+  group \"<name>\" { ... }
+Lines starting with # are comments.
+
+Example:
+  layer Presentation
+  layer Business Logic
+  layer Data Access
+  layer Database
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

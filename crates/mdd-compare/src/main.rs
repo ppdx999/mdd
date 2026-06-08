@@ -241,7 +241,32 @@ fn render_svg(compare: &Compare) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-compare - Render a side-by-side comparison as SVG
+
+Usage: mdd-compare < input.compare
+
+Define 2 or 3 option blocks, each with a label and bullet items.
+
+Example:
+  option \"Basic\" {
+    $9/month
+    10 GB storage
+    Email support
+  }
+  option \"Pro\" {
+    $29/month
+    100 GB storage
+    Chat + Email support
+  }
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

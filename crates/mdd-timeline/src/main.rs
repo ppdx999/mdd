@@ -404,7 +404,29 @@ fn wrap_text(s: &str, max_chars: usize) -> Vec<String> {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-timeline - Render a timeline diagram as SVG
+
+Usage: mdd-timeline < input.timeline
+
+Each line is an event in the format \"YYYY-MM-DD : label\".
+Events are sorted by date and placed along a horizontal axis.
+
+Use \"section Name\" to group events by color in a legend.
+
+Example:
+  2025-01-15 : Project start
+  2025-03-01 : Development
+  2025-06-01 : Beta release
+  2025-09-01 : Launch
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

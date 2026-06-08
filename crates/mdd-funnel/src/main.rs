@@ -380,7 +380,27 @@ fn format_value(v: f64) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-funnel - Render a funnel diagram as SVG
+
+Usage: mdd-funnel < input.funnel
+
+Each line defines a stage: \"stage Name\". Optionally add a numeric
+value with \" : value\" and/or a description with \" : \"text\"\".
+At least 2 stages are required. Widths are proportional to values.
+
+Example:
+  stage Awareness : \"Ads and social media\"
+  stage Interest : \"Site visits\"
+  stage Evaluation : \"Compare options\"
+  stage Purchase : \"Buy\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

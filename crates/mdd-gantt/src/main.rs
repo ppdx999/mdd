@@ -633,7 +633,29 @@ fn date_from_offset(offset: i64) -> Date {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-gantt - Render a Gantt chart as SVG
+
+Usage: mdd-gantt < input.gantt
+
+Set the time unit with \"unit day|week|month\" (default: week).
+Group tasks under \"section Name\". Each task line is:
+  TaskName : START, DURATION
+where START is YYYY-MM-DD or \"after OtherTask\", and DURATION
+uses a suffix: d (days), w (weeks), m (months).
+
+Example:
+  unit day
+  TaskA : 2025-01-06, 3d
+  TaskB : 2025-01-06, 5d
+  TaskC : after TaskA, 4d
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

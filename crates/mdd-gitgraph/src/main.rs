@@ -366,7 +366,30 @@ fn render_svg(graph: &GitGraph) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-gitgraph - Render a Git branch graph as SVG
+
+Usage: mdd-gitgraph < input.gitgraph
+
+Commands: commit \"message\", branch <name>, checkout <name>,
+merge <name>. Add tags with: commit \"msg\" tag \"v1.0\".
+Starts on the \"main\" branch by default.
+
+Example:
+  commit \"Initial commit\"
+  branch develop
+  checkout develop
+  commit \"Add feature\"
+  checkout main
+  merge develop
+  commit \"Release\" tag \"v1.0\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)

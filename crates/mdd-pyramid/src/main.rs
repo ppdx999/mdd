@@ -234,7 +234,28 @@ fn render_svg(pyramid: &Pyramid) -> String {
 // Main
 // ---------------------------------------------------------------------------
 
+const HELP: &str = "\
+mdd-pyramid - Render a pyramid diagram as SVG
+
+Usage: mdd-pyramid < input.pyramid
+
+Each line is a level from top to bottom. The first line is the peak.
+Add \" : description\" after a level name to show a description.
+At least 2 levels are required.
+
+Example:
+  Vision : \"Why we exist\"
+  Strategy : \"Long-term direction\"
+  Tactics : \"Quarterly plans\"
+  Execution : \"Daily operations\"
+";
+
 fn main() {
+    if std::env::args().any(|a| a == "--help" || a == "-h") {
+        eprint!("{}", HELP);
+        return;
+    }
+
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)
