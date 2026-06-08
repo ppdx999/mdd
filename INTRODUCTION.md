@@ -273,7 +273,6 @@ quadrant 4 : "軽減策検討"
 # どんな図が作れる？ — インフラ構成
 
 ```infra
-node ユーザー type=user
 node CDN type=cdn
 
 group "AWS" {
@@ -286,7 +285,6 @@ group "AWS" {
   }
 }
 
-ユーザー -> CDN : "HTTPS"
 CDN -> ALB
 ALB -> AP1
 ALB -> AP2
@@ -318,7 +316,7 @@ threats {
 }
 ```
 
-# どんな図が作れる？ — コード構成
+# どんな図が作れる？ — ディレクトリ構成
 
 ```dirtree
 backend/ : "バックエンド"
@@ -342,10 +340,37 @@ docker-compose.yml : "開発環境構成"
 
 このスライド自体が、ただの Markdown テキストから生成されています。
 
-```dirtree
-INTRODUCTION.md : "このファイル（テキスト）"
-  mdd slide/ : "変換コマンド"
-    output.pdf : "このスライド（PDF）"
+```code
+title "INTRODUCTION.md"
+---
+# MDD — Markdown with Diagrams
+
+ドキュメントに図を入れたい。でも、もっと簡単に。
+
+# 図の生成はすごく便利
+
+```usecase
+actor 顧客
+actor 管理者
+package "認証" {
+  usecase ログイン
+}
+顧客 -> ログイン
+```
+
+# MDDだと何が嬉しい
+
+```before-after
+before "既存ツール" {
+  レンダリングに数秒〜数十秒
+}
+after "MDD" {
+  1秒以下で生成
+}
+```
+
+# まとめ
+...
 ```
 
 # このスライドの作り方
@@ -373,6 +398,15 @@ item "スライドもMarkdownから" : "mdd slide で PDF エクスポート"
 
 # Try MDD
 
-```math
+## Mac/Linux
+
+```code
 curl -fsSL https://raw.githubusercontent.com/ppdx999/mdd/main/install.sh | sh
+```
+
+## Windows
+
+```code
+# Windows (PowerShell)
+iwr https://raw.githubusercontent.com/ppdx999/mdd/main/install.ps1 -useb | iex
 ```
