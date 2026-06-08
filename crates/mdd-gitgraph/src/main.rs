@@ -347,9 +347,9 @@ fn render_svg(graph: &GitGraph) -> String {
                 TAG_RADIUS,
                 color
             ));
-            // Tag icon (small label shape)
+            // Tag label
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"10\" font-weight=\"bold\" fill=\"{}\">\u{1F3F7} {}</text>",
+                "<text x=\"{}\" y=\"{}\" font-size=\"10\" font-weight=\"bold\" fill=\"{}\">{}</text>",
                 tag_x + 4.0,
                 cy + 4.0,
                 color,
