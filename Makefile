@@ -8,14 +8,18 @@ build:
 test:
 	cargo test
 
-install:
+INSTALL_DIR ?= $(HOME)/.local/bin
+
+install: build
+	@mkdir -p $(INSTALL_DIR)
 	@for crate in $(CRATES); do \
-		cargo install --path crates/$$crate; \
+		cp target/release/$$crate $(INSTALL_DIR)/; \
+		echo "  installed: $$crate"; \
 	done
 
 uninstall:
 	@for crate in $(CRATES); do \
-		cargo uninstall $$crate 2>/dev/null || true; \
+		rm -f $(INSTALL_DIR)/$$crate; \
 	done
 
 clean:

@@ -32,10 +32,15 @@ fn main() {
             let path = Path::new(&args[2]);
             slide::generate_slide(path);
         }
+        3 if args[1] == "slide-preview" => {
+            let path = Path::new(&args[2]);
+            slide::preview_slide(path);
+        }
         _ => {
             eprintln!("Usage: mdd <file.md>");
             eprintln!("       mdd preview <file.md>");
             eprintln!("       mdd slide <file.md> > output.pdf");
+            eprintln!("       mdd slide-preview <file.md>");
             eprintln!();
             eprintln!("For more information, visit https://github.com/ppdx999/mdd");
             std::process::exit(1);

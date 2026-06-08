@@ -316,16 +316,15 @@ fn build_pdf(pages: &[Page], scale: f64) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Public entry points
 // ---------------------------------------------------------------------------
 
-pub fn generate_slide(path: &Path) {
+fn build_slide_pdf(path: &Path) -> Vec<u8> {
     let input = std::fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("mdd: Failed to read {}: {}", path.display(), e);
         std::process::exit(1);
     });
 
-    // Process markdown through mdd first
     let processed = crate::process::process(&input, path).unwrap_or_else(|e| {
         eprintln!("mdd: {}", e);
         std::process::exit(1);
@@ -338,10 +337,50 @@ pub fn generate_slide(path: &Path) {
         std::process::exit(1);
     }
 
-    let scale = 2.0;
-    let pdf_bytes = build_pdf(&pages, scale);
+    build_pdf(&pages, 2.0)
+}
 
+pub fn generate_slide(path: &Path) {
+    let pdf_bytes = build_slide_pdf(path);
     std::io::stdout()
         .write_all(&pdf_bytes)
         .expect("Failed to write PDF");
+}
+
+pub fn preview_slide(path: &Path) {
+    use std::thread;
+    use std::time::Duration;
+
+    let pdf_path = path.with_extension("pdf");
+
+    let pdf_bytes = build_slide_pdf(path);
+    std::fs::write(&pdf_path, &pdf_bytes).unwrap_or_else(|e| {
+        eprintln!("mdd: Failed to write {}: {}", pdf_path.display(), e);
+        std::process::exit(1);
+    });
+    eprintln!("mdd: Built {}", pdf_path.display());
+
+    if let Err(e) = open::that(&pdf_path) {
+        eprintln!("mdd: Failed to open PDF viewer: {}", e);
+    }
+
+    let mut last_modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    eprintln!(
+        "mdd: Watching {} for changes... (Ctrl+C to stop)",
+        path.display()
+    );
+
+    loop {
+        thread::sleep(Duration::from_secs(1));
+        let current = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        if current != last_modified {
+            last_modified = current;
+            let pdf_bytes = build_slide_pdf(path);
+            if let Err(e) = std::fs::write(&pdf_path, &pdf_bytes) {
+                eprintln!("mdd: Failed to write {}: {}", pdf_path.display(), e);
+            } else {
+                eprintln!("mdd: Rebuilt {}", pdf_path.display());
+            }
+        }
+    }
 }
