@@ -350,8 +350,12 @@ fn layout_elements(
     // complexity considers both total size and edge density:
     // a group with 4 nodes and 8 edges (density=2) should be spacious
     let complexity = elements.len() as f64 + edge_count as f64 + edge_density * 8.0;
-    // complexity_factor: 1.0 for simple, up to 3.0 for dense
-    let complexity_factor = (1.0 + (complexity / 6.0).sqrt() * 0.4).min(3.0);
+    // complexity_factor: 0.8 for simple, up to 3.0 for dense
+    let complexity_factor = if complexity <= 8.0 {
+        0.8 + complexity * 0.025
+    } else {
+        (1.0 + (complexity / 6.0).sqrt() * 0.4).min(3.0)
+    };
     let gap_h = GROUP_INNER_GAP * complexity_factor;
     let gap_v = GROUP_INNER_GAP * complexity_factor * 1.3;
 
@@ -397,8 +401,9 @@ fn layout_elements(
             .iter()
             .map(|(w, h)| w.max(*h))
             .fold(0.0_f64, f64::max);
+        let base_spacing = (max_dim * 0.2).max(12.0) + elements.len() as f64 * 2.0;
         let config = Config {
-            vertex_spacing: ((max_dim * 0.3).max(20.0) + elements.len() as f64 * 3.0) * complexity_factor,
+            vertex_spacing: base_spacing * complexity_factor,
             ..Config::default()
         };
 
