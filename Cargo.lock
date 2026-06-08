@@ -558,6 +558,10 @@ name = "mdd-timeline"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-title"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-todo"
 version = "0.1.0"
 
