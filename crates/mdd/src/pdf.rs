@@ -199,7 +199,12 @@ fn build_page_svg(page: &Page) -> String {
 // ---------------------------------------------------------------------------
 
 fn render_svg_to_pixels(svg_data: &str, scale: f64) -> Option<(Vec<u8>, u32, u32)> {
-    let opts = resvg::usvg::Options::default();
+    let mut fontdb = resvg::usvg::fontdb::Database::new();
+    fontdb.load_system_fonts();
+    let opts = resvg::usvg::Options {
+        fontdb: std::sync::Arc::new(fontdb),
+        ..Default::default()
+    };
     let tree = resvg::usvg::Tree::from_str(svg_data, &opts).ok()?;
     let size = tree.size();
     let w = (size.width() as f64 * scale) as u32;
