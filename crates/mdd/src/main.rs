@@ -36,6 +36,8 @@ fn main() {
             eprintln!("Usage: mdd <file.md>");
             eprintln!("       mdd preview <file.md>");
             eprintln!("       mdd slide <file.md> > output.pdf");
+            eprintln!();
+            eprintln!("For more information, visit https://github.com/ppdx999/mdd");
             std::process::exit(1);
         }
     }
