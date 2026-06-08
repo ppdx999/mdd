@@ -1,7 +1,7 @@
 columns 3
-item "VS Code" : "コードエディタ"
-item "Git" : "バージョン管理"
-item "Docker" : "コンテナ化"
-item "Slack" : "コミュニケーション"
-item "Jira" : "プロジェクト管理"
-item "Figma" : "デザインツール"
+item "VS Code" { コードエディタ }
+item "Git" { バージョン管理 }
+item "Docker" { コンテナ化 }
+item "Slack" { コミュニケーション }
+item "Jira" { プロジェクト管理 }
+item "Figma" { デザインツール }

@@ -31,14 +31,30 @@ fn parse(input: &str) -> Result<Pyramid, String> {
             continue;
         }
 
-        // Name : "Description"
-        // Name
-        if let Some(colon_pos) = trimmed.find(" : ") {
-            let label = trimmed[..colon_pos].trim().to_string();
-            let desc_part = trimmed[colon_pos + 3..].trim();
-            let (desc, consumed) = parse_multiline_desc(desc_part, &lines, i)?;
-            i += consumed;
-            levels.push(Level { label, description: desc });
+        if let Some(brace_pos) = trimmed.find('{') {
+            let label = trimmed[..brace_pos].trim().to_string();
+            let after_brace = trimmed[brace_pos + 1..].trim();
+            if let Some(end) = after_brace.strip_suffix('}') {
+                levels.push(Level {
+                    label,
+                    description: vec![end.trim().to_string()],
+                });
+            } else {
+                let mut desc_lines = Vec::new();
+                if !after_brace.is_empty() {
+                    desc_lines.push(after_brace.to_string());
+                }
+                i += 1;
+                while i < lines.len() {
+                    let bl = lines[i].trim();
+                    if bl == "}" {
+                        break;
+                    }
+                    desc_lines.push(bl.to_string());
+                    i += 1;
+                }
+                levels.push(Level { label, description: desc_lines });
+            }
         } else {
             levels.push(Level {
                 label: trimmed.to_string(),
@@ -53,25 +69,6 @@ fn parse(input: &str) -> Result<Pyramid, String> {
     }
 
     Ok(Pyramid { levels })
-}
-
-fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
-    let content = start.strip_prefix('"').unwrap_or(start);
-    if let Some(end) = content.find('"') {
-        return Ok((vec![content[..end].to_string()], 0));
-    }
-    let mut desc_lines = vec![content.to_string()];
-    let mut extra = 0;
-    for j in (current + 1)..lines.len() {
-        extra += 1;
-        let line = lines[j].trim();
-        if line.ends_with('"') {
-            desc_lines.push(line[..line.len() - 1].to_string());
-            return Ok((desc_lines, extra));
-        }
-        desc_lines.push(line.to_string());
-    }
-    Err("Unterminated description (missing closing \")".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -240,14 +237,15 @@ mdd-pyramid - Render a pyramid diagram as SVG
 Usage: mdd-pyramid < input.pyramid
 
 Each line is a level from top to bottom. The first line is the peak.
-Add \" : description\" after a level name to show a description.
+Add a description with braces: Name { description }
+Multi-line descriptions use a block: Name {\\n  line1\\n  line2\\n}
 At least 2 levels are required.
 
 Example:
-  Vision : \"Why we exist\"
-  Strategy : \"Long-term direction\"
-  Tactics : \"Quarterly plans\"
-  Execution : \"Daily operations\"
+  Vision { Why we exist }
+  Strategy { Long-term direction }
+  Tactics { Quarterly plans }
+  Execution { Daily operations }
 ";
 
 fn main() {
@@ -293,11 +291,11 @@ mod tests {
 
     #[test]
     fn parse_with_desc() {
-        let input = r#"
-Strategy : "Long-term direction"
-Tactics : "Quarterly plans"
-Operations : "Daily execution"
-"#;
+        let input = "\
+Strategy { Long-term direction }
+Tactics { Quarterly plans }
+Operations { Daily execution }
+";
         let p = parse(input).unwrap();
         assert_eq!(p.levels.len(), 3);
         assert_eq!(p.levels[0].label, "Strategy");
@@ -308,7 +306,7 @@ Operations : "Daily execution"
 
     #[test]
     fn parse_multiline_desc() {
-        let input = "Top : \"Line one\nLine two\"\nBottom\n";
+        let input = "Top {\n  Line one\n  Line two\n}\nBottom\n";
         let p = parse(input).unwrap();
         assert_eq!(p.levels[0].description, vec!["Line one", "Line two"]);
         assert!(p.levels[1].description.is_empty());

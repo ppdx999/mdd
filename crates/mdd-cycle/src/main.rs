@@ -31,13 +31,33 @@ fn parse(input: &str) -> Result<Diagram, String> {
             continue;
         }
 
-        if let Some((label, desc_part)) = trimmed.split_once(" : ") {
-            let (desc, consumed) = parse_multiline_desc(desc_part.trim(), &lines, i)?;
-            i += consumed;
-            steps.push(Step {
-                name: label.trim().to_string(),
-                description: desc,
-            });
+        if let Some(brace_pos) = trimmed.find('{') {
+            let name = trimmed[..brace_pos].trim().to_string();
+            let after_brace = trimmed[brace_pos + 1..].trim();
+            if let Some(end) = after_brace.strip_suffix('}') {
+                steps.push(Step {
+                    name,
+                    description: vec![end.trim().to_string()],
+                });
+            } else {
+                let mut desc_lines = Vec::new();
+                if !after_brace.is_empty() {
+                    desc_lines.push(after_brace.to_string());
+                }
+                i += 1;
+                while i < lines.len() {
+                    let bl = lines[i].trim();
+                    if bl == "}" {
+                        break;
+                    }
+                    desc_lines.push(bl.to_string());
+                    i += 1;
+                }
+                steps.push(Step {
+                    name,
+                    description: desc_lines,
+                });
+            }
         } else {
             steps.push(Step {
                 name: trimmed.to_string(),
@@ -52,25 +72,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     }
 
     Ok(Diagram { steps })
-}
-
-fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
-    let content = start.strip_prefix('"').unwrap_or(start);
-    if let Some(end) = content.find('"') {
-        return Ok((vec![content[..end].to_string()], 0));
-    }
-    let mut desc_lines = vec![content.to_string()];
-    let mut extra = 0;
-    for j in (current + 1)..lines.len() {
-        extra += 1;
-        let line = lines[j].trim();
-        if line.ends_with('"') {
-            desc_lines.push(line[..line.len() - 1].to_string());
-            return Ok((desc_lines, extra));
-        }
-        desc_lines.push(line.to_string());
-    }
-    Err("Unterminated description (missing closing \")".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -348,8 +349,8 @@ Usage: mdd-cycle < input.cycle
 Each line is a step in the cycle. Steps are connected in order,
 with the last step looping back to the first.
 
-Use \" : description\" after a step name to add a description.
-Multi-line descriptions continue on indented lines.
+Add a description with braces: Name { description }
+Multi-line descriptions use a block: Name {\\n  line1\\n  line2\\n}
 
 Example:
   Plan
@@ -446,7 +447,7 @@ mod tests {
 
     #[test]
     fn parse_with_description() {
-        let input = "A : \"Do thing\"\nB\n";
+        let input = "A { Do thing }\nB\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].description, vec!["Do thing"]);
         assert!(d.steps[1].description.is_empty());
@@ -454,7 +455,7 @@ mod tests {
 
     #[test]
     fn parse_multiline_description() {
-        let input = "A : \"Line one\nLine two\"\nB\n";
+        let input = "A {\n  Line one\n  Line two\n}\nB\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].description, vec!["Line one", "Line two"]);
     }

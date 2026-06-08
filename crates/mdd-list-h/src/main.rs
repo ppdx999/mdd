@@ -21,18 +21,22 @@ struct ListH {
 
 fn parse(input: &str) -> Result<ListH, String> {
     let mut cards: Vec<Card> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let trimmed = line.trim();
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
         if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
-        // card "Label" : "Description" or card "Label"
+        // card "Label" { description } or card "Label"
         if trimmed.starts_with("card ") {
             let rest = trimmed.strip_prefix("card ").unwrap().trim();
-            let card = parse_card(rest)?;
+            let (card, consumed) = parse_card(rest, &lines, i)?;
             cards.push(card);
+            i += 1 + consumed;
             continue;
         }
 
@@ -46,8 +50,8 @@ fn parse(input: &str) -> Result<ListH, String> {
     Ok(ListH { cards })
 }
 
-fn parse_card(s: &str) -> Result<Card, String> {
-    // Expect "Label" or "Label" : "Description"
+fn parse_card(s: &str, lines: &[&str], current: usize) -> Result<(Card, usize), String> {
+    // Expect "Label" or "Label" { description }
     if !s.starts_with('"') {
         return Err(format!("Expected quoted label: {}", s));
     }
@@ -59,32 +63,43 @@ fn parse_card(s: &str) -> Result<Card, String> {
     let rest = s[end_quote + 2..].trim();
 
     if rest.is_empty() {
-        return Ok(Card {
+        return Ok((Card {
             label,
             description: Vec::new(),
-        });
+        }, 0));
     }
 
-    // Expect : "Description" — split on | for multi-line
-    if rest.starts_with(':') {
-        let after_colon = rest[1..].trim();
-        let desc_text = strip_quotes(after_colon);
-        let desc: Vec<String> = desc_text.split('|').map(|s| s.trim().to_string()).collect();
-        return Ok(Card {
-            label,
-            description: desc,
-        });
+    // Expect { description }
+    if rest.starts_with('{') {
+        let after_brace = rest[1..].trim();
+        // Single-line: "Label" { desc }
+        if let Some(end) = after_brace.strip_suffix('}') {
+            let desc_text = end.trim();
+            let desc: Vec<String> = if desc_text.is_empty() {
+                Vec::new()
+            } else {
+                vec![desc_text.to_string()]
+            };
+            return Ok((Card { label, description: desc }, 0));
+        }
+        // Multi-line block
+        let mut desc_lines = Vec::new();
+        if !after_brace.is_empty() {
+            desc_lines.push(after_brace.to_string());
+        }
+        let mut extra = 0;
+        for j in (current + 1)..lines.len() {
+            extra += 1;
+            let bl = lines[j].trim();
+            if bl == "}" {
+                break;
+            }
+            desc_lines.push(bl.to_string());
+        }
+        return Ok((Card { label, description: desc_lines }, extra));
     }
 
     Err(format!("Unexpected content after card label: {}", rest))
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -242,15 +257,19 @@ mdd-list-h - Render a horizontal card list as SVG
 
 Usage: mdd-list-h < input.list-h
 
-Each card is: card \"<label>\" [: \"<description>\"]
-Use \"|\" inside the description for multi-line text.
+Each card is: card \"<label>\" [{ <description> }]
+Multi-line descriptions use a block:
+  card \"Label\" {
+    line1
+    line2
+  }
 At least 2 cards are required.
 
 Example:
-  card \"Challenge\" : \"Embrace failure\"
-  card \"Integrity\" : \"Stay honest\"
-  card \"Teamwork\" : \"Achieve together\"
-  card \"Growth\" : \"Keep learning\"
+  card \"Challenge\" { Embrace failure }
+  card \"Integrity\" { Stay honest }
+  card \"Teamwork\" { Achieve together }
+  card \"Growth\" { Keep learning }
 ";
 
 fn main() {
@@ -298,8 +317,8 @@ card "B"
     #[test]
     fn parse_with_desc() {
         let input = r#"
-card "Alpha" : "First letter"
-card "Beta" : "Second letter"
+card "Alpha" { First letter }
+card "Beta" { Second letter }
 "#;
         let list = parse(input).unwrap();
         assert_eq!(list.cards.len(), 2);
@@ -307,6 +326,14 @@ card "Beta" : "Second letter"
         assert_eq!(list.cards[0].description, vec!["First letter"]);
         assert_eq!(list.cards[1].label, "Beta");
         assert_eq!(list.cards[1].description, vec!["Second letter"]);
+    }
+
+    #[test]
+    fn parse_multiline_desc() {
+        let input = "card \"Alpha\" {\n  Line one\n  Line two\n}\ncard \"Beta\"\n";
+        let list = parse(input).unwrap();
+        assert_eq!(list.cards[0].label, "Alpha");
+        assert_eq!(list.cards[0].description, vec!["Line one", "Line two"]);
     }
 
     #[test]

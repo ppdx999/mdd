@@ -22,25 +22,30 @@ struct ListV {
 
 fn parse(input: &str) -> Result<ListV, String> {
     let mut items: Vec<ListItem> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let trimmed = line.trim();
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
         if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
-        // 1. "Label" : "Description" or 1. "Label" (ordered item, number is ignored)
+        // 1. "Label" { description } or 1. "Label" (ordered item, number is ignored)
         if let Some(rest) = strip_ordered_prefix(trimmed) {
-            let (label, description) = parse_item(rest)?;
+            let (label, description, consumed) = parse_item(rest, &lines, i)?;
             items.push(ListItem { label, description, ordered: true });
+            i += 1 + consumed;
             continue;
         }
 
-        // - "Label" : "Description" or - "Label"
+        // - "Label" { description } or - "Label"
         if trimmed.starts_with("- ") {
             let rest = trimmed.strip_prefix("- ").unwrap().trim();
-            let (label, description) = parse_item(rest)?;
+            let (label, description, consumed) = parse_item(rest, &lines, i)?;
             items.push(ListItem { label, description, ordered: false });
+            i += 1 + consumed;
             continue;
         }
 
@@ -67,7 +72,7 @@ fn strip_ordered_prefix(s: &str) -> Option<&str> {
     after_digits.strip_prefix(". ").map(|r| r.trim())
 }
 
-fn parse_item(s: &str) -> Result<(String, Option<String>), String> {
+fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Option<String>, usize), String> {
     let s = s.trim();
     if !s.starts_with('"') {
         return Err(format!("Expected quoted label, got: {}", s));
@@ -80,27 +85,41 @@ fn parse_item(s: &str) -> Result<(String, Option<String>), String> {
     let rest = s[end_quote + 2..].trim();
 
     if rest.is_empty() {
-        return Ok((label, None));
+        return Ok((label, None, 0));
     }
 
-    if rest.starts_with(':') {
-        let desc_part = rest[1..].trim();
-        let desc = strip_quotes(desc_part).to_string();
-        if desc.is_empty() {
-            return Ok((label, None));
+    if rest.starts_with('{') {
+        let after_brace = rest[1..].trim();
+        // Single-line: "Label" { desc }
+        if let Some(end) = after_brace.strip_suffix('}') {
+            let desc = end.trim().to_string();
+            if desc.is_empty() {
+                return Ok((label, None, 0));
+            }
+            return Ok((label, Some(desc), 0));
         }
-        return Ok((label, Some(desc)));
+        // Multi-line block
+        let mut desc_lines = Vec::new();
+        if !after_brace.is_empty() {
+            desc_lines.push(after_brace.to_string());
+        }
+        let mut extra = 0;
+        for j in (current + 1)..lines.len() {
+            extra += 1;
+            let bl = lines[j].trim();
+            if bl == "}" {
+                break;
+            }
+            desc_lines.push(bl.to_string());
+        }
+        let desc = desc_lines.join("\n");
+        if desc.is_empty() {
+            return Ok((label, None, extra));
+        }
+        return Ok((label, Some(desc), extra));
     }
 
-    Err(format!("Expected ':' after label, got: {}", rest))
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
+    Err(format!("Expected '{{' after label, got: {}", rest))
 }
 
 // ---------------------------------------------------------------------------
@@ -287,14 +306,20 @@ mdd-list-v - Render a vertical list as SVG
 
 Usage: mdd-list-v < input.list-v
 
-Ordered items:   N. \"<label>\" [: \"<description>\"]
-Unordered items: - \"<label>\" [: \"<description>\"]
+Ordered items:   N. \"<label>\" [{ <description> }]
+Unordered items: - \"<label>\" [{ <description> }]
 Ordered and unordered items can be mixed.
 
+Multi-line descriptions use a block:
+  1. \"Label\" {
+    line1
+    line2
+  }
+
 Example:
-  1. \"Create account\" : \"Register with email\"
-  2. \"Initial setup\" : \"Configure profile\"
-  3. \"Invite team\" : \"Add members\"
+  1. \"Create account\" { Register with email }
+  2. \"Initial setup\" { Configure profile }
+  3. \"Invite team\" { Add members }
   4. \"Go live\"
 ";
 
@@ -343,8 +368,8 @@ mod tests {
     #[test]
     fn parse_with_desc() {
         let input = r#"
-1. "Label" : "Description"
-2. "Other" : "Details"
+1. "Label" { Description }
+2. "Other" { Details }
 "#;
         let list = parse(input).unwrap();
         assert_eq!(list.items.len(), 2);
@@ -352,6 +377,14 @@ mod tests {
         assert_eq!(list.items[0].description.as_deref(), Some("Description"));
         assert_eq!(list.items[1].label, "Other");
         assert_eq!(list.items[1].description.as_deref(), Some("Details"));
+    }
+
+    #[test]
+    fn parse_multiline_desc() {
+        let input = "1. \"Label\" {\n  line one\n  line two\n}\n";
+        let list = parse(input).unwrap();
+        assert_eq!(list.items[0].label, "Label");
+        assert_eq!(list.items[0].description.as_deref(), Some("line one\nline two"));
     }
 
     #[test]
@@ -375,7 +408,7 @@ mod tests {
     #[test]
     fn parse_mixed_items() {
         let input = r#"
-1. "With Desc" : "Some description"
+1. "With Desc" { Some description }
 2. "Without Desc"
 "#;
         let list = parse(input).unwrap();
@@ -401,7 +434,7 @@ mod tests {
     #[test]
     fn parse_unordered_with_desc() {
         let input = r#"
-- "Feature" : "Some detail"
+- "Feature" { Some detail }
 - "Other"
 "#;
         let list = parse(input).unwrap();

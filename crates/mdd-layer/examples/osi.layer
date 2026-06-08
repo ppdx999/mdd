@@ -1,7 +1,7 @@
-layer アプリケーション層 : "HTTP, FTP, SMTP"
-layer プレゼンテーション層 : "SSL/TLS, JPEG, ASCII"
-layer セッション層 : "NetBIOS, RPC"
-layer トランスポート層 : "TCP, UDP"
-layer ネットワーク層 : "IP, ICMP, ARP"
-layer データリンク層 : "Ethernet, Wi-Fi"
-layer 物理層 : "電気信号, 光ファイバー"
+layer アプリケーション層 { HTTP, FTP, SMTP }
+layer プレゼンテーション層 { SSL/TLS, JPEG, ASCII }
+layer セッション層 { NetBIOS, RPC }
+layer トランスポート層 { TCP, UDP }
+layer ネットワーク層 { IP, ICMP, ARP }
+layer データリンク層 { Ethernet, Wi-Fi }
+layer 物理層 { 電気信号, 光ファイバー }

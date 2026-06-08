@@ -33,19 +33,40 @@ fn parse(input: &str) -> Result<TodoList, String> {
         }
 
         // [x] done item  OR  [ ] pending item
-        // with optional description: [x] Label : "desc"
+        // with optional description: [x] Label { desc }
         if trimmed.starts_with("[x] ") || trimmed.starts_with("[ ] ") {
             let done = trimmed.starts_with("[x]");
             let rest = trimmed[4..].trim();
 
-            if let Some((label, desc_part)) = rest.split_once(" : ") {
-                let (desc, consumed) = parse_multiline_desc(desc_part.trim(), &lines, i)?;
-                i += consumed;
-                items.push(Item {
-                    text: label.trim().to_string(),
-                    done,
-                    description: desc,
-                });
+            if let Some(brace_pos) = rest.find('{') {
+                let label = rest[..brace_pos].trim().to_string();
+                let after_brace = rest[brace_pos + 1..].trim();
+                if let Some(end) = after_brace.strip_suffix('}') {
+                    items.push(Item {
+                        text: label,
+                        done,
+                        description: vec![end.trim().to_string()],
+                    });
+                } else {
+                    let mut desc_lines = Vec::new();
+                    if !after_brace.is_empty() {
+                        desc_lines.push(after_brace.to_string());
+                    }
+                    i += 1;
+                    while i < lines.len() {
+                        let bl = lines[i].trim();
+                        if bl == "}" {
+                            break;
+                        }
+                        desc_lines.push(bl.to_string());
+                        i += 1;
+                    }
+                    items.push(Item {
+                        text: label,
+                        done,
+                        description: desc_lines,
+                    });
+                }
             } else {
                 items.push(Item {
                     text: rest.to_string(),
@@ -65,25 +86,6 @@ fn parse(input: &str) -> Result<TodoList, String> {
     }
 
     Ok(TodoList { items })
-}
-
-fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
-    let content = start.strip_prefix('"').unwrap_or(start);
-    if let Some(end) = content.find('"') {
-        return Ok((vec![content[..end].to_string()], 0));
-    }
-    let mut desc_lines = vec![content.to_string()];
-    let mut extra = 0;
-    for j in (current + 1)..lines.len() {
-        extra += 1;
-        let line = lines[j].trim();
-        if line.ends_with('"') {
-            desc_lines.push(line[..line.len() - 1].to_string());
-            return Ok((desc_lines, extra));
-        }
-        desc_lines.push(line.to_string());
-    }
-    Err("Unterminated description (missing closing \")".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -267,8 +269,8 @@ mdd-todo - Render a todo/checklist as SVG
 Usage: mdd-todo < input.todo
 
 Each line is a task prefixed with [x] (done) or [ ] (pending).
-Use \" : description\" after a task name to add a description.
-Multi-line descriptions continue on indented lines.
+Add a description with braces: [x] Task { description }
+Multi-line descriptions use a block: [ ] Task {\\n  line1\\n  line2\\n}
 
 Example:
   [x] Requirements
@@ -321,7 +323,7 @@ mod tests {
 
     #[test]
     fn parse_with_description() {
-        let input = "[ ] Task A : \"Details here\"\n[ ] Task B\n";
+        let input = "[ ] Task A { Details here }\n[ ] Task B\n";
         let t = parse(input).unwrap();
         assert_eq!(t.items[0].description, vec!["Details here"]);
         assert!(t.items[1].description.is_empty());
@@ -329,7 +331,7 @@ mod tests {
 
     #[test]
     fn parse_multiline_description() {
-        let input = "[ ] Task A : \"Line one\nLine two\"\n[ ] Task B\n";
+        let input = "[ ] Task A {\n  Line one\n  Line two\n}\n[ ] Task B\n";
         let t = parse(input).unwrap();
         assert_eq!(t.items[0].description, vec!["Line one", "Line two"]);
     }

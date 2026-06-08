@@ -23,10 +23,13 @@ struct ListGrid {
 fn parse(input: &str) -> Result<ListGrid, String> {
     let mut columns: usize = DEFAULT_COLUMNS;
     let mut items: Vec<GridItem> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let trimmed = line.trim();
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
         if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
@@ -39,14 +42,16 @@ fn parse(input: &str) -> Result<ListGrid, String> {
             if columns == 0 {
                 return Err("columns must be at least 1".to_string());
             }
+            i += 1;
             continue;
         }
 
-        // item "Label" : "Description" or item "Label"
+        // item "Label" { description } or item "Label"
         if trimmed.starts_with("item ") {
             let rest = trimmed.strip_prefix("item ").unwrap().trim();
-            let item = parse_item(rest)?;
+            let (item, consumed) = parse_item(rest, &lines, i)?;
             items.push(item);
+            i += 1 + consumed;
             continue;
         }
 
@@ -63,8 +68,8 @@ fn parse(input: &str) -> Result<ListGrid, String> {
     })
 }
 
-fn parse_item(s: &str) -> Result<GridItem, String> {
-    // item "Label" : "Description" or item "Label"
+fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(GridItem, usize), String> {
+    // item "Label" { description } or item "Label"
     if !s.starts_with('"') {
         return Err(format!("Expected quoted label, got: {}", s));
     }
@@ -76,31 +81,45 @@ fn parse_item(s: &str) -> Result<GridItem, String> {
     let rest = s[end_quote + 2..].trim();
 
     if rest.is_empty() {
-        return Ok(GridItem {
+        return Ok((GridItem {
             label,
             description: None,
-        });
+        }, 0));
     }
 
-    // expect : "Description"
-    if rest.starts_with(':') {
-        let desc_part = rest[1..].trim();
-        let desc = strip_quotes(desc_part).to_string();
-        return Ok(GridItem {
-            label,
-            description: Some(desc),
-        });
+    // expect { description }
+    if rest.starts_with('{') {
+        let after_brace = rest[1..].trim();
+        // Single-line: "Label" { desc }
+        if let Some(end) = after_brace.strip_suffix('}') {
+            let desc = end.trim().to_string();
+            if desc.is_empty() {
+                return Ok((GridItem { label, description: None }, 0));
+            }
+            return Ok((GridItem { label, description: Some(desc) }, 0));
+        }
+        // Multi-line block
+        let mut desc_lines = Vec::new();
+        if !after_brace.is_empty() {
+            desc_lines.push(after_brace.to_string());
+        }
+        let mut extra = 0;
+        for j in (current + 1)..lines.len() {
+            extra += 1;
+            let bl = lines[j].trim();
+            if bl == "}" {
+                break;
+            }
+            desc_lines.push(bl.to_string());
+        }
+        let desc = desc_lines.join("\n");
+        if desc.is_empty() {
+            return Ok((GridItem { label, description: None }, extra));
+        }
+        return Ok((GridItem { label, description: Some(desc) }, extra));
     }
 
     Err(format!("Unexpected content after label: {}", rest))
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -261,14 +280,20 @@ Usage: mdd-list-grid < input.list-grid
 
 Optionally set the number of columns (default 3):
   columns <N>
-Each item is: item \"<label>\" [: \"<description>\"]
+Each item is: item \"<label>\" [{ <description> }]
+
+Multi-line descriptions use a block:
+  item \"Label\" {
+    line1
+    line2
+  }
 
 Example:
   columns 2
-  item \"VS Code\" : \"Code editor\"
-  item \"Git\" : \"Version control\"
-  item \"Docker\" : \"Containers\"
-  item \"Slack\" : \"Communication\"
+  item \"VS Code\" { Code editor }
+  item \"Git\" { Version control }
+  item \"Docker\" { Containers }
+  item \"Slack\" { Communication }
 ";
 
 fn main() {
@@ -303,8 +328,8 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-item "A" : "desc A"
-item "B" : "desc B"
+item "A" { desc A }
+item "B" { desc B }
 item "C"
 "#;
         let g = parse(input).unwrap();
@@ -320,7 +345,7 @@ item "C"
     fn parse_with_columns() {
         let input = r#"
 columns 2
-item "X" : "foo"
+item "X" { foo }
 item "Y"
 "#;
         let g = parse(input).unwrap();
@@ -329,9 +354,16 @@ item "Y"
     }
 
     #[test]
+    fn parse_multiline_desc() {
+        let input = "item \"X\" {\n  line one\n  line two\n}\nitem \"Y\"\n";
+        let g = parse(input).unwrap();
+        assert_eq!(g.items[0].description.as_deref(), Some("line one\nline two"));
+    }
+
+    #[test]
     fn render_produces_svg() {
         let input = r#"
-item "A" : "desc"
+item "A" { desc }
 item "B"
 "#;
         let g = parse(input).unwrap();

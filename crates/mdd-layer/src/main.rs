@@ -94,8 +94,8 @@ fn parse_items(lines: &[&str], start: usize, in_group: bool) -> Result<(Vec<Item
 }
 
 fn parse_layer(rest: &str, lines: &[&str], current: usize) -> Result<(Layer, usize), String> {
-    // layer Name : "description" color=#xxx
-    // layer Name : "description"
+    // layer Name { description } color=#xxx
+    // layer Name { description }
     // layer Name color=#xxx
     // layer Name
 
@@ -106,42 +106,51 @@ fn parse_layer(rest: &str, lines: &[&str], current: usize) -> Result<(Layer, usi
         (rest.trim(), String::new())
     };
 
-    let (name, description, consumed) = if let Some((n, d)) = main_part.split_once(" : ") {
-        let d = d.trim();
-        if d.starts_with('"') {
-            let (desc, consumed) = parse_multiline_desc(d, lines, current)?;
-            (n.trim().to_string(), desc, consumed)
-        } else {
-            (n.trim().to_string(), vec![d.to_string()], 0)
-        }
-    } else {
-        (main_part.to_string(), Vec::new(), 0)
-    };
+    // Check for { description } syntax
+    if let Some(brace_pos) = main_part.find('{') {
+        let name = main_part[..brace_pos].trim().to_string();
+        let after_brace = main_part[brace_pos + 1..].trim();
 
+        // Single-line: Name { desc }
+        if let Some(end) = after_brace.strip_suffix('}') {
+            let desc_text = end.trim();
+            let description = if desc_text.is_empty() {
+                Vec::new()
+            } else {
+                vec![desc_text.to_string()]
+            };
+            if name.is_empty() {
+                return Err("Layer name cannot be empty".to_string());
+            }
+            return Ok((Layer { name, description, color }, 0));
+        }
+
+        // Multi-line block
+        let mut desc_lines = Vec::new();
+        if !after_brace.is_empty() {
+            desc_lines.push(after_brace.to_string());
+        }
+        let mut extra = 0;
+        for j in (current + 1)..lines.len() {
+            extra += 1;
+            let bl = lines[j].trim();
+            if bl == "}" {
+                break;
+            }
+            desc_lines.push(bl.to_string());
+        }
+        if name.is_empty() {
+            return Err("Layer name cannot be empty".to_string());
+        }
+        return Ok((Layer { name, description: desc_lines, color }, extra));
+    }
+
+    // No description
+    let name = main_part.to_string();
     if name.is_empty() {
         return Err("Layer name cannot be empty".to_string());
     }
-
-    Ok((Layer { name, description, color }, consumed))
-}
-
-fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
-    let content = start.strip_prefix('"').unwrap_or(start);
-    if let Some(end) = content.find('"') {
-        return Ok((vec![content[..end].to_string()], 0));
-    }
-    let mut desc_lines = vec![content.to_string()];
-    let mut extra = 0;
-    for j in (current + 1)..lines.len() {
-        extra += 1;
-        let line = lines[j].trim();
-        if line.ends_with('"') {
-            desc_lines.push(line[..line.len() - 1].to_string());
-            return Ok((desc_lines, extra));
-        }
-        desc_lines.push(line.to_string());
-    }
-    Err("Unterminated description (missing closing \")".to_string())
+    Ok((Layer { name, description: Vec::new(), color }, 0))
 }
 
 fn extract_quoted(s: &str) -> Option<String> {
@@ -426,7 +435,12 @@ mdd-layer - Render a layer diagram as SVG
 
 Usage: mdd-layer < input.layer
 
-Each line defines a layer: layer <name> [: \"description\"] [color=#hex]
+Each line defines a layer: layer <name> [{ description }] [color=#hex]
+Multi-line descriptions use a block:
+  layer Name {
+    line1
+    line2
+  }
 Layers are stacked top to bottom. Group layers with:
   group \"<name>\" { ... }
 Lines starting with # are comments.
@@ -484,7 +498,7 @@ mod tests {
 
     #[test]
     fn parse_layer_with_description() {
-        let input = "layer UI : \"Controllers, Views\"\n";
+        let input = "layer UI { Controllers, Views }\n";
         let d = parse(input).unwrap();
         match &d.items[0] {
             Item::Layer(l) => {
@@ -497,7 +511,7 @@ mod tests {
 
     #[test]
     fn parse_multiline_description() {
-        let input = "layer UI : \"Controllers\nViews\nHelpers\"\n";
+        let input = "layer UI {\n  Controllers\n  Views\n  Helpers\n}\n";
         let d = parse(input).unwrap();
         match &d.items[0] {
             Item::Layer(l) => {
@@ -514,6 +528,20 @@ mod tests {
         match &d.items[0] {
             Item::Layer(l) => {
                 assert_eq!(l.name, "DB");
+                assert_eq!(l.color, "#e0f7fa");
+            }
+            _ => panic!("Expected Layer"),
+        }
+    }
+
+    #[test]
+    fn parse_layer_with_desc_and_color() {
+        let input = "layer DB { PostgreSQL } color=#e0f7fa\n";
+        let d = parse(input).unwrap();
+        match &d.items[0] {
+            Item::Layer(l) => {
+                assert_eq!(l.name, "DB");
+                assert_eq!(l.description, vec!["PostgreSQL"]);
                 assert_eq!(l.color, "#e0f7fa");
             }
             _ => panic!("Expected Layer"),
