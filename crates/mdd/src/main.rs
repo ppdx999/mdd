@@ -6,8 +6,53 @@ mod slide;
 use std::fs;
 use std::path::Path;
 
+fn find_plugins() -> Vec<String> {
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let mut plugins: Vec<String> = Vec::new();
+
+    for dir in std::env::split_paths(&path_var) {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("mdd-") && !plugins.contains(&name) {
+                    plugins.push(name);
+                }
+            }
+        }
+    }
+
+    plugins.sort();
+    plugins
+}
+
+fn print_help() {
+    eprintln!("Usage: mdd <file.md>");
+    eprintln!("       mdd preview <file.md>");
+    eprintln!("       mdd slide <file.md> > output.pdf");
+    eprintln!("       mdd slide-preview <file.md>");
+    eprintln!();
+
+    let plugins = find_plugins();
+    if !plugins.is_empty() {
+        eprintln!("Installed plugins ({}):", plugins.len());
+        for name in &plugins {
+            eprintln!("  {}", name);
+        }
+        eprintln!();
+        eprintln!("Run `<plugin> --help` for plugin-specific DSL syntax.");
+    }
+
+    eprintln!();
+    eprintln!("For more information, visit https://github.com/ppdx999/mdd");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return;
+    }
 
     match args.len() {
         2 => {
@@ -37,12 +82,7 @@ fn main() {
             slide::preview_slide(path);
         }
         _ => {
-            eprintln!("Usage: mdd <file.md>");
-            eprintln!("       mdd preview <file.md>");
-            eprintln!("       mdd slide <file.md> > output.pdf");
-            eprintln!("       mdd slide-preview <file.md>");
-            eprintln!();
-            eprintln!("For more information, visit https://github.com/ppdx999/mdd");
+            print_help();
             std::process::exit(1);
         }
     }
