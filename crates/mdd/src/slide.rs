@@ -299,7 +299,7 @@ fn build_pdf(pages: &[Page], scale: f64) -> Vec<u8> {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-pub fn generate_pdf(path: &Path) {
+pub fn generate_slide(path: &Path) {
     let input = std::fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("mdd: Failed to read {}: {}", path.display(), e);
         std::process::exit(1);
@@ -314,7 +314,7 @@ pub fn generate_pdf(path: &Path) {
     let pages = split_pages(&processed);
 
     if pages.is_empty() {
-        eprintln!("mdd: No pages found (use '# Title' to create pages)");
+        eprintln!("mdd: No slides found (use '# Title' to create slides)");
         std::process::exit(1);
     }
 

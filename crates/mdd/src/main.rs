@@ -1,7 +1,7 @@
-mod pdf;
 mod plugin;
 mod preview;
 pub(crate) mod process;
+mod slide;
 
 use std::fs;
 use std::path::Path;
@@ -28,14 +28,14 @@ fn main() {
             let path = Path::new(&args[2]);
             preview::preview(path);
         }
-        3 if args[1] == "pdf" => {
+        3 if args[1] == "slide" => {
             let path = Path::new(&args[2]);
-            pdf::generate_pdf(path);
+            slide::generate_slide(path);
         }
         _ => {
             eprintln!("Usage: mdd <file.md>");
             eprintln!("       mdd preview <file.md>");
-            eprintln!("       mdd pdf <file.md> > output.pdf");
+            eprintln!("       mdd slide <file.md> > output.pdf");
             std::process::exit(1);
         }
     }
