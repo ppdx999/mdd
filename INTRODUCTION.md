@@ -44,7 +44,9 @@ license MIT
 
 # MDD とは？
 
-テキストからいい感じに図を作ってくれるやつ
+テキストからいい感じに図を作ってくれるコマンド
+
+## 例)
 
 ```code
 lang usecase
@@ -64,7 +66,7 @@ Admin -> Logout
 
 ```arrow
 direction down
-label "mdd-usecase"
+label "これをmddが変換すると..."
 ```
 
 ```usecase
@@ -95,13 +97,22 @@ step 共有 : "Git管理
 ```
 
 
-# MDD の3つの強み
+# MDDだと何が嬉しい
 
-```list-h
-title "Why MDD?"
-card "爆速生成" : "1秒以下でSVG生成 | AIの待ち時間ゼロ"
-card "トークン節約" : "テキストDSLだから | AIの入出力が最小限"
-card "100%カスタマイズ" : "プラグインはただのCLI | 自作も簡単"
+```before-after
+before "既存ツール" {
+  レンダリングに数秒〜数十秒
+  バイナリで差分管理不可
+  AIのトークン消費が大きい
+  GUIだからAIが操作できない
+}
+
+after "MDD" {
+  1秒以下で生成
+  テキストだからGit管理
+  トークン消費は最小限
+  プラグインは100%カスタマイズ可能
+}
 ```
 
 # 強み① 爆速生成
