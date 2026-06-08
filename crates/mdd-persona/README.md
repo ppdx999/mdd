@@ -11,7 +11,6 @@ cat input.persona | mdd-persona > output.svg
 ## 入力形式
 
 ```
-title "タイトル"
 actor 名前
 actor 名前 : ラベル
 actor 名前 : "吹き出しテキスト"

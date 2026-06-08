@@ -11,7 +11,6 @@ cat input.kanban | mdd-kanban > output.svg
 ## 入力形式
 
 ```
-title "Sprint 3"
 column Todo
 card タスク名
 card タスク名 : "ラベル"

@@ -13,7 +13,6 @@ cat input.swot | mdd-swot > output.svg
 ## 入力形式
 
 ```
-title "タイトル"
 strengths {
   項目1
   項目2

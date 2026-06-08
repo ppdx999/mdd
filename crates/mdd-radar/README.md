@@ -11,7 +11,6 @@ cat input.radar | mdd-radar > output.svg
 ## 入力形式
 
 ```
-title "スキル比較"
 axis フロントエンド
 axis バックエンド
 axis インフラ

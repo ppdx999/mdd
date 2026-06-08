@@ -11,7 +11,6 @@ cat input.funnel | mdd-funnel > output.svg
 ## 入力形式
 
 ```
-title "タイトル"
 stage ラベル : 値
 stage ラベル2 : 値2
 ```

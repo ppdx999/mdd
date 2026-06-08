@@ -11,7 +11,6 @@ cat input.changelog | mdd-changelog > output.svg
 ## 入力形式
 
 ```
-title "リリースノート"
 release v2.0 : "2025-06-01"
 - add 新機能
 - fix バグ修正

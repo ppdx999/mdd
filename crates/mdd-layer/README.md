@@ -20,19 +20,21 @@ mdd input.md > output.md
 
 ```
 layer レイヤー名
-layer レイヤー名 : "説明テキスト"
+layer レイヤー名 { 説明テキスト }
 layer レイヤー名 color=#e0f7fa
-layer レイヤー名 : "説明テキスト" color=#e0f7fa
+layer レイヤー名 { 説明テキスト } color=#e0f7fa
 ```
 
 レイヤーは上から順に積み重ねて描画される。色を省略すると自動的にパレットから割り当てられる。
 
-説明を指定すると、ダイアグラムの右側に水平線で接続して表示される。説明は複数行にも対応しており、開き `"` から閉じ `"` までが説明になる。
+説明を指定すると、ダイアグラムの右側に水平線で接続して表示される。説明は複数行にも対応しており、`{` から `}` までが説明になる。
 
 ```
-layer API : "REST endpoints
-GraphQL schema
-Authentication"
+layer API {
+  REST endpoints
+  GraphQL schema
+  Authentication
+}
 ```
 
 ### グループ定義

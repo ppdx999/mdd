@@ -11,7 +11,6 @@ cat input.faq | mdd-faq > output.svg
 ## 入力形式
 
 ```
-title "よくある質問"
 q "質問テキスト"
 a "回答テキスト"
 

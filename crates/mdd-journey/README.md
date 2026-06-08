@@ -11,7 +11,6 @@ cat input.journey | mdd-journey > output.svg
 ## 入力形式
 
 ```
-title "購入体験"
 persona "30代会社員"
 stage 認知 : "広告を見る" : 3
 stage 検索 : "商品を検索" : 4

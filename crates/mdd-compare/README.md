@@ -11,7 +11,6 @@ cat input.compare | mdd-compare > output.svg
 ## 入力形式
 
 ```
-title "タイトル"
 option "オプションA" {
   項目1
   項目2
@@ -22,5 +21,4 @@ option "オプションB" {
 }
 ```
 
-- `title` は省略可能です
 - `option` は2つ以上3つまで指定できます

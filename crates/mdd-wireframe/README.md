@@ -11,7 +11,6 @@ cat input.wireframe | mdd-wireframe > output.svg
 ## 入力形式
 
 ```
-title "ページ名"
 header 見出し
 subheader サブ見出し
 text "説明文"

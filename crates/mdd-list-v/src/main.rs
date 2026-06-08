@@ -258,7 +258,7 @@ fn render_svg(list: &ListV) -> String {
             y + item_h / 2.0 + 5.0
         };
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-weight=\"bold\">{}</text>",
+            "<text x=\"{}\" y=\"{}\" font-weight=\"800\">{}</text>",
             text_x,
             label_y,
             escape_xml(&item.label)

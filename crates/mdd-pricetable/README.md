@@ -11,7 +11,6 @@ cat input.pricetable | mdd-pricetable > output.svg
 ## 入力形式
 
 ```
-title "料金プラン"
 plan Free : "¥0/月"
 - 基本機能
 - メールサポート
