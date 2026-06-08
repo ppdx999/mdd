@@ -113,7 +113,7 @@ fn parse(input: &str) -> Result<Wireframe, String> {
 
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
 
-const W: f64 = 320.0; const PAD: f64 = 20.0; const CW: f64 = 8.0; const CJK: f64 = 14.0;
+const W: f64 = 960.0; const PAD: f64 = 20.0; const CW: f64 = 8.0; const CJK: f64 = 14.0;
 const FRAME_PAD: f64 = 16.0; const ELEM_GAP: f64 = 12.0;
 fn tw(s: &str) -> f64 { s.chars().map(|c| if c.is_ascii() { CW } else { CJK }).sum() }
 fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;").replace('"',"&quot;") }
