@@ -98,7 +98,7 @@ const BODY_FONT_SIZE: f64 = 14.0;
 const BODY_LINE_HEIGHT: f64 = 22.0;
 const BLOCK_GAP: f64 = 20.0;
 const MIN_PAGE_W: f64 = 600.0;
-const MIN_PAGE_H: f64 = 400.0;
+const MIN_PAGE_H: f64 = 560.0;
 const TITLE_BOTTOM_PAD: f64 = 16.0;
 
 fn escape_xml(s: &str) -> String {
