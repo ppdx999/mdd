@@ -92,3 +92,35 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
+
+  test-install:
+    needs: release
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: bash
+          - os: macos-latest
+            shell: bash
+          - os: windows-latest
+            shell: pwsh
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test install script (Unix)
+        if: matrix.shell == 'bash'
+        env:
+          MDD_VERSION: ${{ github.ref_name }}
+        run: |
+          bash install.sh
+          ~/.local/bin/mdd --help
+
+      - name: Test install script (Windows)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        env:
+          MDD_VERSION: ${{ github.ref_name }}
+        run: |
+          .\install.ps1
+          & "$env:USERPROFILE\.local\bin\mdd.exe" --help
