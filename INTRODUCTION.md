@@ -62,7 +62,10 @@ Admin -> Login
 Admin -> Logout
 ```
 
-↓ mddが変換
+```arrow
+direction down
+label "mdd-usecase"
+```
 
 ```usecase
 actor Customer

@@ -339,6 +339,10 @@ name = "mdd-analysis"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-arrow"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-before-after"
 version = "0.1.0"
 
