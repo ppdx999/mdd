@@ -81,13 +81,10 @@ const LINE_H: f64 = 20.0;
 const H_PAD: f64 = 16.0;
 const V_PAD: f64 = 14.0;
 const RADIUS: f64 = 8.0;
-const TITLE_BAR_H: f64 = 32.0;
 const LINE_NUM_W: f64 = 36.0;
-const MIN_W: f64 = 300.0;
+const MIN_W: f64 = 500.0;
 
 const COLOR_BG: &str = "#1e1e1e";
-const COLOR_TITLE_BG: &str = "#2d2d2d";
-const COLOR_TITLE_TEXT: &str = "#999";
 const COLOR_TEXT: &str = "#d4d4d4";
 const COLOR_LINE_NUM: &str = "#555";
 const COLOR_LINE_BORDER: &str = "#333";
@@ -219,6 +216,7 @@ fn color_strings(s: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn render_svg(block: &CodeBlock) -> String {
+    let _ = (&block.title, &block.lang); // metadata reserved for future use
     let n = block.lines.len();
     let max_line_w = block
         .lines
@@ -227,14 +225,9 @@ fn render_svg(block: &CodeBlock) -> String {
         .fold(0.0_f64, f64::max);
 
     let content_w = (LINE_NUM_W + H_PAD + max_line_w + H_PAD).max(MIN_W);
-    let title_h = if block.title.is_some() || block.lang.is_some() {
-        TITLE_BAR_H
-    } else {
-        0.0
-    };
     let code_h = V_PAD + n as f64 * LINE_H + V_PAD;
-    let total_h = title_h + code_h;
     let total_w = content_w;
+    let total_h = code_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -247,56 +240,14 @@ fn render_svg(block: &CodeBlock) -> String {
         total_w, total_h, RADIUS, COLOR_BG
     ));
 
-    let mut y = 0.0;
-
-    // Title bar
-    if block.title.is_some() || block.lang.is_some() {
-        svg.push_str(&format!(
-            "<rect width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\"/>",
-            total_w, TITLE_BAR_H, RADIUS, COLOR_TITLE_BG
-        ));
-        // Square off bottom corners of title bar
-        svg.push_str(&format!(
-            "<rect y=\"{}\" width=\"{}\" height=\"10\" fill=\"{}\"/>",
-            TITLE_BAR_H - 10.0, total_w, COLOR_TITLE_BG
-        ));
-        // Traffic light dots
-        for (j, color) in ["#ff5f57", "#febc2e", "#28c840"].iter().enumerate() {
-            svg.push_str(&format!(
-                "<circle cx=\"{}\" cy=\"{}\" r=\"5\" fill=\"{}\"/>",
-                16.0 + j as f64 * 16.0,
-                TITLE_BAR_H / 2.0,
-                color
-            ));
-        }
-        // Title / lang text
-        let label = block
-            .title
-            .as_deref()
-            .or(block.lang.as_deref())
-            .unwrap_or("");
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"11\" fill=\"{}\">{}</text>",
-            total_w / 2.0,
-            TITLE_BAR_H / 2.0 + 4.0,
-            COLOR_TITLE_TEXT,
-            ex(label)
-        ));
-        y += TITLE_BAR_H;
-    }
-
     // Line number separator
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-        LINE_NUM_W,
-        y,
-        LINE_NUM_W,
-        y + code_h,
-        COLOR_LINE_BORDER
+        LINE_NUM_W, 0.0, LINE_NUM_W, code_h, COLOR_LINE_BORDER
     ));
 
     // Code lines
-    let mut cy = y + V_PAD;
+    let mut cy = V_PAD;
     for (i, line) in block.lines.iter().enumerate() {
         let text_y = cy + FONT_SIZE * 0.85;
 
