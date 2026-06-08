@@ -59,13 +59,26 @@ step 共有 : "Git管理
 
 # MDD の仕組み
 
-```dirtree
-input.md : "Markdownファイル"
-  code-block/ : "コードブロックを検出"
-    funnel : "mdd-funnel を実行"
-    org : "mdd-org を実行"
-    cycle : "mdd-cycle を実行"
-output.md : "SVG埋め込み済みMarkdown"
+テキストの DSL を書くと、MDD がプラグインを呼び出して SVG に変換する。
+
+```demo
+actor Customer
+actor Admin
+
+package "認証" {
+  usecase Login
+  usecase Logout
+}
+
+Customer -> Login
+Admin -> Login
+Admin -> Logout
+arrow "mdd-usecase"
+         +----------+
+Customer |  Login   | Admin
+         |  Logout  |
+         +----------+
+   → ユースケース図が生成される
 ```
 
 # MDD の3つの強み

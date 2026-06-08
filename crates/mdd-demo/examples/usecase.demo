@@ -1,0 +1,17 @@
+actor Customer
+actor Admin
+
+package "認証" {
+  usecase Login
+  usecase Logout
+}
+
+Customer -> Login
+Admin -> Login
+Admin -> Logout
+arrow "mdd-usecase"
+        ┌─────────┐
+Customer │  Login  │ Admin
+        │ Logout  │
+        └─────────┘
+  ユースケース図が生成される
