@@ -8,6 +8,7 @@ use std::io::{self, Read};
 struct ListItem {
     label: String,
     description: Option<String>,
+    ordered: bool,
 }
 
 #[derive(Debug)]
@@ -37,11 +38,18 @@ fn parse(input: &str) -> Result<ListV, String> {
             continue;
         }
 
-        // item "Label" : "Description" or item "Label"
-        if trimmed.starts_with("item ") {
-            let rest = trimmed.strip_prefix("item ").unwrap().trim();
+        // 1. "Label" : "Description" or 1. "Label" (ordered item, number is ignored)
+        if let Some(rest) = strip_ordered_prefix(trimmed) {
             let (label, description) = parse_item(rest)?;
-            items.push(ListItem { label, description });
+            items.push(ListItem { label, description, ordered: true });
+            continue;
+        }
+
+        // - "Label" : "Description" or - "Label"
+        if trimmed.starts_with("- ") {
+            let rest = trimmed.strip_prefix("- ").unwrap().trim();
+            let (label, description) = parse_item(rest)?;
+            items.push(ListItem { label, description, ordered: false });
             continue;
         }
 
@@ -53,6 +61,19 @@ fn parse(input: &str) -> Result<ListV, String> {
     }
 
     Ok(ListV { title, items })
+}
+
+fn strip_ordered_prefix(s: &str) -> Option<&str> {
+    let mut chars = s.chars();
+    // Must start with at least one digit
+    if !chars.next().map_or(false, |c| c.is_ascii_digit()) {
+        return None;
+    }
+    // Skip remaining digits
+    let rest = &s[1..];
+    let after_digits = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+    // Must be followed by ". "
+    after_digits.strip_prefix(". ").map(|r| r.trim())
 }
 
 fn parse_item(s: &str) -> Result<(String, Option<String>), String> {
@@ -214,27 +235,37 @@ fn render_svg(list: &ListV) -> String {
     }
 
     // Items
+    let mut ordered_index = 0usize;
     for (i, item) in list.items.iter().enumerate() {
         let (bg_color, fg_color) = COLORS[i % COLORS.len()];
         let item_h = item_heights[i];
 
-        // Badge circle
         let badge_cx = PADDING + BADGE_RADIUS;
         let badge_cy = y + item_h / 2.0;
-        svg.push_str(&format!(
-            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" />",
-            badge_cx, badge_cy, BADGE_RADIUS, bg_color
-        ));
 
-        // Badge number
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            badge_cx,
-            badge_cy + 5.0,
-            FONT_SIZE,
-            fg_color,
-            i + 1
-        ));
+        if item.ordered {
+            ordered_index += 1;
+            // Numbered badge circle
+            svg.push_str(&format!(
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" />",
+                badge_cx, badge_cy, BADGE_RADIUS, bg_color
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                badge_cx,
+                badge_cy + 5.0,
+                FONT_SIZE,
+                fg_color,
+                ordered_index
+            ));
+        } else {
+            // Bullet dot
+            let bullet_radius = 6.0;
+            svg.push_str(&format!(
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" />",
+                badge_cx, badge_cy, bullet_radius, fg_color
+            ));
+        }
 
         // Label text (bold)
         let text_x = PADDING + badge_area;
@@ -316,8 +347,8 @@ mod tests {
     fn parse_basic() {
         let input = r#"
 title "My List"
-item "First"
-item "Second"
+1. "First"
+2. "Second"
 "#;
         let list = parse(input).unwrap();
         assert_eq!(list.title.as_deref(), Some("My List"));
@@ -330,8 +361,8 @@ item "Second"
     #[test]
     fn parse_with_desc() {
         let input = r#"
-item "Label" : "Description"
-item "Other" : "Details"
+1. "Label" : "Description"
+2. "Other" : "Details"
 "#;
         let list = parse(input).unwrap();
         assert!(list.title.is_none());
@@ -345,7 +376,7 @@ item "Other" : "Details"
     #[test]
     fn render_produces_svg() {
         let input = r#"
-item "Test"
+1. "Test"
 "#;
         let list = parse(input).unwrap();
         let svg = render_svg(&list);
@@ -365,12 +396,67 @@ title "Empty"
     #[test]
     fn parse_mixed_items() {
         let input = r#"
-item "With Desc" : "Some description"
-item "Without Desc"
+1. "With Desc" : "Some description"
+2. "Without Desc"
 "#;
         let list = parse(input).unwrap();
         assert_eq!(list.items.len(), 2);
         assert!(list.items[0].description.is_some());
         assert!(list.items[1].description.is_none());
+    }
+
+    #[test]
+    fn parse_unordered_basic() {
+        let input = r#"
+title "Checklist"
+- "Alpha"
+- "Beta"
+"#;
+        let list = parse(input).unwrap();
+        assert_eq!(list.title.as_deref(), Some("Checklist"));
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(list.items[0].label, "Alpha");
+        assert!(!list.items[0].ordered);
+        assert_eq!(list.items[1].label, "Beta");
+        assert!(!list.items[1].ordered);
+    }
+
+    #[test]
+    fn parse_unordered_with_desc() {
+        let input = r#"
+- "Feature" : "Some detail"
+- "Other"
+"#;
+        let list = parse(input).unwrap();
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(list.items[0].description.as_deref(), Some("Some detail"));
+        assert!(list.items[1].description.is_none());
+    }
+
+    #[test]
+    fn parse_mixed_ordered_unordered() {
+        let input = r#"
+1. "Step 1"
+- "Note"
+2. "Step 2"
+"#;
+        let list = parse(input).unwrap();
+        assert_eq!(list.items.len(), 3);
+        assert!(list.items[0].ordered);
+        assert!(!list.items[1].ordered);
+        assert!(list.items[2].ordered);
+    }
+
+    #[test]
+    fn render_unordered_no_number() {
+        let input = r#"
+- "Bullet"
+"#;
+        let list = parse(input).unwrap();
+        let svg = render_svg(&list);
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("Bullet"));
+        // Should not contain a badge number "1"
+        assert!(!svg.contains(">1</text>"));
     }
 }
