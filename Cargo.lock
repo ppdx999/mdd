@@ -347,6 +347,10 @@ name = "mdd-changelog"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-code"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-compare"
 version = "0.1.0"
 
@@ -364,6 +368,10 @@ version = "0.1.0"
 dependencies = [
  "rust-sugiyama",
 ]
+
+[[package]]
+name = "mdd-dirtree"
+version = "0.1.0"
 
 [[package]]
 name = "mdd-er"
@@ -393,6 +401,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-gitgraph"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-github"
 version = "0.1.0"
 
 [[package]]

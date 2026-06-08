@@ -1,0 +1,13 @@
+lang usecase
+---
+actor Customer
+actor Admin
+
+package "認証" {
+  usecase Login
+  usecase Logout
+}
+
+Customer -> Login
+Admin -> Login
+Admin -> Logout

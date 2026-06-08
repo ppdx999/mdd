@@ -57,11 +57,13 @@ step 共有 : "Git管理
 差分レビュー"
 ```
 
-# MDD の仕組み
+# MDD の仕組み — 入力
 
-テキストの DSL を書くと、MDD がプラグインを呼び出して SVG に変換する。
+テキストの DSL を書くだけ。これがユースケース図の入力。
 
-```demo
+```code
+lang usecase
+---
 actor Customer
 actor Admin
 
@@ -73,12 +75,24 @@ package "認証" {
 Customer -> Login
 Admin -> Login
 Admin -> Logout
-arrow "mdd-usecase"
-         +----------+
-Customer |  Login   | Admin
-         |  Logout  |
-         +----------+
-   → ユースケース図が生成される
+```
+
+# MDD の仕組み — 変換
+
+上のテキストを MDD に通すと、下の図が自動生成される。
+
+```usecase
+actor Customer
+actor Admin
+
+package "認証" {
+  usecase Login
+  usecase Logout
+}
+
+Customer -> Login
+Admin -> Login
+Admin -> Logout
 ```
 
 # MDD の3つの強み
