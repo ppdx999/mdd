@@ -12,7 +12,6 @@ struct Group {
 
 #[derive(Debug)]
 struct Groups {
-    title: Option<String>,
     groups: Vec<Group>,
 }
 
@@ -21,7 +20,6 @@ struct Groups {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Groups, String> {
-    let mut title: Option<String> = None;
     let mut groups: Vec<Group> = Vec::new();
     let mut current_group: Option<String> = None;
     let mut current_items: Vec<String> = Vec::new();
@@ -29,13 +27,6 @@ fn parse(input: &str) -> Result<Groups, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -92,7 +83,7 @@ fn parse(input: &str) -> Result<Groups, String> {
         ));
     }
 
-    Ok(Groups { title, groups })
+    Ok(Groups { groups })
 }
 
 fn parse_group_header(rest: &str) -> Result<String, String> {
@@ -122,14 +113,6 @@ fn parse_group_header(rest: &str) -> Result<String, String> {
     Err(format!("Expected '{{' in group header: {}", rest))
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -153,8 +136,6 @@ const HEADER_HEIGHT: f64 = 36.0;
 const ITEM_HEIGHT: f64 = 26.0;
 const GROUP_GAP: f64 = 16.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const ITEM_INDENT: f64 = 24.0;
 const BULLET_RADIUS: f64 = 3.0;
 
@@ -203,16 +184,10 @@ fn render_svg(groups: &Groups) -> String {
     let group_body_h = max_items as f64 * ITEM_HEIGHT + GROUP_H_PAD;
     let group_h = HEADER_HEIGHT + group_body_h;
 
-    let title_space = if groups.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_groups_w: f64 = group_widths.iter().sum::<f64>()
         + (groups.groups.len().saturating_sub(1)) as f64 * GROUP_GAP;
     let total_w = PADDING * 2.0 + total_groups_w;
-    let total_h = PADDING * 2.0 + title_space + group_h;
+    let total_h = PADDING * 2.0 + group_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -224,19 +199,7 @@ fn render_svg(groups: &Groups) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = groups.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Render each group
     let mut x = PADDING;
@@ -342,7 +305,6 @@ group "Dev" {
 }
 "#;
         let g = parse(input).unwrap();
-        assert!(g.title.is_none());
         assert_eq!(g.groups.len(), 1);
         assert_eq!(g.groups[0].name, "Dev");
         assert_eq!(g.groups[0].items.len(), 2);
@@ -353,7 +315,6 @@ group "Dev" {
     #[test]
     fn parse_multiple_groups() {
         let input = r#"
-title "Teams"
 group "A" {
   X
 }
@@ -363,7 +324,6 @@ group "B" {
 }
 "#;
         let g = parse(input).unwrap();
-        assert_eq!(g.title.as_deref(), Some("Teams"));
         assert_eq!(g.groups.len(), 2);
         assert_eq!(g.groups[0].name, "A");
         assert_eq!(g.groups[1].name, "B");
@@ -387,7 +347,6 @@ group "Test" {
     #[test]
     fn parse_error_no_groups() {
         let input = r#"
-title "Empty"
 "#;
         assert!(parse(input).is_err());
     }

@@ -13,7 +13,6 @@ struct Item {
 
 #[derive(Debug)]
 struct TodoList {
-    title: Option<String>,
     items: Vec<Item>,
 }
 
@@ -22,7 +21,6 @@ struct TodoList {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<TodoList, String> {
-    let mut title: Option<String> = None;
     let mut items: Vec<Item> = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -30,14 +28,6 @@ fn parse(input: &str) -> Result<TodoList, String> {
     while i < lines.len() {
         let trimmed = lines[i].trim();
         if trimmed.is_empty() {
-            i += 1;
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             i += 1;
             continue;
         }
@@ -74,7 +64,7 @@ fn parse(input: &str) -> Result<TodoList, String> {
         return Err("At least 1 item is required".to_string());
     }
 
-    Ok(TodoList { title, items })
+    Ok(TodoList { items })
 }
 
 fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
@@ -96,14 +86,6 @@ fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(
     Err("Unterminated description (missing closing \")".to_string())
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -122,8 +104,6 @@ const CHECKBOX_LEFT: f64 = 14.0;
 const TEXT_LEFT: f64 = 40.0;
 const MIN_WIDTH: f64 = 250.0;
 const PADDING: f64 = 24.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 12.0;
 const DESC_LINE_HEIGHT: f64 = 15.0;
 
 const COLOR_DARK: &str = "#333";
@@ -180,17 +160,11 @@ fn render_svg(todo: &TodoList) -> String {
         .fold(0.0_f64, f64::max);
     let content_w = (TEXT_LEFT + max_text_w + ITEM_H_PAD).max(MIN_WIDTH);
 
-    let title_space = if todo.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_items_h: f64 = todo.items.iter().map(|item| item_height(item)).sum::<f64>()
         + (todo.items.len().saturating_sub(1)) as f64 * ITEM_GAP;
 
     let total_w = PADDING * 2.0 + content_w;
-    let total_h = PADDING * 2.0 + title_space + total_items_h;
+    let total_h = PADDING * 2.0 + total_items_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -202,22 +176,8 @@ fn render_svg(todo: &TodoList) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = todo.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            PADDING,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
-
     // Render items
-    let mut y = content_y;
+    let mut y = PADDING;
     for item in &todo.items {
         let ih = item_height(item);
         let ix = PADDING;
@@ -330,20 +290,11 @@ mod tests {
     fn parse_basic() {
         let input = "[x] Done task\n[ ] Pending task\n";
         let t = parse(input).unwrap();
-        assert!(t.title.is_none());
         assert_eq!(t.items.len(), 2);
         assert!(t.items[0].done);
         assert_eq!(t.items[0].text, "Done task");
         assert!(!t.items[1].done);
         assert_eq!(t.items[1].text, "Pending task");
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = "title \"Sprint 1\"\n[x] Task A\n[ ] Task B\n";
-        let t = parse(input).unwrap();
-        assert_eq!(t.title.as_deref(), Some("Sprint 1"));
-        assert_eq!(t.items.len(), 2);
     }
 
     #[test]

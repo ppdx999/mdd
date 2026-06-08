@@ -25,7 +25,6 @@ struct Section {
 
 #[derive(Debug)]
 struct Diagram {
-    title: String,
     sections: Vec<Section>,
     events: Vec<Event>,
 }
@@ -75,7 +74,6 @@ fn parse_date(s: &str) -> Result<Date, String> {
 }
 
 fn parse(input: &str) -> Result<Diagram, String> {
-    let mut title = String::new();
     let mut sections: Vec<Section> = Vec::new();
     let mut events: Vec<Event> = Vec::new();
     let mut current_section: Option<usize> = None;
@@ -83,11 +81,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     for line in input.lines() {
         let line = line.trim();
         if line.is_empty() {
-            continue;
-        }
-
-        if let Some(t) = line.strip_prefix("title ") {
-            title = t.trim().to_string();
             continue;
         }
 
@@ -125,7 +118,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     events.sort_by_key(|e| e.date);
 
     Ok(Diagram {
-        title,
         sections,
         events,
     })
@@ -176,7 +168,6 @@ const FONT_SIZE: f64 = 13.0;
 const SMALL_FONT: f64 = 11.0;
 const DATE_FONT: f64 = 10.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 36.0;
 const EVENT_SPACING: f64 = 140.0; // minimum horizontal spacing between events
 const STEM_HEIGHT: f64 = 60.0; // height of the vertical stem from axis to event box
 const DOT_RADIUS: f64 = 6.0;
@@ -188,14 +179,12 @@ const LEGEND_ITEM_HEIGHT: f64 = 10.0;
 const LEGEND_SPACING: f64 = 12.0;
 
 fn render_svg(diagram: &Diagram) -> String {
-    let has_title = !diagram.title.is_empty();
     let has_sections = !diagram.sections.is_empty();
     let n = diagram.events.len();
 
     // Compute axis positions for each event
     let total_axis_width = (n.max(1) - 1) as f64 * EVENT_SPACING;
 
-    let title_offset = if has_title { TITLE_HEIGHT } else { 0.0 };
     let legend_offset = if has_sections { 30.0 } else { 0.0 };
     let axis_x_start = PADDING + 40.0;
 
@@ -250,7 +239,7 @@ fn render_svg(diagram: &Diagram) -> String {
     let needed_below = STEM_HEIGHT + max_below_box_h + 10.0;
 
     // Adjust axis_y so there's enough room above
-    let final_axis_y = PADDING + title_offset + legend_offset + needed_above;
+    let final_axis_y = PADDING + legend_offset + needed_above;
     let svg_width = axis_x_start + total_axis_width + PADDING + 40.0;
     let svg_height = final_axis_y + needed_below + PADDING;
 
@@ -271,19 +260,9 @@ fn render_svg(diagram: &Diagram) -> String {
         FONT_SIZE
     ));
 
-    // Title
-    if has_title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-size=\"16\" font-weight=\"600\" fill=\"#333\">{}</text>",
-            PADDING,
-            PADDING + 18.0,
-            escape_xml(&diagram.title)
-        ));
-    }
-
     // Legend
     if has_sections {
-        let legend_y = PADDING + title_offset + 6.0;
+        let legend_y = PADDING + 6.0;
         let mut lx = PADDING;
         for (i, sec) in diagram.sections.iter().enumerate() {
             let (dot_color, _) = section_color(i);
@@ -468,9 +447,8 @@ mod tests {
 
     #[test]
     fn parse_simple() {
-        let input = "title Test\n2025-01-01 : Alpha\n2025-06-01 : Beta\n";
+        let input = "2025-01-01 : Alpha\n2025-06-01 : Beta\n";
         let d = parse(input).unwrap();
-        assert_eq!(d.title, "Test");
         assert_eq!(d.events.len(), 2);
         assert_eq!(d.events[0].label, "Alpha");
         assert_eq!(d.events[1].label, "Beta");
@@ -502,7 +480,7 @@ mod tests {
 
     #[test]
     fn parse_empty_events_error() {
-        let input = "title Only title\n";
+        let input = "section Only section\n";
         assert!(parse(input).is_err());
     }
 
@@ -514,7 +492,7 @@ mod tests {
 
     #[test]
     fn render_produces_svg() {
-        let input = "title Test\n2025-01-01 : Alpha\n2025-06-01 : Beta\n";
+        let input = "2025-01-01 : Alpha\n2025-06-01 : Beta\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.starts_with("<svg"));

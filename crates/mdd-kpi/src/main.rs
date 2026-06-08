@@ -13,7 +13,6 @@ struct Metric {
 
 #[derive(Debug)]
 struct Kpi {
-    title: Option<String>,
     metrics: Vec<Metric>,
 }
 
@@ -22,19 +21,11 @@ struct Kpi {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Kpi, String> {
-    let mut title: Option<String> = None;
     let mut metrics: Vec<Metric> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -67,7 +58,7 @@ fn parse(input: &str) -> Result<Kpi, String> {
         return Err("At least 1 metric is required".to_string());
     }
 
-    Ok(Kpi { title, metrics })
+    Ok(Kpi { metrics })
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -96,8 +87,6 @@ const VALUE_FONT_SIZE: f64 = 24.0;
 const LABEL_FONT_SIZE: f64 = 12.0;
 const CHANGE_FONT_SIZE: f64 = 12.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const BORDER_COLOR: &str = "#e0e0e0";
 
 const COLORS: &[(&str, &str)] = &[
@@ -153,17 +142,11 @@ fn render_svg(kpi: &Kpi) -> String {
         })
         .collect();
 
-    let title_space = if kpi.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let cards_total_w: f64 =
         card_widths.iter().sum::<f64>() + (kpi.metrics.len().saturating_sub(1)) as f64 * CARD_GAP;
 
     let total_w = PADDING * 2.0 + cards_total_w;
-    let total_h = PADDING * 2.0 + title_space + CARD_HEIGHT;
+    let total_h = PADDING * 2.0 + CARD_HEIGHT;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -175,19 +158,7 @@ fn render_svg(kpi: &Kpi) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = kpi.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Cards
     let mut card_x = PADDING;
@@ -292,12 +263,10 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Dashboard"
 metric "Revenue" : "$1M"
 metric "Users" : "5000"
 "#;
         let kpi = parse(input).unwrap();
-        assert_eq!(kpi.title.as_deref(), Some("Dashboard"));
         assert_eq!(kpi.metrics.len(), 2);
         assert_eq!(kpi.metrics[0].label, "Revenue");
         assert_eq!(kpi.metrics[0].value, "$1M");
@@ -328,7 +297,6 @@ metric "Revenue" : "$1M"
     #[test]
     fn parse_error_no_metrics() {
         let input = r#"
-title "Empty"
 "#;
         assert!(parse(input).is_err());
     }

@@ -6,7 +6,6 @@ use std::io::{self, Read};
 
 #[derive(Debug)]
 struct Swot {
-    title: Option<String>,
     strengths: Vec<String>,
     weaknesses: Vec<String>,
     opportunities: Vec<String>,
@@ -18,7 +17,6 @@ struct Swot {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Swot, String> {
-    let mut title: Option<String> = None;
     let mut strengths: Vec<String> = Vec::new();
     let mut weaknesses: Vec<String> = Vec::new();
     let mut opportunities: Vec<String> = Vec::new();
@@ -29,13 +27,6 @@ fn parse(input: &str) -> Result<Swot, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -101,20 +92,11 @@ fn parse(input: &str) -> Result<Swot, String> {
     }
 
     Ok(Swot {
-        title,
         strengths,
         weaknesses,
         opportunities,
         threats,
     })
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,8 +115,6 @@ const HEADER_HEIGHT: f64 = 36.0;
 const ITEM_HEIGHT: f64 = 24.0;
 const QUADRANT_GAP: f64 = 4.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const BULLET_RADIUS: f64 = 3.0;
 
 // Quadrant colors: (desc_bg, title_bg, accent)
@@ -192,14 +172,8 @@ fn render_svg(swot: &Swot) -> String {
     let top_h = HEADER_HEIGHT + top_items as f64 * ITEM_HEIGHT + QUADRANT_H_PAD;
     let bottom_h = HEADER_HEIGHT + bottom_items as f64 * ITEM_HEIGHT + QUADRANT_H_PAD;
 
-    let title_space = if swot.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING + quad_w + QUADRANT_GAP + quad_w + PADDING;
-    let total_h = PADDING + title_space + top_h + QUADRANT_GAP + bottom_h + PADDING;
+    let total_h = PADDING + top_h + QUADRANT_GAP + bottom_h + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -211,19 +185,7 @@ fn render_svg(swot: &Swot) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = swot.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Top-left: Strengths
     render_quadrant(
@@ -385,7 +347,6 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Test SWOT"
 strengths {
   Item A
   Item B
@@ -402,7 +363,6 @@ threats {
 }
 "#;
         let s = parse(input).unwrap();
-        assert_eq!(s.title.as_deref(), Some("Test SWOT"));
         assert_eq!(s.strengths.len(), 2);
         assert_eq!(s.strengths[0], "Item A");
         assert_eq!(s.weaknesses.len(), 1);
@@ -445,6 +405,5 @@ strengths {
         assert_eq!(s.weaknesses.len(), 0);
         assert_eq!(s.opportunities.len(), 0);
         assert_eq!(s.threats.len(), 0);
-        assert!(s.title.is_none());
     }
 }

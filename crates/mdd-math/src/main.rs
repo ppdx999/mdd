@@ -6,7 +6,6 @@ use std::io::{self, Read};
 
 #[derive(Debug)]
 struct Math {
-    title: Option<String>,
     expressions: Vec<String>,
 }
 
@@ -15,19 +14,11 @@ struct Math {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Math, String> {
-    let mut title: Option<String> = None;
     let mut expressions: Vec<String> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -40,7 +31,7 @@ fn parse(input: &str) -> Result<Math, String> {
             continue;
         }
 
-        // simple format: each non-empty, non-title line is an expression
+        // simple format: each non-empty line is an expression
         expressions.push(trimmed.to_string());
     }
 
@@ -48,15 +39,7 @@ fn parse(input: &str) -> Result<Math, String> {
         return Err("At least 1 expression is required".to_string());
     }
 
-    Ok(Math { title, expressions })
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
+    Ok(Math { expressions })
 }
 
 // ---------------------------------------------------------------------------
@@ -72,8 +55,6 @@ const EXPR_FONT_SIZE: f64 = 20.0;
 const EXPR_LINE_HEIGHT: f64 = 36.0;
 const FONT_FAMILY: &str = "serif";
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const MIN_WIDTH: f64 = 200.0;
 
 fn text_width(s: &str) -> f64 {
@@ -98,22 +79,11 @@ fn render_svg(math: &Math) -> String {
         .map(|e| text_width(e) * expr_scale)
         .fold(0.0_f64, f64::max);
 
-    let title_w = match &math.title {
-        Some(t) => text_width(t) * 1.2,
-        None => 0.0,
-    };
-
-    let content_w = max_expr_w.max(title_w).max(MIN_WIDTH);
+    let content_w = max_expr_w.max(MIN_WIDTH);
     let total_w = PADDING * 2.0 + content_w;
 
-    let title_space = if math.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let body_h = math.expressions.len() as f64 * EXPR_LINE_HEIGHT;
-    let total_h = PADDING * 2.0 + title_space + body_h;
+    let total_h = PADDING * 2.0 + body_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -127,16 +97,7 @@ fn render_svg(math: &Math) -> String {
 
     let center_x = total_w / 2.0;
 
-    // Title
-    let mut y = PADDING;
-    if let Some(ref title) = math.title {
-        y += TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            center_x, y, escape_xml(title)
-        ));
-        y = PADDING + TITLE_HEIGHT + TITLE_GAP;
-    }
+    let y = PADDING;
 
     // Expressions
     for (i, expr) in math.expressions.iter().enumerate() {
@@ -187,21 +148,9 @@ E = mc²
 F = ma
 "#;
         let m = parse(input).unwrap();
-        assert!(m.title.is_none());
         assert_eq!(m.expressions.len(), 2);
         assert_eq!(m.expressions[0], "E = mc²");
         assert_eq!(m.expressions[1], "F = ma");
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = r#"
-title "Physics"
-E = mc²
-"#;
-        let m = parse(input).unwrap();
-        assert_eq!(m.title.as_deref(), Some("Physics"));
-        assert_eq!(m.expressions.len(), 1);
     }
 
     #[test]
@@ -224,7 +173,6 @@ expr: F = ma
     #[test]
     fn render_produces_svg() {
         let input = r#"
-title "Test"
 E = mc²
 "#;
         let m = parse(input).unwrap();

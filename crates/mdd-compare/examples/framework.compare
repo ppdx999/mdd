@@ -1,4 +1,3 @@
-title "フレームワーク比較"
 option "React" {
   仮想DOM
   大規模エコシステム

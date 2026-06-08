@@ -18,7 +18,6 @@ struct OverlapDef {
 
 #[derive(Debug)]
 struct Venn {
-    title: Option<String>,
     sets: Vec<SetDef>,
     overlaps: Vec<OverlapDef>,
 }
@@ -28,7 +27,6 @@ struct Venn {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Venn, String> {
-    let mut title: Option<String> = None;
     let mut sets: Vec<SetDef> = Vec::new();
     let mut overlaps: Vec<OverlapDef> = Vec::new();
 
@@ -39,13 +37,6 @@ fn parse(input: &str) -> Result<Venn, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -113,7 +104,6 @@ fn parse(input: &str) -> Result<Venn, String> {
     }
 
     Ok(Venn {
-        title,
         sets,
         overlaps,
     })
@@ -139,14 +129,6 @@ fn parse_section_header(rest: &str) -> Result<String, String> {
     Ok(rest.to_string())
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -161,8 +143,6 @@ const SET_COLORS: &[&str] = &["#1565c0", "#2e7d32", "#f57f17"];
 const CIRCLE_RADIUS: f64 = 120.0;
 const OVERLAP_RATIO: f64 = 0.4;
 const PADDING: f64 = 60.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const ITEM_LINE_HEIGHT: f64 = 18.0;
 const LABEL_FONT_SIZE: f64 = 14.0;
 
@@ -194,23 +174,12 @@ fn render_two_sets(venn: &Venn) -> String {
     // Circle centers
     let cx1 = PADDING + r;
     let cx2 = cx1 + overlap_dist;
-    let cy_circles = PADDING + if venn.title.is_some() { TITLE_HEIGHT + TITLE_GAP } else { 0.0 } + r;
+    let cy_circles = PADDING + r;
 
     let total_w = cx2 + r + PADDING;
     let total_h = cy_circles + r + PADDING;
 
     let mut svg = svg_header(total_w, total_h);
-
-    // Title
-    if let Some(ref title) = venn.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-    }
 
     // Circles
     for (i, (cx, cy)) in [(cx1, cy_circles), (cx2, cy_circles)].iter().enumerate() {
@@ -268,13 +237,11 @@ fn render_three_sets(venn: &Venn) -> String {
     let overlap_dist = r * 2.0 * (1.0 - OVERLAP_RATIO);
 
     // Triangular arrangement: top center, bottom-left, bottom-right
-    let title_space = if venn.title.is_some() { TITLE_HEIGHT + TITLE_GAP } else { 0.0 };
-
     // Vertical offset for triangle
     let tri_h = overlap_dist * (3.0_f64).sqrt() / 2.0;
 
     let cx_top = PADDING + r + overlap_dist / 2.0;
-    let cy_top = PADDING + title_space + r;
+    let cy_top = PADDING + r;
 
     let cx_bl = cx_top - overlap_dist / 2.0;
     let cy_bl = cy_top + tri_h;
@@ -286,17 +253,6 @@ fn render_three_sets(venn: &Venn) -> String {
     let total_h = cy_bl + r + PADDING;
 
     let mut svg = svg_header(total_w, total_h);
-
-    // Title
-    if let Some(ref title) = venn.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-    }
 
     let centers = [(cx_top, cy_top), (cx_bl, cy_bl), (cx_br, cy_br)];
 
@@ -399,7 +355,6 @@ mod tests {
     #[test]
     fn parse_two_sets() {
         let input = r#"
-title "Test"
 set "A" {
   item1
   item2
@@ -412,7 +367,6 @@ overlap "A ∩ B" {
 }
 "#;
         let v = parse(input).unwrap();
-        assert_eq!(v.title.as_deref(), Some("Test"));
         assert_eq!(v.sets.len(), 2);
         assert_eq!(v.sets[0].label, "A");
         assert_eq!(v.sets[0].items.len(), 2);
@@ -437,7 +391,6 @@ set "Z" {
 }
 "#;
         let v = parse(input).unwrap();
-        assert!(v.title.is_none());
         assert_eq!(v.sets.len(), 3);
         assert_eq!(v.sets[0].label, "X");
         assert_eq!(v.sets[1].label, "Y");

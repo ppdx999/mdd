@@ -12,7 +12,6 @@ struct Item {
 
 #[derive(Debug)]
 struct Ranking {
-    title: Option<String>,
     unit: Option<String>,
     items: Vec<Item>,
 }
@@ -22,20 +21,12 @@ struct Ranking {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Ranking, String> {
-    let mut title: Option<String> = None;
     let mut unit: Option<String> = None;
     let mut items: Vec<Item> = Vec::new();
 
     for (line_no, line) in input.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if line.starts_with("title ") {
-            let rest = line.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest));
             continue;
         }
 
@@ -66,7 +57,7 @@ fn parse(input: &str) -> Result<Ranking, String> {
         return Err("No ranking items defined".to_string());
     }
 
-    Ok(Ranking { title, unit, items })
+    Ok(Ranking { unit, items })
 }
 
 fn strip_quotes(s: &str) -> String {
@@ -92,7 +83,6 @@ const LABEL_PAD: f64 = 12.0;
 const BAR_MAX_WIDTH: f64 = 300.0;
 const BAR_HEIGHT: f64 = 26.0;
 const VALUE_PAD: f64 = 10.0;
-const TITLE_HEIGHT: f64 = 36.0;
 
 const COLOR_DARK: &str = "#333";
 
@@ -153,14 +143,8 @@ fn render_svg(ranking: &Ranking) -> String {
     let total_w =
         PADDING * 2.0 + RANK_WIDTH + label_col_w + BAR_MAX_WIDTH + VALUE_PAD + max_value_text_w + LABEL_PAD;
 
-    let title_offset = if ranking.title.is_some() {
-        TITLE_HEIGHT
-    } else {
-        0.0
-    };
-
     let total_h =
-        PADDING * 2.0 + title_offset + (ROW_HEIGHT + ROW_GAP) * ranking.items.len() as f64 - ROW_GAP;
+        PADDING * 2.0 + (ROW_HEIGHT + ROW_GAP) * ranking.items.len() as f64 - ROW_GAP;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -173,18 +157,7 @@ fn render_svg(ranking: &Ranking) -> String {
     ));
 
     let base_x = PADDING;
-    let mut y = PADDING;
-
-    // Title
-    if let Some(ref title) = ranking.title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            base_x,
-            y + 20.0,
-            escape_xml(title)
-        ));
-        y += TITLE_HEIGHT;
-    }
+    let y = PADDING;
 
     // Items
     for (i, item) in ranking.items.iter().enumerate() {
@@ -309,10 +282,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_title_and_unit() {
-        let input = "title \"売上\"\nunit \"万円\"\nA : 100\n";
+    fn parse_with_unit() {
+        let input = "unit \"万円\"\nA : 100\n";
         let r = parse(input).unwrap();
-        assert_eq!(r.title.as_deref(), Some("売上"));
         assert_eq!(r.unit.as_deref(), Some("万円"));
     }
 
@@ -339,7 +311,7 @@ mod tests {
 
     #[test]
     fn parse_no_items_error() {
-        let result = parse("title \"empty\"\n");
+        let result = parse("unit \"empty\"\n");
         assert!(result.is_err());
     }
 
@@ -394,14 +366,6 @@ mod tests {
         assert!(svg.contains(">Y<"));
         assert!(svg.contains(">200<"));
         assert!(svg.contains(">100<"));
-    }
-
-    #[test]
-    fn render_contains_title() {
-        let input = "title \"ランキング\"\nA : 10\n";
-        let r = parse(input).unwrap();
-        let svg = render_svg(&r);
-        assert!(svg.contains("ランキング"));
     }
 
     #[test]

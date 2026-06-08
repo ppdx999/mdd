@@ -6,7 +6,6 @@ use std::io::{self, Read};
 
 #[derive(Debug)]
 struct Radial {
-    title: Option<String>,
     center: String,
     spokes: Vec<String>,
 }
@@ -16,19 +15,12 @@ struct Radial {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Radial, String> {
-    let mut title: Option<String> = None;
     let mut center: Option<String> = None;
     let mut spokes: Vec<String> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -57,7 +49,6 @@ fn parse(input: &str) -> Result<Radial, String> {
     }
 
     Ok(Radial {
-        title,
         center,
         spokes,
     })
@@ -88,8 +79,6 @@ const SPOKE_NODE_H: f64 = 36.0;
 const SPOKE_NODE_H_PAD: f64 = 16.0;
 const MIN_SPOKE_W: f64 = 80.0;
 const PADDING: f64 = 60.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 
 const CENTER_BG: &str = "#e8eaf6";
 const CENTER_TEXT_COLOR: &str = "#283593";
@@ -134,18 +123,12 @@ fn render_svg(radial: &Radial) -> String {
     let center_w = (text_width(&radial.center) + SPOKE_NODE_H_PAD * 2.0).max(CENTER_NODE_W);
 
     // Canvas center
-    let title_space = if radial.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let canvas_size = (ORBIT_RADIUS + max_spoke_w / 2.0 + PADDING) * 2.0;
     let cx = canvas_size / 2.0;
-    let cy = PADDING + title_space + ORBIT_RADIUS + max_spoke_w / 2.0;
+    let cy = PADDING + ORBIT_RADIUS + max_spoke_w / 2.0;
 
     let total_w = canvas_size;
-    let total_h = canvas_size + title_space;
+    let total_h = canvas_size;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -156,17 +139,6 @@ fn render_svg(radial: &Radial) -> String {
         "<style>text {{ font-family: sans-serif; font-size: {}px; fill: {}; }}</style>",
         FONT_SIZE, COLOR_DARK
     ));
-
-    // Title
-    if let Some(ref title) = radial.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-    }
 
     // Lines from center to each spoke (drawn first, behind nodes)
     for i in 0..n {
@@ -265,26 +237,10 @@ spoke A
 spoke B
 "#;
         let r = parse(input).unwrap();
-        assert!(r.title.is_none());
         assert_eq!(r.center, "Hub");
         assert_eq!(r.spokes.len(), 2);
         assert_eq!(r.spokes[0], "A");
         assert_eq!(r.spokes[1], "B");
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = r#"
-title "My Radial"
-center "Core"
-spoke X
-spoke Y
-spoke Z
-"#;
-        let r = parse(input).unwrap();
-        assert_eq!(r.title.as_deref(), Some("My Radial"));
-        assert_eq!(r.center, "Core");
-        assert_eq!(r.spokes.len(), 3);
     }
 
     #[test]

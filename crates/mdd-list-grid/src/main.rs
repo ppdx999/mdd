@@ -12,7 +12,6 @@ struct GridItem {
 
 #[derive(Debug)]
 struct ListGrid {
-    title: Option<String>,
     columns: usize,
     items: Vec<GridItem>,
 }
@@ -22,20 +21,12 @@ struct ListGrid {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<ListGrid, String> {
-    let mut title: Option<String> = None;
     let mut columns: usize = DEFAULT_COLUMNS;
     let mut items: Vec<GridItem> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -67,7 +58,6 @@ fn parse(input: &str) -> Result<ListGrid, String> {
     }
 
     Ok(ListGrid {
-        title,
         columns,
         items,
     })
@@ -130,8 +120,6 @@ const CARD_GAP: f64 = 12.0;
 const LEFT_ACCENT_WIDTH: f64 = 4.0;
 const DEFAULT_COLUMNS: usize = 3;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -184,14 +172,8 @@ fn render_svg(grid: &ListGrid) -> String {
         CARD_MIN_HEIGHT
     };
 
-    let title_space = if grid.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING * 2.0 + cols as f64 * card_w + (cols - 1).max(0) as f64 * CARD_GAP;
-    let total_h = PADDING * 2.0 + title_space + rows as f64 * card_h + (rows - 1).max(0) as f64 * CARD_GAP;
+    let total_h = PADDING * 2.0 + rows as f64 * card_h + (rows - 1).max(0) as f64 * CARD_GAP;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -203,19 +185,7 @@ fn render_svg(grid: &ListGrid) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = grid.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Render cards
     for (i, item) in grid.items.iter().enumerate() {
@@ -317,7 +287,6 @@ item "B" : "desc B"
 item "C"
 "#;
         let g = parse(input).unwrap();
-        assert!(g.title.is_none());
         assert_eq!(g.columns, 3);
         assert_eq!(g.items.len(), 3);
         assert_eq!(g.items[0].label, "A");
@@ -329,13 +298,11 @@ item "C"
     #[test]
     fn parse_with_columns() {
         let input = r#"
-title "Test"
 columns 2
 item "X" : "foo"
 item "Y"
 "#;
         let g = parse(input).unwrap();
-        assert_eq!(g.title.as_deref(), Some("Test"));
         assert_eq!(g.columns, 2);
         assert_eq!(g.items.len(), 2);
     }
@@ -356,7 +323,6 @@ item "B"
     #[test]
     fn parse_error_no_items() {
         let input = r#"
-title "Empty"
 columns 3
 "#;
         assert!(parse(input).is_err());

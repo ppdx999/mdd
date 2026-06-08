@@ -1,4 +1,4 @@
-milestone Beginner : "Learn the basics"
-milestone Intermediate : "Build small projects"
-milestone Advanced : "Contribute to open source"
-milestone Expert : "Lead and mentor others"
+Beginner { Learn the basics }
+Intermediate { Build small projects }
+Advanced { Contribute to open source }
+Expert { Lead and mentor others }

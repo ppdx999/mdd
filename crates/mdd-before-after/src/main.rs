@@ -17,7 +17,6 @@ struct Section {
 
 #[derive(Debug)]
 struct Diagram {
-    title: Option<String>,
     before: Section,
     after: Section,
 }
@@ -27,7 +26,6 @@ struct Diagram {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Diagram, String> {
-    let mut title: Option<String> = None;
     let mut before: Option<Section> = None;
     let mut after: Option<Section> = None;
 
@@ -38,13 +36,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -112,7 +103,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let after = after.ok_or("Missing 'after' section")?;
 
     Ok(Diagram {
-        title,
         before,
         after,
     })
@@ -146,14 +136,6 @@ fn parse_section_header(rest: &str, default_label: &str) -> Result<(String, bool
     Ok((rest.to_string(), false))
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -161,7 +143,6 @@ fn strip_quotes(s: &str) -> &str {
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
-const TITLE_FONT_SIZE: f64 = 16.0;
 
 const PADDING: f64 = 24.0;
 const ITEM_HEIGHT: f64 = 40.0;
@@ -173,8 +154,6 @@ const SECTION_HEADER_HEIGHT: f64 = 36.0;
 const SECTION_V_GAP: f64 = 12.0;
 const ARROW_ZONE_WIDTH: f64 = 60.0;
 const MIN_ITEM_WIDTH: f64 = 140.0;
-const TITLE_HEIGHT: f64 = 32.0;
-const TITLE_GAP: f64 = 16.0;
 
 // Colors
 const COLOR_BEFORE_BG: &str = "#ffebee";
@@ -229,14 +208,8 @@ fn render_svg(diagram: &Diagram) -> String {
         SECTION_V_GAP + max_rows as f64 * ITEM_HEIGHT + (max_rows.saturating_sub(1)) as f64 * ITEM_V_GAP + SECTION_V_GAP;
     let section_h = SECTION_HEADER_HEIGHT + section_body_h;
 
-    let title_space = if diagram.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING + before_w + ARROW_ZONE_WIDTH + after_w + PADDING;
-    let total_h = PADDING + title_space + section_h + PADDING;
+    let total_h = PADDING + section_h + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -248,20 +221,7 @@ fn render_svg(diagram: &Diagram) -> String {
         FONT_SIZE, COLOR_TEXT
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = diagram.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            TITLE_FONT_SIZE,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Before section
     let before_x = PADDING;
@@ -447,29 +407,11 @@ after "After" {
 }
 "#;
         let d = parse(input).unwrap();
-        assert!(d.title.is_none());
         assert_eq!(d.before.label, "Before");
         assert_eq!(d.before.items.len(), 1);
         assert_eq!(d.before.items[0].text, "A");
         assert_eq!(d.after.label, "After");
         assert_eq!(d.after.items[0].text, "B");
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = r#"
-title "My Title"
-
-before "Old" {
-  X
-}
-
-after "New" {
-  Y
-}
-"#;
-        let d = parse(input).unwrap();
-        assert_eq!(d.title.as_deref(), Some("My Title"));
     }
 
     #[test]
@@ -495,8 +437,6 @@ after "After" {
     #[test]
     fn parse_japanese() {
         let input = r#"
-title "システム改善"
-
 before "現状" {
   手動デプロイ
 }
@@ -506,7 +446,6 @@ after "改善後" {
 }
 "#;
         let d = parse(input).unwrap();
-        assert_eq!(d.title.as_deref(), Some("システム改善"));
         assert_eq!(d.before.label, "現状");
         assert_eq!(d.after.items[0].text, "自動CI/CD");
     }
@@ -611,21 +550,4 @@ after "B" {
         assert!(svg.contains("<polygon"));
     }
 
-    #[test]
-    fn render_with_title() {
-        let input = r#"
-title "Test Title"
-
-before "A" {
-  X
-}
-
-after "B" {
-  Y
-}
-"#;
-        let d = parse(input).unwrap();
-        let svg = render_svg(&d);
-        assert!(svg.contains("Test Title"));
-    }
 }

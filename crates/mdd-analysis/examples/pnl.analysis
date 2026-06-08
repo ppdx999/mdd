@@ -1,5 +1,4 @@
 type waterfall
-title "損益計算"
 
 item 売上高 : 1000
 item 売上原価 : -400

@@ -6,7 +6,6 @@ use std::io::{self, Read};
 
 #[derive(Debug)]
 struct Matrix {
-    title: Option<String>,
     x_axis: Option<(String, String)>,
     y_axis: Option<(String, String)>,
     quadrants: [Vec<String>; 4],
@@ -17,7 +16,6 @@ struct Matrix {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Matrix, String> {
-    let mut title: Option<String> = None;
     let mut x_axis: Option<(String, String)> = None;
     let mut y_axis: Option<(String, String)> = None;
     let mut quadrants: [Vec<String>; 4] = [vec![], vec![], vec![], vec![]];
@@ -25,13 +23,6 @@ fn parse(input: &str) -> Result<Matrix, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -83,7 +74,6 @@ fn parse(input: &str) -> Result<Matrix, String> {
     }
 
     Ok(Matrix {
-        title,
         x_axis,
         y_axis,
         quadrants,
@@ -120,14 +110,6 @@ fn parse_quoted_strings(s: &str) -> Result<Vec<String>, String> {
     Ok(result)
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -144,11 +126,8 @@ const QUADRANT_COLORS: [&str; 4] = ["#e3f2fd", "#e8f5e9", "#fff8e1", "#fce4ec"];
 const QUADRANT_SIZE: f64 = 200.0;
 const PADDING: f64 = 60.0;
 const AXIS_LABEL_GAP: f64 = 30.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const ITEM_LINE_HEIGHT: f64 = 20.0;
 
-const TITLE_FONT_SIZE: f64 = 16.0;
 const GRID_COLOR: &str = "#bdbdbd";
 
 #[allow(dead_code)]
@@ -166,12 +145,6 @@ fn escape_xml(s: &str) -> String {
 }
 
 fn render_svg(matrix: &Matrix) -> String {
-    let title_space = if matrix.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let has_x_axis = matrix.x_axis.is_some();
     let has_y_axis = matrix.y_axis.is_some();
 
@@ -179,7 +152,7 @@ fn render_svg(matrix: &Matrix) -> String {
     let x_axis_space = if has_x_axis { AXIS_LABEL_GAP } else { 0.0 };
 
     let grid_x = PADDING + y_axis_space;
-    let grid_y = PADDING + title_space;
+    let grid_y = PADDING;
     let grid_w = QUADRANT_SIZE * 2.0;
     let grid_h = QUADRANT_SIZE * 2.0;
 
@@ -195,18 +168,6 @@ fn render_svg(matrix: &Matrix) -> String {
         "<style>text {{ font-family: sans-serif; font-size: {}px; fill: {}; }}</style>",
         FONT_SIZE, COLOR_DARK
     ));
-
-    // Title
-    if let Some(ref title) = matrix.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            TITLE_FONT_SIZE,
-            escape_xml(title)
-        ));
-    }
 
     // Quadrant backgrounds: 1=top-left, 2=top-right, 3=bottom-left, 4=bottom-right
     let quad_positions = [
@@ -339,14 +300,12 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Test Matrix"
 quadrant 1 : "A" "B"
 quadrant 2 : "C"
 quadrant 3 : "D" "E"
 quadrant 4 : "F"
 "#;
         let m = parse(input).unwrap();
-        assert_eq!(m.title.as_deref(), Some("Test Matrix"));
         assert_eq!(m.quadrants[0], vec!["A", "B"]);
         assert_eq!(m.quadrants[1], vec!["C"]);
         assert_eq!(m.quadrants[2], vec!["D", "E"]);
@@ -386,7 +345,6 @@ quadrant 4 : "D"
     #[test]
     fn parse_japanese() {
         let input = r#"
-title "アイゼンハワー・マトリクス"
 x-axis "緊急でない" "緊急"
 y-axis "重要でない" "重要"
 quadrant 1 : "計画" "戦略立案"
@@ -395,7 +353,6 @@ quadrant 3 : "削除" "時間の浪費"
 quadrant 4 : "委任" "割り込み作業"
 "#;
         let m = parse(input).unwrap();
-        assert_eq!(m.title.as_deref(), Some("アイゼンハワー・マトリクス"));
         assert_eq!(m.quadrants[0].len(), 2);
         assert_eq!(m.quadrants[0][0], "計画");
     }
@@ -403,7 +360,6 @@ quadrant 4 : "委任" "割り込み作業"
     #[test]
     fn render_contains_items() {
         let input = r#"
-title "My Matrix"
 quadrant 1 : "Alpha"
 quadrant 2 : "Beta"
 quadrant 3 : "Gamma"
@@ -415,7 +371,6 @@ quadrant 4 : "Delta"
         assert!(svg.contains("Beta"));
         assert!(svg.contains("Gamma"));
         assert!(svg.contains("Delta"));
-        assert!(svg.contains("My Matrix"));
     }
 
     #[test]

@@ -3,14 +3,13 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Plan { name: String, price: String, features: Vec<String>, highlighted: bool }
 #[derive(Debug)]
-struct PriceTable { title: Option<String>, plans: Vec<Plan> }
+struct PriceTable { plans: Vec<Plan> }
 
 fn parse(input: &str) -> Result<PriceTable, String> {
-    let mut title = None; let mut plans = Vec::new();
+    let mut plans = Vec::new();
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") { title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string()); continue; }
         if t.starts_with("plan ") || t.starts_with("plan* ") {
             let highlighted = t.starts_with("plan* ");
             let prefix = if highlighted { "plan* " } else { "plan " };
@@ -30,14 +29,13 @@ fn parse(input: &str) -> Result<PriceTable, String> {
         return Err(format!("Unknown syntax: {}", t));
     }
     if plans.is_empty() { return Err("At least 1 plan required".to_string()); }
-    Ok(PriceTable { title, plans })
+    Ok(PriceTable { plans })
 }
 
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
 
 const CW: f64 = 8.0; const CJK: f64 = 14.0; const PLAN_W: f64 = 180.0; const PLAN_GAP: f64 = 12.0;
 const PAD: f64 = 24.0; const HEADER_H: f64 = 80.0; const FEATURE_H: f64 = 28.0; const PLAN_PAD: f64 = 16.0;
-const TITLE_SPACE: f64 = 40.0;
 
 fn tw(s: &str) -> f64 { s.chars().map(|c| if c.is_ascii() { CW } else { CJK }).sum() }
 fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;").replace('"',"&quot;") }
@@ -51,21 +49,15 @@ fn render_svg(pt: &PriceTable) -> String {
         vec![nw, fw].into_iter()
     }).fold(PLAN_W, f64::max);
 
-    let title_space = if pt.title.is_some() { TITLE_SPACE } else { 0.0 };
     let plan_h = HEADER_H + PLAN_PAD + max_features as f64 * FEATURE_H + PLAN_PAD;
     let total_w = PAD * 2.0 + n as f64 * plan_w + (n-1) as f64 * PLAN_GAP;
-    let total_h = PAD * 2.0 + title_space + plan_h;
+    let total_h = PAD * 2.0 + plan_h;
 
     let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">", total_w, total_h, total_w, total_h);
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 13px; fill: #333; }</style>");
 
-    let mut y = PAD;
-    if let Some(ref t) = pt.title {
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"18\" font-weight=\"bold\">{}</text>", total_w / 2.0, y + 20.0, ex(t)));
-        y += title_space;
-    }
-
+    let y = PAD;
     let mut x = PAD;
     for plan in &pt.plans {
         let (border, header_bg, header_fg) = if plan.highlighted {

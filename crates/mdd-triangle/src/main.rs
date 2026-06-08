@@ -13,7 +13,6 @@ struct Edge {
 
 #[derive(Debug)]
 struct Triangle {
-    title: Option<String>,
     nodes: Vec<String>,
     edges: Vec<Edge>,
 }
@@ -23,20 +22,12 @@ struct Triangle {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Triangle, String> {
-    let mut title: Option<String> = None;
     let mut nodes: Vec<String> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -76,7 +67,6 @@ fn parse(input: &str) -> Result<Triangle, String> {
     }
 
     Ok(Triangle {
-        title,
         nodes,
         edges,
     })
@@ -131,8 +121,6 @@ const NODE_WIDTH: f64 = 120.0;
 const NODE_HEIGHT: f64 = 44.0;
 const NODE_H_PAD: f64 = 16.0;
 const PADDING: f64 = 60.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const EDGE_LABEL_FONT: f64 = 11.0;
 
 const COLORS: &[(&str, &str)] = &[
@@ -155,12 +143,6 @@ fn escape_xml(s: &str) -> String {
 }
 
 fn render_svg(tri: &Triangle) -> String {
-    let title_space = if tri.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     // Compute node widths based on text
     let node_widths: Vec<f64> = tri
         .nodes
@@ -173,7 +155,7 @@ fn render_svg(tri: &Triangle) -> String {
     // Triangle vertices (equilateral, pointing up)
     let tri_h = TRI_SIZE * (3.0_f64).sqrt() / 2.0;
     let cx = PADDING + TRI_SIZE / 2.0 + max_node_w / 2.0;
-    let cy = PADDING + title_space + tri_h / 2.0 + NODE_HEIGHT / 2.0;
+    let cy = PADDING + tri_h / 2.0 + NODE_HEIGHT / 2.0;
 
     // Top vertex
     let top_x = cx;
@@ -201,17 +183,6 @@ fn render_svg(tri: &Triangle) -> String {
         "<style>text {{ font-family: sans-serif; font-size: {}px; fill: {}; }}</style>",
         FONT_SIZE, COLOR_DARK
     ));
-
-    // Title
-    if let Some(ref title) = tri.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-    }
 
     // Edges (draw before nodes so nodes appear on top)
     for edge in &tri.edges {
@@ -316,13 +287,11 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Test"
 node A
 node B
 node C
 "#;
         let t = parse(input).unwrap();
-        assert_eq!(t.title.as_deref(), Some("Test"));
         assert_eq!(t.nodes.len(), 3);
         assert_eq!(t.nodes[0], "A");
         assert_eq!(t.nodes[1], "B");

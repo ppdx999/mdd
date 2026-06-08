@@ -19,7 +19,6 @@ struct Route {
 
 #[derive(Debug)]
 struct Map {
-    title: Option<String>,
     width: f64,
     height: f64,
     pins: Vec<Pin>,
@@ -31,7 +30,6 @@ struct Map {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Map, String> {
-    let mut title: Option<String> = None;
     let mut width = DEFAULT_WIDTH;
     let mut height = DEFAULT_HEIGHT;
     let mut pins: Vec<Pin> = Vec::new();
@@ -40,13 +38,6 @@ fn parse(input: &str) -> Result<Map, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -104,7 +95,6 @@ fn parse(input: &str) -> Result<Map, String> {
     }
 
     Ok(Map {
-        title,
         width,
         height,
         pins,
@@ -167,14 +157,6 @@ fn parse_route(rest: &str) -> Result<Route, String> {
     Ok(Route { from, to })
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -183,7 +165,6 @@ const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
 const LABEL_FONT_SIZE: f64 = 12.0;
-const TITLE_FONT_SIZE: f64 = 16.0;
 const COLOR_DARK: &str = "#333";
 
 const DEFAULT_WIDTH: f64 = 500.0;
@@ -191,8 +172,6 @@ const DEFAULT_HEIGHT: f64 = 350.0;
 const PIN_RADIUS: f64 = 8.0;
 const PIN_TOTAL_HEIGHT: f64 = 22.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const ROUTE_COLOR: &str = "#666";
 
 const COLORS: &[(&str, &str)] = &[
@@ -220,14 +199,8 @@ fn escape_xml(s: &str) -> String {
 }
 
 fn render_svg(map: &Map) -> String {
-    let title_space = if map.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let canvas_x = PADDING;
-    let canvas_y = PADDING + title_space;
+    let canvas_y = PADDING;
     let canvas_w = map.width;
     let canvas_h = map.height;
 
@@ -243,18 +216,6 @@ fn render_svg(map: &Map) -> String {
         "<style>text {{ font-family: sans-serif; font-size: {}px; fill: {}; }}</style>",
         FONT_SIZE, COLOR_DARK
     ));
-
-    // Title
-    if let Some(ref title) = map.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            TITLE_FONT_SIZE,
-            escape_xml(title)
-        ));
-    }
 
     // Canvas area
     svg.push_str(&format!(
@@ -351,14 +312,12 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Test Map"
 width 600
 height 400
 pin "A" at 100,200
 pin "B" at 300,150
 "#;
         let m = parse(input).unwrap();
-        assert_eq!(m.title.as_deref(), Some("Test Map"));
         assert_eq!(m.width, 600.0);
         assert_eq!(m.height, 400.0);
         assert_eq!(m.pins.len(), 2);
@@ -409,7 +368,7 @@ route 0 -- 1
 
     #[test]
     fn parse_error_no_pins() {
-        let input = "title \"Empty\"\n";
+        let input = "";
         assert!(parse(input).is_err());
     }
 
@@ -426,7 +385,6 @@ route 0 -- 5
     fn parse_defaults() {
         let input = "pin \"Solo\" at 50,50\n";
         let m = parse(input).unwrap();
-        assert!(m.title.is_none());
         assert_eq!(m.width, DEFAULT_WIDTH);
         assert_eq!(m.height, DEFAULT_HEIGHT);
     }

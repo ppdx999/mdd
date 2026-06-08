@@ -12,7 +12,6 @@ struct ScaleItem {
 
 #[derive(Debug)]
 struct Scale {
-    title: Option<String>,
     unit: Option<String>,
     items: Vec<ScaleItem>,
 }
@@ -22,20 +21,12 @@ struct Scale {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Scale, String> {
-    let mut title: Option<String> = None;
     let mut unit: Option<String> = None;
     let mut items: Vec<ScaleItem> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -72,7 +63,7 @@ fn parse(input: &str) -> Result<Scale, String> {
         return Err("At least 2 items are required".to_string());
     }
 
-    Ok(Scale { title, unit, items })
+    Ok(Scale { unit, items })
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -97,8 +88,6 @@ const BAR_HEIGHT: f64 = 32.0;
 const BAR_GAP: f64 = 8.0;
 const LABEL_HEIGHT: f64 = 20.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const VALUE_FONT_SIZE: f64 = 11.0;
 
 const COLORS: &[(&str, &str)] = &[
@@ -166,16 +155,10 @@ fn render_svg(scale: &Scale) -> String {
         .fold(0.0_f64, f64::max)
         + 12.0;
 
-    let title_space = if scale.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let row_height = LABEL_HEIGHT + BAR_HEIGHT + BAR_GAP;
     let content_h = scale.items.len() as f64 * row_height;
     let total_w = PADDING + label_col_w + MAX_BAR_WIDTH + value_col_w + PADDING;
-    let total_h = PADDING + title_space + content_h + PADDING;
+    let total_h = PADDING + content_h + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -187,19 +170,7 @@ fn render_svg(scale: &Scale) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = scale.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Render items
     let bar_x = PADDING + label_col_w;
@@ -286,7 +257,6 @@ item A : 100
 item B : 50
 "#;
         let s = parse(input).unwrap();
-        assert!(s.title.is_none());
         assert!(s.unit.is_none());
         assert_eq!(s.items.len(), 2);
         assert_eq!(s.items[0].label, "A");
@@ -298,13 +268,11 @@ item B : 50
     #[test]
     fn parse_with_unit() {
         let input = r#"
-title "Test"
 unit "kg"
 item X : 10
 item Y : 20
 "#;
         let s = parse(input).unwrap();
-        assert_eq!(s.title.as_deref(), Some("Test"));
         assert_eq!(s.unit.as_deref(), Some("kg"));
         assert_eq!(s.items.len(), 2);
     }

@@ -12,7 +12,6 @@ struct Card {
 
 #[derive(Debug)]
 struct ListH {
-    title: Option<String>,
     cards: Vec<Card>,
 }
 
@@ -21,19 +20,11 @@ struct ListH {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<ListH, String> {
-    let mut title: Option<String> = None;
     let mut cards: Vec<Card> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -52,7 +43,7 @@ fn parse(input: &str) -> Result<ListH, String> {
         return Err("At least 2 cards are required".to_string());
     }
 
-    Ok(ListH { title, cards })
+    Ok(ListH { cards })
 }
 
 fn parse_card(s: &str) -> Result<Card, String> {
@@ -114,8 +105,6 @@ const CARD_BASE_HEIGHT: f64 = 80.0;
 const CARD_GAP: f64 = 12.0;
 const ACCENT_HEIGHT: f64 = 4.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const BORDER_COLOR: &str = "#e0e0e0";
 
 const COLORS: &[(&str, &str)] = &[
@@ -171,14 +160,8 @@ fn render_svg(list: &ListH) -> String {
     let total_cards_w: f64 =
         card_widths.iter().sum::<f64>() + (list.cards.len() as f64 - 1.0) * CARD_GAP;
 
-    let title_space = if list.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING * 2.0 + total_cards_w;
-    let total_h = PADDING * 2.0 + title_space + max_card_h;
+    let total_h = PADDING * 2.0 + max_card_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -190,19 +173,7 @@ fn render_svg(list: &ListH) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = list.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Cards
     let mut cx = PADDING;
@@ -294,12 +265,10 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Test"
 card "A"
 card "B"
 "#;
         let list = parse(input).unwrap();
-        assert_eq!(list.title.as_deref(), Some("Test"));
         assert_eq!(list.cards.len(), 2);
         assert_eq!(list.cards[0].label, "A");
         assert!(list.cards[0].description.is_empty());
@@ -313,7 +282,6 @@ card "Alpha" : "First letter"
 card "Beta" : "Second letter"
 "#;
         let list = parse(input).unwrap();
-        assert!(list.title.is_none());
         assert_eq!(list.cards.len(), 2);
         assert_eq!(list.cards[0].label, "Alpha");
         assert_eq!(list.cards[0].description, vec!["First letter"]);

@@ -3,18 +3,13 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Slice { label: String, value: f64 }
 #[derive(Debug)]
-struct Pie { title: Option<String>, slices: Vec<Slice> }
+struct Pie { slices: Vec<Slice> }
 
 fn parse(input: &str) -> Result<Pie, String> {
-    let mut title = None;
     let mut slices = Vec::new();
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") {
-            title = Some(strip_quotes(t.strip_prefix("title ").unwrap().trim()).to_string());
-            continue;
-        }
         if t.starts_with("slice ") {
             let rest = t.strip_prefix("slice ").unwrap().trim();
             if let Some((label, val)) = rest.split_once(" : ") {
@@ -26,7 +21,7 @@ fn parse(input: &str) -> Result<Pie, String> {
         return Err(format!("Unknown syntax: {}", t));
     }
     if slices.len() < 2 { return Err("At least 2 slices required".to_string()); }
-    Ok(Pie { title, slices })
+    Ok(Pie { slices })
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -49,9 +44,8 @@ fn escape_xml(s: &str) -> String {
 }
 
 fn render_svg(pie: &Pie) -> String {
-    let title_space = if pie.title.is_some() { 40.0 } else { 0.0 };
     let cx = PADDING + RADIUS;
-    let cy = PADDING + RADIUS + title_space;
+    let cy = PADDING + RADIUS;
     let total = pie.slices.iter().map(|s| s.value).sum::<f64>();
 
     let legend_w = pie.slices.iter().map(|s| text_width(&s.label) + 40.0).fold(LEGEND_W, f64::max);
@@ -64,13 +58,6 @@ fn render_svg(pie: &Pie) -> String {
     );
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 12px; fill: #333; }</style>");
-
-    if let Some(ref t) = pie.title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            cx, PADDING + 6.0, escape_xml(t)
-        ));
-    }
 
     let mut start_angle = -std::f64::consts::FRAC_PI_2;
     for (i, slice) in pie.slices.iter().enumerate() {

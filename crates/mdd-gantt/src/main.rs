@@ -34,7 +34,6 @@ struct Section {
 
 #[derive(Debug)]
 struct Diagram {
-    title: String,
     unit: Unit,
     sections: Vec<Section>,
     tasks: Vec<Task>,
@@ -196,7 +195,6 @@ fn parse_duration(s: &str) -> Result<u32, String> {
 }
 
 fn parse(input: &str) -> Result<Diagram, String> {
-    let mut title = String::new();
     let mut unit = Unit::Week;
     let mut sections: Vec<Section> = Vec::new();
     let mut tasks: Vec<Task> = Vec::new();
@@ -206,11 +204,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     for line in input.lines() {
         let line = line.trim();
         if line.is_empty() {
-            continue;
-        }
-
-        if let Some(t) = line.strip_prefix("title ") {
-            title = t.trim().to_string();
             continue;
         }
 
@@ -268,7 +261,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     }
 
     Ok(Diagram {
-        title,
         unit,
         sections,
         tasks,
@@ -283,7 +275,6 @@ const FONT_SIZE: f64 = 12.0;
 const SMALL_FONT_SIZE: f64 = 10.0;
 
 const PADDING: f64 = 24.0;
-const TITLE_HEIGHT: f64 = 36.0;
 const HEADER_HEIGHT: f64 = 28.0;
 const ROW_HEIGHT: f64 = 36.0;
 const BAR_HEIGHT: f64 = 18.0;
@@ -294,7 +285,6 @@ const DAY_WIDTH: f64 = 30.0;
 const WEEK_WIDTH: f64 = 40.0;
 const MONTH_WIDTH: f64 = 60.0;
 
-const COLOR_TITLE: &str = "#222";
 const COLOR_HEADER_TEXT: &str = "#888";
 const COLOR_GRID: &str = "#ebebeb";
 const COLOR_BAR: &str = "#5b9bd5";
@@ -345,7 +335,6 @@ fn render_svg(diagram: &Diagram) -> String {
     }
 
     let has_sections = !diagram.sections.is_empty();
-    let has_title = !diagram.title.is_empty();
 
     // Compute date range
     let min_date = diagram.tasks.iter().map(|t| t.start).min().unwrap();
@@ -375,9 +364,8 @@ fn render_svg(diagram: &Diagram) -> String {
         LABEL_AREA_WIDTH
     };
 
-    let title_offset = if has_title { TITLE_HEIGHT } else { 0.0 };
     let chart_x = PADDING + label_offset;
-    let chart_y = PADDING + title_offset + HEADER_HEIGHT;
+    let chart_y = PADDING + HEADER_HEIGHT;
     let num_rows = diagram.tasks.len();
     let total_section_gaps = section_gaps_before(&diagram.tasks, num_rows);
     let chart_height =
@@ -401,19 +389,8 @@ fn render_svg(diagram: &Diagram) -> String {
         svg_width, svg_height
     ));
 
-    // Title
-    if has_title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-size=\"15\" font-weight=\"600\" fill=\"{}\">{}</text>",
-            PADDING,
-            PADDING + 16.0,
-            COLOR_TITLE,
-            escape_xml(&diagram.title)
-        ));
-    }
-
     // Header labels (just text, no background box)
-    let header_y = PADDING + title_offset;
+    let header_y = PADDING;
     let mut col_x = 0.0;
     for (label, width) in &grid_labels {
         let lx = chart_x + col_x + width / 2.0;
@@ -707,9 +684,8 @@ mod tests {
 
     #[test]
     fn parse_simple_diagram() {
-        let input = "title Test\nunit day\nsection Dev\n  Task1 : 2025-01-06, 5d\n";
+        let input = "unit day\nsection Dev\n  Task1 : 2025-01-06, 5d\n";
         let d = parse(input).unwrap();
-        assert_eq!(d.title, "Test");
         assert_eq!(d.unit, Unit::Day);
         assert_eq!(d.sections.len(), 1);
         assert_eq!(d.tasks.len(), 1);
@@ -748,7 +724,7 @@ mod tests {
 
     #[test]
     fn render_produces_svg() {
-        let input = "title Test\nunit day\nsection Dev\nTask1 : 2025-01-06, 5d\n";
+        let input = "unit day\nsection Dev\nTask1 : 2025-01-06, 5d\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.starts_with("<svg"));
@@ -758,7 +734,7 @@ mod tests {
 
     #[test]
     fn render_empty_tasks() {
-        let input = "title Empty\n";
+        let input = "";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("No tasks"));

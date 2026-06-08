@@ -13,18 +13,18 @@ fn parse(input: &str) -> Result<Title, String> {
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") {
-            title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string());
-            continue;
-        }
         if t.starts_with("subtitle ") {
             subtitle = Some(sq(t.strip_prefix("subtitle ").unwrap().trim()).to_string());
+            continue;
+        }
+        if title.is_none() {
+            title = Some(sq(t).to_string());
             continue;
         }
         return Err(format!("Unknown syntax: {}", t));
     }
 
-    let title = title.ok_or("Missing 'title'")?;
+    let title = title.ok_or("Missing title text")?;
     Ok(Title { title, subtitle })
 }
 
@@ -104,21 +104,21 @@ mod tests {
 
     #[test]
     fn parse_basic() {
-        let t = parse("title \"Hello\"\n").unwrap();
+        let t = parse("\"Hello\"\n").unwrap();
         assert_eq!(t.title, "Hello");
         assert!(t.subtitle.is_none());
     }
 
     #[test]
     fn parse_with_subtitle() {
-        let t = parse("title \"Hello\"\nsubtitle \"World\"\n").unwrap();
+        let t = parse("\"Hello\"\nsubtitle \"World\"\n").unwrap();
         assert_eq!(t.title, "Hello");
         assert_eq!(t.subtitle.as_deref(), Some("World"));
     }
 
     #[test]
     fn render_output() {
-        let t = parse("title \"Test\"\nsubtitle \"Sub\"\n").unwrap();
+        let t = parse("\"Test\"\nsubtitle \"Sub\"\n").unwrap();
         let svg = render_svg(&t);
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("Test"));

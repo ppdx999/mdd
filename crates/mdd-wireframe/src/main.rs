@@ -11,7 +11,7 @@ enum Element {
     Divider, List(Vec<String>),
 }
 #[derive(Debug)]
-struct Wireframe { title: Option<String>, elements: Vec<Element> }
+struct Wireframe { elements: Vec<Element> }
 
 fn parse_line(t: &str, elements: &mut Vec<Element>) -> Result<(), String> {
     if t.starts_with("header ") { elements.push(Element::Header(sq(t.strip_prefix("header ").unwrap().trim()).to_string())); return Ok(()); }
@@ -87,12 +87,11 @@ fn parse_line(t: &str, elements: &mut Vec<Element>) -> Result<(), String> {
 }
 
 fn parse(input: &str) -> Result<Wireframe, String> {
-    let mut title = None; let mut elements = Vec::new();
+    let mut elements = Vec::new();
     let mut card_stack: Vec<Vec<Element>> = Vec::new();
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") { title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string()); continue; }
         if t == "card-begin" {
             card_stack.push(Vec::new());
             continue;
@@ -108,7 +107,7 @@ fn parse(input: &str) -> Result<Wireframe, String> {
     }
     if !card_stack.is_empty() { return Err("Unclosed card-begin".to_string()); }
     if elements.is_empty() { return Err("At least 1 element required".to_string()); }
-    Ok(Wireframe { title, elements })
+    Ok(Wireframe { elements })
 }
 
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
@@ -161,10 +160,6 @@ fn render_svg(wf: &Wireframe) -> String {
     for (i, color) in ["#ff5f57","#febc2e","#28c840"].iter().enumerate() {
         svg.push_str(&format!("<circle cx=\"{}\" cy=\"{}\" r=\"5\" fill=\"{}\"/>", fx + 18.0 + i as f64 * 16.0, fy + title_bar / 2.0, color));
     }
-    if let Some(ref t) = wf.title {
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" fill=\"#999\">{}</text>", fx + frame_w / 2.0, fy + title_bar / 2.0 + 4.0, ex(t)));
-    }
-
     let mut cy = fy + title_bar + FRAME_PAD;
     let inner_x = fx + FRAME_PAD;
     let inner_w = frame_w - FRAME_PAD * 2.0;
@@ -425,7 +420,7 @@ mod tests {
     }
     #[test]
     fn render_all_elements() {
-        let input = "title \"Test\"\nheader H\nsubheader SH\ntext T\nlink L\nbutton B\ninput \"I\"\ntextarea \"TA\"\nselect \"S\"\ncheckbox \"C\"\ncheckbox checked \"CC\"\nradio \"R\"\nradio selected \"RS\"\ntoggle \"TG\"\ntoggle on \"TGO\"\nimage \"IMG\"\navatar \"A\"\nprogress 50\nnav X | Y\ntable A | B\n| 1 | 2\ncard-begin\ntext Card content\ncard-end\n---\n- item1\n";
+        let input = "header H\nsubheader SH\ntext T\nlink L\nbutton B\ninput \"I\"\ntextarea \"TA\"\nselect \"S\"\ncheckbox \"C\"\ncheckbox checked \"CC\"\nradio \"R\"\nradio selected \"RS\"\ntoggle \"TG\"\ntoggle on \"TGO\"\nimage \"IMG\"\navatar \"A\"\nprogress 50\nnav X | Y\ntable A | B\n| 1 | 2\ncard-begin\ntext Card content\ncard-end\n---\n- item1\n";
         let w = parse(input).unwrap();
         let svg = render_svg(&w);
         assert!(svg.starts_with("<svg"));

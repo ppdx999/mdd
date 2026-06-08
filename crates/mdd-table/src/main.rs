@@ -6,7 +6,6 @@ use std::io::{self, Read};
 
 #[derive(Debug)]
 struct Table {
-    title: Option<String>,
     headers: Vec<String>,
     rows: Vec<Vec<String>>,
 }
@@ -16,20 +15,12 @@ struct Table {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Table, String> {
-    let mut title: Option<String> = None;
     let mut headers: Vec<String> = Vec::new();
     let mut rows: Vec<Vec<String>> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -60,18 +51,9 @@ fn parse(input: &str) -> Result<Table, String> {
     }
 
     Ok(Table {
-        title,
         headers,
         rows,
     })
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +63,6 @@ fn strip_quotes(s: &str) -> &str {
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
-const TITLE_FONT_SIZE: f64 = 16.0;
 const COLOR_DARK: &str = "#333";
 
 const CELL_H_PAD: f64 = 12.0;
@@ -90,8 +71,6 @@ const ROW_HEIGHT: f64 = 32.0;
 const HEADER_ROW_HEIGHT: f64 = 36.0;
 const MIN_COL_WIDTH: f64 = 80.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 
 const HEADER_BG: &str = "#e8eaf6";
 const HEADER_TEXT: &str = "#283593";
@@ -148,14 +127,8 @@ fn render_svg(table: &Table) -> String {
     let table_w: f64 = col_widths.iter().sum();
     let table_h = HEADER_ROW_HEIGHT + table.rows.len() as f64 * ROW_HEIGHT;
 
-    let title_space = if table.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING * 2.0 + table_w;
-    let total_h = PADDING * 2.0 + title_space + table_h;
+    let total_h = PADDING * 2.0 + table_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -167,21 +140,7 @@ fn render_svg(table: &Table) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = table.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            TITLE_FONT_SIZE,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
-
+    let content_y = PADDING;
     let table_x = PADDING;
 
     // Header row background
@@ -316,7 +275,6 @@ mod tests {
 | Bob | 25 | Osaka |
 "#;
         let t = parse(input).unwrap();
-        assert!(t.title.is_none());
         assert_eq!(t.headers.len(), 3);
         assert_eq!(t.headers[0], "Name");
         assert_eq!(t.headers[1], "Age");
@@ -324,17 +282,6 @@ mod tests {
         assert_eq!(t.rows.len(), 2);
         assert_eq!(t.rows[0][0], "Alice");
         assert_eq!(t.rows[1][2], "Osaka");
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = r#"
-title "My Table"
-| A | B |
-| 1 | 2 |
-"#;
-        let t = parse(input).unwrap();
-        assert_eq!(t.title.as_deref(), Some("My Table"));
     }
 
     #[test]

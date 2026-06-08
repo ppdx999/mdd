@@ -12,7 +12,6 @@ struct Option {
 
 #[derive(Debug)]
 struct Compare {
-    title: std::option::Option<String>,
     options: Vec<Option>,
 }
 
@@ -21,7 +20,6 @@ struct Compare {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Compare, String> {
-    let mut title: std::option::Option<String> = None;
     let mut options: Vec<Option> = Vec::new();
     let mut current_label: std::option::Option<String> = None;
     let mut current_items: Vec<String> = Vec::new();
@@ -29,13 +27,6 @@ fn parse(input: &str) -> Result<Compare, String> {
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -82,7 +73,7 @@ fn parse(input: &str) -> Result<Compare, String> {
         return Err("At most 3 options are supported".to_string());
     }
 
-    Ok(Compare { title, options })
+    Ok(Compare { options })
 }
 
 fn parse_option_header(rest: &str) -> Result<(String, bool), String> {
@@ -105,14 +96,6 @@ fn parse_option_header(rest: &str) -> Result<(String, bool), String> {
     Ok((rest.to_string(), false))
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -128,8 +111,6 @@ const HEADER_HEIGHT: f64 = 40.0;
 const ITEM_HEIGHT: f64 = 28.0;
 const COLUMN_GAP: f64 = 16.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const BULLET_RADIUS: f64 = 3.0;
 
 const COLORS: &[(&str, &str)] = &[
@@ -173,17 +154,11 @@ fn render_svg(compare: &Compare) -> String {
     let total_columns_w: f64 = column_widths.iter().sum::<f64>()
         + COLUMN_GAP * (num_options.saturating_sub(1)) as f64;
 
-    let title_space = if compare.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let column_body_h = max_items as f64 * ITEM_HEIGHT;
     let column_h = HEADER_HEIGHT + column_body_h;
 
     let total_w = PADDING * 2.0 + total_columns_w;
-    let total_h = PADDING * 2.0 + title_space + column_h;
+    let total_h = PADDING * 2.0 + column_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -195,19 +170,7 @@ fn render_svg(compare: &Compare) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = compare.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Columns
     let mut col_x = PADDING;
@@ -306,7 +269,6 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "比較"
 option "A" {
   項目1
   項目2
@@ -316,7 +278,6 @@ option "B" {
 }
 "#;
         let c = parse(input).unwrap();
-        assert_eq!(c.title.as_deref(), Some("比較"));
         assert_eq!(c.options.len(), 2);
         assert_eq!(c.options[0].label, "A");
         assert_eq!(c.options[0].items.len(), 2);
@@ -338,7 +299,6 @@ option "Z" {
 }
 "#;
         let c = parse(input).unwrap();
-        assert!(c.title.is_none());
         assert_eq!(c.options.len(), 3);
         assert_eq!(c.options[2].label, "Z");
     }

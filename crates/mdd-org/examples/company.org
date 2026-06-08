@@ -1,4 +1,3 @@
-title "組織図"
 member CEO : "代表取締役"
 member CTO : "技術統括"
 member CFO : "財務統括"

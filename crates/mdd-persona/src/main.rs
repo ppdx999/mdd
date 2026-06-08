@@ -14,7 +14,6 @@ struct Actor {
 
 #[derive(Debug)]
 struct Diagram {
-    title: Option<String>,
     actors: Vec<Actor>,
 }
 
@@ -23,7 +22,6 @@ struct Diagram {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Diagram, String> {
-    let mut title: Option<String> = None;
     let mut actors: Vec<Actor> = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -31,14 +29,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     while i < lines.len() {
         let trimmed = lines[i].trim();
         if trimmed.is_empty() {
-            i += 1;
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             i += 1;
             continue;
         }
@@ -103,7 +93,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
         return Err("At least 1 actor is required".to_string());
     }
 
-    Ok(Diagram { title, actors })
+    Ok(Diagram { actors })
 }
 
 fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
@@ -145,8 +135,6 @@ const SPEECH_FONT_SIZE: f64 = 12.0;
 
 const PADDING: f64 = 40.0;
 const ACTOR_GAP: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 
 // Stick figure dimensions
 const HEAD_RADIUS: f64 = 14.0;
@@ -228,12 +216,6 @@ fn render_svg(diagram: &Diagram) -> String {
     let total_cols_w: f64 = col_widths.iter().sum::<f64>()
         + (n.saturating_sub(1)) as f64 * ACTOR_GAP;
 
-    let title_space = if diagram.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     // Max bubble height
     let max_bubble_h = diagram.actors.iter()
         .map(|a| {
@@ -245,7 +227,7 @@ fn render_svg(diagram: &Diagram) -> String {
     let content_h = max_bubble_h + FIGURE_HEIGHT + LABEL_GAP + LABEL_FONT_SIZE;
 
     let total_w = PADDING * 2.0 + total_cols_w;
-    let total_h = PADDING * 2.0 + title_space + content_h;
+    let total_h = PADDING * 2.0 + content_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -257,17 +239,7 @@ fn render_svg(diagram: &Diagram) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = diagram.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0, title_y, escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Figure top starts after bubble area
     let figure_top = content_y + max_bubble_h;
@@ -438,13 +410,6 @@ mod tests {
         let input = "actor Alice : \"Line one\nLine two\"\n";
         let d = parse(input).unwrap();
         assert_eq!(d.actors[0].speech, vec!["Line one", "Line two"]);
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = "title \"Team\"\nactor Alice\n";
-        let d = parse(input).unwrap();
-        assert_eq!(d.title.as_deref(), Some("Team"));
     }
 
     #[test]

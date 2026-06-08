@@ -12,7 +12,6 @@ struct Step {
 
 #[derive(Debug)]
 struct Process {
-    title: Option<String>,
     steps: Vec<Step>,
 }
 
@@ -21,7 +20,6 @@ struct Process {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Process, String> {
-    let mut title: Option<String> = None;
     let mut steps: Vec<Step> = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -33,39 +31,26 @@ fn parse(input: &str) -> Result<Process, String> {
             continue;
         }
 
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
-            i += 1;
-            continue;
+        if let Some((label, desc_part)) = trimmed.split_once(" : ") {
+            let label = label.trim().to_string();
+            let desc_part = desc_part.trim();
+            let (desc, consumed) = parse_multiline_desc(desc_part, &lines, i)?;
+            i += consumed;
+            steps.push(Step { label, description: desc });
+        } else {
+            steps.push(Step {
+                label: trimmed.to_string(),
+                description: Vec::new(),
+            });
         }
-
-        if trimmed.starts_with("step ") {
-            let rest = trimmed.strip_prefix("step ").unwrap().trim();
-            if let Some((label, desc_part)) = rest.split_once(" : ") {
-                let label = label.trim().to_string();
-                let desc_part = desc_part.trim();
-                let (desc, consumed) = parse_multiline_desc(desc_part, &lines, i)?;
-                i += consumed;
-                steps.push(Step { label, description: desc });
-            } else {
-                steps.push(Step {
-                    label: rest.to_string(),
-                    description: Vec::new(),
-                });
-            }
-            i += 1;
-            continue;
-        }
-
-        return Err(format!("Unknown syntax: {}", trimmed));
+        i += 1;
     }
 
     if steps.len() < 2 {
         return Err("At least 2 steps are required".to_string());
     }
 
-    Ok(Process { title, steps })
+    Ok(Process { steps })
 }
 
 fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
@@ -87,14 +72,6 @@ fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(
     Err("Unterminated description (missing closing \")".to_string())
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -102,7 +79,6 @@ fn strip_quotes(s: &str) -> &str {
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
-const TITLE_FONT_SIZE: f64 = 16.0;
 const COLOR_DARK: &str = "#333";
 
 const BOX_HEIGHT: f64 = 50.0;
@@ -110,8 +86,6 @@ const BOX_H_PAD: f64 = 20.0;
 const ARROW_WIDTH: f64 = 30.0;
 const PADDING: f64 = 40.0;
 const MIN_BOX_WIDTH: f64 = 100.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const DESC_FONT_SIZE: f64 = 11.0;
 const DESC_LINE_HEIGHT: f64 = 15.0;
 const DESC_GAP: f64 = 8.0;
@@ -168,12 +142,6 @@ fn render_svg(process: &Process) -> String {
     let total_boxes_w: f64 = box_widths.iter().sum();
     let total_arrows_w = ARROW_WIDTH * (n - 1) as f64;
 
-    let title_space = if process.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let max_desc_lines = process.steps.iter()
         .map(|s| s.description.len())
         .max()
@@ -185,7 +153,7 @@ fn render_svg(process: &Process) -> String {
     };
 
     let total_w = PADDING * 2.0 + total_boxes_w + total_arrows_w;
-    let total_h = PADDING * 2.0 + title_space + BOX_HEIGHT + desc_area_h;
+    let total_h = PADDING * 2.0 + BOX_HEIGHT + desc_area_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -197,22 +165,7 @@ fn render_svg(process: &Process) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = process.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            TITLE_FONT_SIZE,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
-
-    let box_y = content_y;
+    let box_y = PADDING;
     let mut x = PADDING;
 
     for (i, step) in process.steps.iter().enumerate() {
@@ -311,9 +264,8 @@ mod tests {
 
     #[test]
     fn parse_basic() {
-        let input = "step A\nstep B\nstep C\n";
+        let input = "A\nB\nC\n";
         let p = parse(input).unwrap();
-        assert!(p.title.is_none());
         assert_eq!(p.steps.len(), 3);
         assert_eq!(p.steps[0].label, "A");
         assert_eq!(p.steps[1].label, "B");
@@ -322,16 +274,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_title() {
-        let input = "title \"My Process\"\nstep X\nstep Y\n";
-        let p = parse(input).unwrap();
-        assert_eq!(p.title.as_deref(), Some("My Process"));
-        assert_eq!(p.steps.len(), 2);
-    }
-
-    #[test]
     fn parse_with_description() {
-        let input = "step A : \"Do thing\"\nstep B : \"Do other\"\n";
+        let input = "A : \"Do thing\"\nB : \"Do other\"\n";
         let p = parse(input).unwrap();
         assert_eq!(p.steps[0].label, "A");
         assert_eq!(p.steps[0].description, vec!["Do thing"]);
@@ -339,7 +283,7 @@ mod tests {
 
     #[test]
     fn parse_multiline_description() {
-        let input = "step A : \"Line one\nLine two\"\nstep B\n";
+        let input = "A : \"Line one\nLine two\"\nB\n";
         let p = parse(input).unwrap();
         assert_eq!(p.steps[0].description, vec!["Line one", "Line two"]);
         assert!(p.steps[1].description.is_empty());
@@ -347,13 +291,13 @@ mod tests {
 
     #[test]
     fn parse_too_few_steps() {
-        let input = "step A\n";
+        let input = "A\n";
         assert!(parse(input).is_err());
     }
 
     #[test]
     fn render_produces_svg() {
-        let input = "step A\nstep B\n";
+        let input = "A\nB\n";
         let p = parse(input).unwrap();
         let svg = render_svg(&p);
         assert!(svg.starts_with("<svg"));

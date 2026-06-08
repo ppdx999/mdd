@@ -8,13 +8,11 @@ struct Dataset {
 
 #[derive(Debug)]
 struct Radar {
-    title: Option<String>,
     axes: Vec<String>,
     datasets: Vec<Dataset>,
 }
 
 fn parse(input: &str) -> Result<Radar, String> {
-    let mut title: Option<String> = None;
     let mut axes: Vec<String> = Vec::new();
     let mut datasets: Vec<Dataset> = Vec::new();
 
@@ -22,10 +20,6 @@ fn parse(input: &str) -> Result<Radar, String> {
         let trimmed = line.trim();
         if trimmed.is_empty() { continue; }
 
-        if trimmed.starts_with("title ") {
-            title = Some(strip_quotes(trimmed.strip_prefix("title ").unwrap().trim()).to_string());
-            continue;
-        }
         if trimmed.starts_with("axis ") {
             axes.push(strip_quotes(trimmed.strip_prefix("axis ").unwrap().trim()).to_string());
             continue;
@@ -50,7 +44,7 @@ fn parse(input: &str) -> Result<Radar, String> {
             return Err(format!("Dataset '{}' has {} values but {} axes", ds.name, ds.values.len(), axes.len()));
         }
     }
-    Ok(Radar { title, axes, datasets })
+    Ok(Radar { axes, datasets })
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -61,8 +55,6 @@ const CHAR_W: f64 = 8.0;
 const CJK_W: f64 = 14.0;
 const RADIUS: f64 = 140.0;
 const PADDING: f64 = 80.0;
-const TITLE_H: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const GRID_LEVELS: usize = 5;
 
 const COLORS: &[(&str, &str)] = &[
@@ -78,13 +70,12 @@ fn escape_xml(s: &str) -> String {
 fn render_svg(radar: &Radar) -> String {
     let n = radar.axes.len();
     let angle_step = std::f64::consts::TAU / n as f64;
-    let title_space = if radar.title.is_some() { TITLE_H + TITLE_GAP } else { 0.0 };
 
     let max_label_w = radar.axes.iter().map(|a| text_width(a)).fold(0.0_f64, f64::max);
     let pad = PADDING + max_label_w * 0.5;
 
     let cx = pad + RADIUS;
-    let cy = pad + RADIUS + title_space;
+    let cy = pad + RADIUS;
     let total_w = (pad + RADIUS) * 2.0;
     let total_h = cy + RADIUS + pad;
 
@@ -94,13 +85,6 @@ fn render_svg(radar: &Radar) -> String {
     );
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 12px; fill: #333; }</style>");
-
-    if let Some(ref t) = radar.title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            cx, PADDING / 2.0 + 6.0, escape_xml(t)
-        ));
-    }
 
     // Grid circles
     for level in 1..=GRID_LEVELS {

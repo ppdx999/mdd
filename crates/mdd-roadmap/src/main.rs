@@ -21,31 +21,54 @@ struct Diagram {
 
 fn parse(input: &str) -> Result<Diagram, String> {
     let mut steps: Vec<Step> = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut i = 0;
 
-    for line in input.lines() {
-        let line = line.trim();
+    while i < lines.len() {
+        let line = lines[i].trim();
         if line.is_empty() {
+            i += 1;
             continue;
         }
 
-        if let Some(rest) = line.strip_prefix("milestone ") {
-            let rest = rest.trim();
-            if let Some((title, desc)) = rest.split_once(" : ") {
-                let title = title.trim().to_string();
-                let desc = desc.trim().trim_matches('"').to_string();
+        // Parse Name or Name { desc } (no prefix keyword)
+        if let Some(brace_pos) = line.find('{') {
+            let title = line[..brace_pos].trim().to_string();
+            let after_brace = line[brace_pos + 1..].trim();
+            // Single-line: Name { desc }
+            if let Some(end) = after_brace.strip_suffix('}') {
                 steps.push(Step {
                     title,
-                    description: desc,
+                    description: end.trim().to_string(),
                 });
             } else {
+                // Multiline block
+                let mut desc_lines = Vec::new();
+                if !after_brace.is_empty() {
+                    desc_lines.push(after_brace.to_string());
+                }
+                i += 1;
+                while i < lines.len() {
+                    let bl = lines[i].trim();
+                    if bl == "}" {
+                        break;
+                    }
+                    desc_lines.push(bl.to_string());
+                    i += 1;
+                }
                 steps.push(Step {
-                    title: rest.to_string(),
-                    description: String::new(),
+                    title,
+                    description: desc_lines.join("\n"),
                 });
             }
         } else {
-            return Err(format!("Unknown syntax: {}", line));
+            // Plain name, no description
+            steps.push(Step {
+                title: line.to_string(),
+                description: String::new(),
+            });
         }
+        i += 1;
     }
 
     if steps.is_empty() {
@@ -265,7 +288,7 @@ mod tests {
 
     #[test]
     fn parse_simple_milestones() {
-        let input = "milestone First\nmilestone Second\nmilestone Third\n";
+        let input = "First\nSecond\nThird\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps.len(), 3);
         assert_eq!(d.steps[0].title, "First");
@@ -275,10 +298,18 @@ mod tests {
 
     #[test]
     fn parse_milestone_with_description() {
-        let input = "milestone Design : \"Create wireframes\"\n";
+        let input = "Design { Create wireframes }\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].title, "Design");
         assert_eq!(d.steps[0].description, "Create wireframes");
+    }
+
+    #[test]
+    fn parse_milestone_multiline_description() {
+        let input = "Design {\n  Line one\n  Line two\n}\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.steps[0].title, "Design");
+        assert_eq!(d.steps[0].description, "Line one\nLine two");
     }
 
     #[test]
@@ -288,22 +319,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_unknown_syntax() {
-        let result = parse("foo bar\n");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown syntax"));
-    }
-
-    #[test]
     fn parse_skips_empty_lines() {
-        let input = "\nmilestone A\n\nmilestone B\n\n";
+        let input = "\nA\n\nB\n\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps.len(), 2);
     }
 
     #[test]
     fn parse_japanese_titles() {
-        let input = "milestone 要件定義\nmilestone 設計\nmilestone 実装\n";
+        let input = "要件定義\n設計\n実装\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].title, "要件定義");
         assert_eq!(d.steps.len(), 3);
@@ -311,7 +335,7 @@ mod tests {
 
     #[test]
     fn render_produces_svg() {
-        let input = "milestone A\nmilestone B\nmilestone C\n";
+        let input = "A\nB\nC\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.starts_with("<svg"));
@@ -320,7 +344,7 @@ mod tests {
 
     #[test]
     fn render_contains_white_background() {
-        let input = "milestone A\n";
+        let input = "A\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("fill=\"white\""));
@@ -328,7 +352,7 @@ mod tests {
 
     #[test]
     fn render_contains_step_elements() {
-        let input = "milestone Alpha\nmilestone Beta\n";
+        let input = "Alpha\nBeta\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("Alpha"));
@@ -339,7 +363,7 @@ mod tests {
 
     #[test]
     fn render_contains_description() {
-        let input = "milestone Plan : \"Make a plan\"\n";
+        let input = "Plan { Make a plan }\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("Make a plan"));
@@ -347,7 +371,7 @@ mod tests {
 
     #[test]
     fn render_background_arrow() {
-        let input = "milestone A\nmilestone B\nmilestone C\n";
+        let input = "A\nB\nC\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("<line")); // arrow shaft

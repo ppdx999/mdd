@@ -25,7 +25,6 @@ struct Link {
 
 #[derive(Debug)]
 struct Concept {
-    title: Option<String>,
     nodes: Vec<Node>,
     links: Vec<Link>,
 }
@@ -35,20 +34,12 @@ struct Concept {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Concept, String> {
-    let mut title: Option<String> = None;
     let mut nodes: Vec<Node> = Vec::new();
     let mut links: Vec<Link> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -89,7 +80,6 @@ fn parse(input: &str) -> Result<Concept, String> {
     }
 
     Ok(Concept {
-        title,
         nodes,
         links,
     })
@@ -154,8 +144,6 @@ const NODE_H: f64 = 40.0;
 const NODE_H_PAD: f64 = 16.0;
 const MIN_NODE_W: f64 = 80.0;
 const PADDING: f64 = 60.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const EDGE_COLOR: &str = "#666";
 const EDGE_LABEL_FONT: f64 = 11.0;
 
@@ -196,15 +184,9 @@ fn render_svg(concept: &Concept) -> String {
     // Find max node width for bounding box calculation
     let max_node_w = node_widths.iter().cloned().fold(0.0_f64, f64::max);
 
-    let title_space = if concept.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     // Center of the circular layout
     let cx = PADDING + ORBIT_RADIUS + max_node_w / 2.0;
-    let cy = PADDING + title_space + ORBIT_RADIUS + NODE_H / 2.0;
+    let cy = PADDING + ORBIT_RADIUS + NODE_H / 2.0;
 
     let total_w = cx * 2.0;
     let total_h = cy + ORBIT_RADIUS + NODE_H / 2.0 + PADDING;
@@ -239,17 +221,6 @@ fn render_svg(concept: &Concept) -> String {
         EDGE_COLOR
     ));
     svg.push_str("</defs>");
-
-    // Title
-    if let Some(ref title) = concept.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-    }
 
     // Build node index lookup
     let node_index = |name: &str| -> Option<usize> {
@@ -365,13 +336,11 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "テスト"
 node A
 node B
 link A -- B : "関係"
 "#;
         let c = parse(input).unwrap();
-        assert_eq!(c.title.as_deref(), Some("テスト"));
         assert_eq!(c.nodes.len(), 2);
         assert_eq!(c.nodes[0].name, "A");
         assert_eq!(c.nodes[1].name, "B");

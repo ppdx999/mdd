@@ -1,4 +1,3 @@
-title "開発ツール"
 columns 3
 item "VS Code" : "コードエディタ"
 item "Git" : "バージョン管理"

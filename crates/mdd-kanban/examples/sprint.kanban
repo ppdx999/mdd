@@ -1,4 +1,3 @@
-title "Sprint 3"
 column Todo
 card ユーザー通知 : "feature"
 card バグ修正 #234 : "bug"

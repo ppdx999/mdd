@@ -14,22 +14,16 @@ struct Column {
 
 #[derive(Debug)]
 struct Board {
-    title: Option<String>,
     columns: Vec<Column>,
 }
 
 fn parse(input: &str) -> Result<Board, String> {
-    let mut title: Option<String> = None;
     let mut columns: Vec<Column> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() { continue; }
 
-        if trimmed.starts_with("title ") {
-            title = Some(strip_quotes(trimmed.strip_prefix("title ").unwrap().trim()).to_string());
-            continue;
-        }
         if trimmed.starts_with("column ") {
             let name = strip_quotes(trimmed.strip_prefix("column ").unwrap().trim()).to_string();
             columns.push(Column { name, cards: Vec::new() });
@@ -57,7 +51,7 @@ fn parse(input: &str) -> Result<Board, String> {
         return Err(format!("Unknown syntax: {}", trimmed));
     }
     if columns.is_empty() { return Err("At least 1 column required".to_string()); }
-    Ok(Board { title, columns })
+    Ok(Board { columns })
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -74,8 +68,6 @@ const CARD_H: f64 = 40.0;
 const CARD_LABEL_H: f64 = 52.0;
 const CARD_GAP: f64 = 8.0;
 const PADDING: f64 = 24.0;
-const TITLE_H: f64 = 28.0;
-const TITLE_GAP: f64 = 12.0;
 
 const COL_COLORS: &[&str] = &["#f0f0f0", "#f0f0f0", "#f0f0f0", "#f0f0f0"];
 const LABEL_COLORS: &[(&str, &str)] = &[
@@ -97,10 +89,9 @@ fn render_svg(board: &Board) -> String {
         .flat_map(|c| c.cards.iter().map(|card| text_width(&card.text) + 24.0))
         .fold(COL_W, f64::max);
 
-    let title_space = if board.title.is_some() { TITLE_H + TITLE_GAP } else { 0.0 };
     let max_col_h = COL_HEADER_H + COL_PAD + max_cards as f64 * (CARD_LABEL_H + CARD_GAP);
     let total_w = PADDING * 2.0 + n as f64 * col_w + (n - 1) as f64 * COL_GAP;
-    let total_h = PADDING * 2.0 + title_space + max_col_h + COL_PAD;
+    let total_h = PADDING * 2.0 + max_col_h + COL_PAD;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -109,13 +100,7 @@ fn render_svg(board: &Board) -> String {
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 13px; fill: #333; }</style>");
 
-    let content_y = if let Some(ref t) = board.title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            PADDING, PADDING + TITLE_H / 2.0 + 6.0, escape_xml(t)
-        ));
-        PADDING + TITLE_H + TITLE_GAP
-    } else { PADDING };
+    let content_y = PADDING;
 
     let mut x = PADDING;
     for (ci, col) in board.columns.iter().enumerate() {

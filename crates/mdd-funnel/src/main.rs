@@ -13,7 +13,6 @@ struct Stage {
 
 #[derive(Debug)]
 struct Funnel {
-    title: Option<String>,
     stages: Vec<Stage>,
 }
 
@@ -22,7 +21,6 @@ struct Funnel {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Funnel, String> {
-    let mut title: Option<String> = None;
     let mut stages: Vec<Stage> = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -30,14 +28,6 @@ fn parse(input: &str) -> Result<Funnel, String> {
     while i < lines.len() {
         let trimmed = lines[i].trim();
         if trimmed.is_empty() {
-            i += 1;
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             i += 1;
             continue;
         }
@@ -110,7 +100,7 @@ fn parse(input: &str) -> Result<Funnel, String> {
         return Err("At least 2 stages are required".to_string());
     }
 
-    Ok(Funnel { title, stages })
+    Ok(Funnel { stages })
 }
 
 /// Parse a quoted description that may span multiple lines.
@@ -136,14 +126,6 @@ fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(
     Err("Unterminated description (missing closing \")".to_string())
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -153,8 +135,6 @@ const STAGE_GAP: f64 = 4.0;
 const MAX_WIDTH: f64 = 400.0;
 const MIN_WIDTH: f64 = 80.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const LABEL_FONT_SIZE: f64 = 14.0;
 const VALUE_FONT_SIZE: f64 = 12.0;
 const DESC_FONT_SIZE: f64 = 12.0;
@@ -218,14 +198,8 @@ fn render_svg(funnel: &Funnel) -> String {
         0.0
     };
 
-    let title_space = if funnel.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_h =
-        PADDING + title_space + n as f64 * STAGE_HEIGHT + (n - 1) as f64 * STAGE_GAP + PADDING;
+        PADDING + n as f64 * STAGE_HEIGHT + (n - 1) as f64 * STAGE_GAP + PADDING;
     let total_w = PADDING * 2.0 + MAX_WIDTH + desc_area_w;
 
     let mut svg = format!(
@@ -240,17 +214,7 @@ fn render_svg(funnel: &Funnel) -> String {
 
     let center_x = PADDING + MAX_WIDTH / 2.0;
 
-    // Title
-    let content_y = if let Some(ref title) = funnel.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            center_x, title_y, escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Render each stage as a trapezoid
     for i in 0..n {
@@ -445,7 +409,6 @@ mod tests {
     fn parse_basic() {
         let input = "stage A\nstage B\nstage C\n";
         let f = parse(input).unwrap();
-        assert!(f.title.is_none());
         assert_eq!(f.stages.len(), 3);
         assert_eq!(f.stages[0].label, "A");
         assert_eq!(f.stages[1].label, "B");
@@ -457,13 +420,11 @@ mod tests {
     #[test]
     fn parse_with_values() {
         let input = r#"
-title "Sales Funnel"
 stage Leads : 1000
 stage Prospects : 500
 stage Customers : 100
 "#;
         let f = parse(input).unwrap();
-        assert_eq!(f.title.as_deref(), Some("Sales Funnel"));
         assert_eq!(f.stages.len(), 3);
         assert_eq!(f.stages[0].label, "Leads");
         assert_eq!(f.stages[0].value, Some(1000.0));
@@ -512,9 +473,8 @@ stage Customers : 100
 
     #[test]
     fn parse_japanese() {
-        let input = "title \"営業ファネル\"\nstage リード : 1000\nstage 受注 : 40\n";
+        let input = "stage リード : 1000\nstage 受注 : 40\n";
         let f = parse(input).unwrap();
-        assert_eq!(f.title.as_deref(), Some("営業ファネル"));
         assert_eq!(f.stages[0].label, "リード");
     }
 }

@@ -13,7 +13,6 @@ struct ListItem {
 
 #[derive(Debug)]
 struct ListV {
-    title: Option<String>,
     items: Vec<ListItem>,
 }
 
@@ -22,19 +21,11 @@ struct ListV {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<ListV, String> {
-    let mut title: Option<String> = None;
     let mut items: Vec<ListItem> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -60,7 +51,7 @@ fn parse(input: &str) -> Result<ListV, String> {
         return Err("At least 1 item is required".to_string());
     }
 
-    Ok(ListV { title, items })
+    Ok(ListV { items })
 }
 
 fn strip_ordered_prefix(s: &str) -> Option<&str> {
@@ -127,8 +118,6 @@ const ITEM_H_PAD: f64 = 16.0;
 const ITEM_MIN_HEIGHT: f64 = 48.0;
 const ITEM_GAP: f64 = 8.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const SEPARATOR_COLOR: &str = "#e0e0e0";
 
 const COLORS: &[(&str, &str)] = &[
@@ -156,12 +145,6 @@ fn escape_xml(s: &str) -> String {
 }
 
 fn render_svg(list: &ListV) -> String {
-    let title_space = if list.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     // Compute item heights and content width
     let badge_area = BADGE_RADIUS * 2.0 + ITEM_H_PAD;
     let mut max_content_w: f64 = 0.0;
@@ -176,14 +159,6 @@ fn render_svg(list: &ListV) -> String {
         let w = label_w.max(desc_w);
         if w > max_content_w {
             max_content_w = w;
-        }
-    }
-
-    // Title width consideration
-    if let Some(ref t) = list.title {
-        let tw = text_width(t);
-        if tw > max_content_w {
-            max_content_w = tw;
         }
     }
 
@@ -209,7 +184,7 @@ fn render_svg(list: &ListV) -> String {
     };
 
     let items_total_h: f64 = item_heights.iter().sum::<f64>() + separators_h;
-    let total_h = PADDING * 2.0 + title_space + items_total_h;
+    let total_h = PADDING * 2.0 + items_total_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -221,18 +196,7 @@ fn render_svg(list: &ListV) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
     let mut y = PADDING;
-    if let Some(ref title) = list.title {
-        let title_y = y + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        y += TITLE_HEIGHT + TITLE_GAP;
-    }
 
     // Items
     let mut ordered_index = 0usize;
@@ -346,12 +310,10 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "My List"
 1. "First"
 2. "Second"
 "#;
         let list = parse(input).unwrap();
-        assert_eq!(list.title.as_deref(), Some("My List"));
         assert_eq!(list.items.len(), 2);
         assert_eq!(list.items[0].label, "First");
         assert!(list.items[0].description.is_none());
@@ -365,7 +327,6 @@ title "My List"
 2. "Other" : "Details"
 "#;
         let list = parse(input).unwrap();
-        assert!(list.title.is_none());
         assert_eq!(list.items.len(), 2);
         assert_eq!(list.items[0].label, "Label");
         assert_eq!(list.items[0].description.as_deref(), Some("Description"));
@@ -387,9 +348,7 @@ title "My List"
 
     #[test]
     fn parse_no_items_error() {
-        let input = r#"
-title "Empty"
-"#;
+        let input = "";
         assert!(parse(input).is_err());
     }
 
@@ -408,12 +367,10 @@ title "Empty"
     #[test]
     fn parse_unordered_basic() {
         let input = r#"
-title "Checklist"
 - "Alpha"
 - "Beta"
 "#;
         let list = parse(input).unwrap();
-        assert_eq!(list.title.as_deref(), Some("Checklist"));
         assert_eq!(list.items.len(), 2);
         assert_eq!(list.items[0].label, "Alpha");
         assert!(!list.items[0].ordered);

@@ -12,7 +12,6 @@ struct Level {
 
 #[derive(Debug)]
 struct Pyramid {
-    title: Option<String>,
     levels: Vec<Level>,
 }
 
@@ -21,7 +20,6 @@ struct Pyramid {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Pyramid, String> {
-    let mut title: Option<String> = None;
     let mut levels: Vec<Level> = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -33,42 +31,28 @@ fn parse(input: &str) -> Result<Pyramid, String> {
             continue;
         }
 
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
-            i += 1;
-            continue;
+        // Name : "Description"
+        // Name
+        if let Some(colon_pos) = trimmed.find(" : ") {
+            let label = trimmed[..colon_pos].trim().to_string();
+            let desc_part = trimmed[colon_pos + 3..].trim();
+            let (desc, consumed) = parse_multiline_desc(desc_part, &lines, i)?;
+            i += consumed;
+            levels.push(Level { label, description: desc });
+        } else {
+            levels.push(Level {
+                label: trimmed.to_string(),
+                description: Vec::new(),
+            });
         }
-
-        // level Label : "Description"
-        // level Label
-        if trimmed.starts_with("level ") {
-            let rest = trimmed.strip_prefix("level ").unwrap().trim();
-            if let Some(colon_pos) = rest.find(" : ") {
-                let label = rest[..colon_pos].trim().to_string();
-                let desc_part = rest[colon_pos + 3..].trim();
-                let (desc, consumed) = parse_multiline_desc(desc_part, &lines, i)?;
-                i += consumed;
-                levels.push(Level { label, description: desc });
-            } else {
-                levels.push(Level {
-                    label: rest.to_string(),
-                    description: Vec::new(),
-                });
-            }
-            i += 1;
-            continue;
-        }
-
-        return Err(format!("Unknown syntax: {}", trimmed));
+        i += 1;
     }
 
     if levels.len() < 2 {
         return Err("At least 2 levels are required".to_string());
     }
 
-    Ok(Pyramid { title, levels })
+    Ok(Pyramid { levels })
 }
 
 fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
@@ -90,14 +74,6 @@ fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(
     Err("Unterminated description (missing closing \")".to_string())
 }
 
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -113,8 +89,6 @@ const DESC_LINE_COLOR: &str = "#ccc";
 const LEVEL_HEIGHT: f64 = 50.0;
 const MAX_WIDTH: f64 = 500.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const DESC_GAP: f64 = 30.0;
 
 const COLORS: &[(&str, &str)] = &[
@@ -157,14 +131,8 @@ fn render_svg(pyramid: &Pyramid) -> String {
         0.0
     };
 
-    let title_space = if pyramid.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING * 2.0 + MAX_WIDTH + desc_area_w;
-    let total_h = PADDING * 2.0 + title_space + n as f64 * LEVEL_HEIGHT;
+    let total_h = PADDING * 2.0 + n as f64 * LEVEL_HEIGHT;
     let center_x = PADDING + MAX_WIDTH / 2.0;
 
     let mut svg = format!(
@@ -177,17 +145,7 @@ fn render_svg(pyramid: &Pyramid) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let pyramid_top_y = if let Some(ref title) = pyramid.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            center_x, title_y, escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let pyramid_top_y = PADDING;
 
     // Draw each level as a polygon
     for i in 0..n {
@@ -303,14 +261,8 @@ mod tests {
 
     #[test]
     fn parse_basic() {
-        let input = r#"
-title "Test Pyramid"
-level Top
-level Middle
-level Bottom
-"#;
+        let input = "Top\nMiddle\nBottom\n";
         let p = parse(input).unwrap();
-        assert_eq!(p.title.as_deref(), Some("Test Pyramid"));
         assert_eq!(p.levels.len(), 3);
         assert_eq!(p.levels[0].label, "Top");
         assert_eq!(p.levels[1].label, "Middle");
@@ -321,9 +273,9 @@ level Bottom
     #[test]
     fn parse_with_desc() {
         let input = r#"
-level Strategy : "Long-term direction"
-level Tactics : "Quarterly plans"
-level Operations : "Daily execution"
+Strategy : "Long-term direction"
+Tactics : "Quarterly plans"
+Operations : "Daily execution"
 "#;
         let p = parse(input).unwrap();
         assert_eq!(p.levels.len(), 3);
@@ -335,7 +287,7 @@ level Operations : "Daily execution"
 
     #[test]
     fn parse_multiline_desc() {
-        let input = "level Top : \"Line one\nLine two\"\nlevel Bottom\n";
+        let input = "Top : \"Line one\nLine two\"\nBottom\n";
         let p = parse(input).unwrap();
         assert_eq!(p.levels[0].description, vec!["Line one", "Line two"]);
         assert!(p.levels[1].description.is_empty());
@@ -343,16 +295,13 @@ level Operations : "Daily execution"
 
     #[test]
     fn parse_requires_at_least_two_levels() {
-        let input = "level OnlyOne\n";
+        let input = "OnlyOne\n";
         assert!(parse(input).is_err());
     }
 
     #[test]
     fn render_produces_svg() {
-        let input = r#"
-level Top
-level Bottom
-"#;
+        let input = "Top\nBottom\n";
         let p = parse(input).unwrap();
         let svg = render_svg(&p);
         assert!(svg.starts_with("<svg"));

@@ -17,7 +17,6 @@ struct Branch {
 
 #[derive(Debug)]
 struct MindMap {
-    title: Option<String>,
     center: String,
     branches: Vec<Branch>,
 }
@@ -27,20 +26,12 @@ struct MindMap {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<MindMap, String> {
-    let mut title: Option<String> = None;
     let mut center: Option<String> = None;
     let mut branches: Vec<Branch> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        // title "..."
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
             continue;
         }
 
@@ -82,7 +73,6 @@ fn parse(input: &str) -> Result<MindMap, String> {
     }
 
     Ok(MindMap {
-        title,
         center,
         branches,
     })
@@ -95,7 +85,6 @@ fn strip_quotes(s: &str) -> &str {
         s
     }
 }
-
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
@@ -115,8 +104,6 @@ const SUB_ITEM_H_PAD: f64 = 8.0;
 const BRANCH_GAP_Y: f64 = 12.0;
 const BRANCH_OFFSET_X: f64 = 60.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 const CENTER_FONT_SIZE: f64 = 15.0;
 const SUB_FONT_SIZE: f64 = 12.0;
 
@@ -222,14 +209,8 @@ fn render_svg(map: &MindMap) -> String {
         tw.max(CENTER_W)
     };
 
-    let title_space = if map.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     let total_w = PADDING + left_w + BRANCH_OFFSET_X + center_w + BRANCH_OFFSET_X + right_w + PADDING;
-    let total_h = PADDING + title_space + content_h + PADDING;
+    let total_h = PADDING + content_h + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -241,19 +222,7 @@ fn render_svg(map: &MindMap) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = map.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
+    let content_y = PADDING;
 
     // Center node position
     let center_x = PADDING + left_w + BRANCH_OFFSET_X;
@@ -475,13 +444,11 @@ center "Topic"
         assert_eq!(m.branches.len(), 2);
         assert_eq!(m.branches[0].text, "Branch1");
         assert_eq!(m.branches[1].text, "Branch2");
-        assert!(m.title.is_none());
     }
 
     #[test]
     fn parse_with_subitems() {
         let input = r#"
-title "Test"
 center "Center"
   A
     A1
@@ -490,7 +457,6 @@ center "Center"
     B1
 "#;
         let m = parse(input).unwrap();
-        assert_eq!(m.title.as_deref(), Some("Test"));
         assert_eq!(m.center, "Center");
         assert_eq!(m.branches.len(), 2);
         assert_eq!(m.branches[0].text, "A");

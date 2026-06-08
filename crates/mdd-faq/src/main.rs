@@ -3,16 +3,15 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct QA { question: String, answer: Vec<String> }
 #[derive(Debug)]
-struct Faq { title: Option<String>, items: Vec<QA> }
+struct Faq { items: Vec<QA> }
 
 fn parse(input: &str) -> Result<Faq, String> {
-    let mut title = None; let mut items = Vec::new();
+    let mut items = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
     while i < lines.len() {
         let t = lines[i].trim();
         if t.is_empty() { i += 1; continue; }
-        if t.starts_with("title ") { title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string()); i += 1; continue; }
         if t.starts_with("q ") {
             let q = sq(t.strip_prefix("q ").unwrap().trim()).to_string();
             i += 1;
@@ -34,7 +33,7 @@ fn parse(input: &str) -> Result<Faq, String> {
         return Err(format!("Unknown syntax: {}", t));
     }
     if items.is_empty() { return Err("At least 1 Q&A required".to_string()); }
-    Ok(Faq { title, items })
+    Ok(Faq { items })
 }
 
 fn parse_ml(start: &str, lines: &[&str], cur: usize) -> Result<(Vec<String>, usize), String> {
@@ -65,20 +64,15 @@ fn render_svg(faq: &Faq) -> String {
         let aw = qa.answer.iter().map(|a| tw(a) + 40.0).fold(0.0_f64, f64::max);
         qw.max(aw)
     }).fold(CARD_W, f64::max);
-    let title_space = if faq.title.is_some() { 40.0 } else { 0.0 };
     let total_items_h: f64 = faq.items.iter().map(|qa| qa_h(qa)).sum::<f64>() + (faq.items.len().saturating_sub(1)) as f64 * (DIVIDER_PAD * 2.0);
     let total_w = PAD * 2.0 + card_w;
-    let total_h = PAD * 2.0 + title_space + total_items_h;
+    let total_h = PAD * 2.0 + total_items_h;
 
     let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">", total_w, total_h, total_w, total_h);
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 13px; fill: #333; }</style>");
 
     let mut y = PAD;
-    if let Some(ref t) = faq.title {
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"18\" font-weight=\"bold\">{}</text>", PAD, y + 18.0, ex(t)));
-        y += title_space;
-    }
 
     for (i, qa) in faq.items.iter().enumerate() {
         let h = qa_h(qa);

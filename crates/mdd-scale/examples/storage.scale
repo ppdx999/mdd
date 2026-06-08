@@ -1,4 +1,3 @@
-title "ストレージ容量"
 unit "TB"
 item 本番DB : 500
 item バックアップ : 300

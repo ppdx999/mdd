@@ -1,5 +1,4 @@
 type stacked-bar
-title "部門別売上構成"
 
 color 国内営業 : blue, #e3f2fd
 color 海外営業 : green, #e8f5e9

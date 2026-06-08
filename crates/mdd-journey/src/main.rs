@@ -3,14 +3,13 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Stage { name: String, action: String, emotion: i32 }
 #[derive(Debug)]
-struct Journey { title: Option<String>, persona: Option<String>, stages: Vec<Stage> }
+struct Journey { persona: Option<String>, stages: Vec<Stage> }
 
 fn parse(input: &str) -> Result<Journey, String> {
-    let mut title = None; let mut persona = None; let mut stages = Vec::new();
+    let mut persona = None; let mut stages = Vec::new();
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") { title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string()); continue; }
         if t.starts_with("persona ") { persona = Some(sq(t.strip_prefix("persona ").unwrap().trim()).to_string()); continue; }
         if t.starts_with("stage ") {
             let rest = t.strip_prefix("stage ").unwrap().trim();
@@ -23,7 +22,7 @@ fn parse(input: &str) -> Result<Journey, String> {
         return Err(format!("Unknown syntax: {}", t));
     }
     if stages.len() < 2 { return Err("At least 2 stages required".to_string()); }
-    Ok(Journey { title, persona, stages })
+    Ok(Journey { persona, stages })
 }
 
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
@@ -48,11 +47,8 @@ fn render_svg(j: &Journey) -> String {
     svg.push_str("<style>text { font-family: sans-serif; font-size: 12px; fill: #333; }</style>");
 
     let mut cy = PAD;
-    if let Some(ref t) = j.title {
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"16\" font-weight=\"bold\">{}</text>", PAD, cy + 16.0, ex(t)));
-        if let Some(ref p) = j.persona {
-            svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#666\">{}</text>", PAD, cy + 34.0, ex(p)));
-        }
+    if let Some(ref p) = j.persona {
+        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#666\">{}</text>", PAD, cy + 16.0, ex(p)));
     }
     cy += HEADER_H;
 

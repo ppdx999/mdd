@@ -6,7 +6,6 @@ use std::io::{self, Read};
 
 #[derive(Debug)]
 struct CodeBlock {
-    title: Option<String>,
     lang: Option<String>,
     lines: Vec<String>,
 }
@@ -16,7 +15,6 @@ struct CodeBlock {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<CodeBlock, String> {
-    let mut title = None;
     let mut lang = None;
     let mut lines: Vec<String> = Vec::new();
     let mut in_body = false;
@@ -25,10 +23,6 @@ fn parse(input: &str) -> Result<CodeBlock, String> {
         let t = line.trim();
 
         if !in_body {
-            if t.starts_with("title ") {
-                title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string());
-                continue;
-            }
             if t.starts_with("lang ") {
                 lang = Some(t.strip_prefix("lang ").unwrap().trim().to_string());
                 continue;
@@ -41,7 +35,7 @@ fn parse(input: &str) -> Result<CodeBlock, String> {
 
         // Everything after metadata (or all lines if no ---) is code
         // Preserve original indentation
-        if in_body || (!t.starts_with("title ") && !t.starts_with("lang ")) {
+        if in_body || !t.starts_with("lang ") {
             in_body = true;
             lines.push(line.to_string());
         }
@@ -59,15 +53,7 @@ fn parse(input: &str) -> Result<CodeBlock, String> {
         return Err("No code content".to_string());
     }
 
-    Ok(CodeBlock { title, lang, lines })
-}
-
-fn sq(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
+    Ok(CodeBlock { lang, lines })
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +202,7 @@ fn color_strings(s: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn render_svg(block: &CodeBlock) -> String {
-    let _ = (&block.title, &block.lang); // metadata reserved for future use
+    let _ = &block.lang; // metadata reserved for future use
     let n = block.lines.len();
     let max_line_w = block
         .lines
@@ -300,9 +286,8 @@ mod tests {
 
     #[test]
     fn parse_basic() {
-        let input = "title \"example\"\n---\nactor Alice\nactor Bob\n";
+        let input = "---\nactor Alice\nactor Bob\n";
         let b = parse(input).unwrap();
-        assert_eq!(b.title.as_deref(), Some("example"));
         assert_eq!(b.lines.len(), 2);
     }
 
@@ -310,7 +295,6 @@ mod tests {
     fn parse_no_metadata() {
         let input = "actor Alice\nactor Bob\n";
         let b = parse(input).unwrap();
-        assert!(b.title.is_none());
         assert_eq!(b.lines.len(), 2);
     }
 

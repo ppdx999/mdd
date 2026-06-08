@@ -12,7 +12,6 @@ struct Step {
 
 #[derive(Debug)]
 struct Diagram {
-    title: Option<String>,
     steps: Vec<Step>,
 }
 
@@ -21,7 +20,6 @@ struct Diagram {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Diagram, String> {
-    let mut title: Option<String> = None;
     let mut steps: Vec<Step> = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -33,39 +31,27 @@ fn parse(input: &str) -> Result<Diagram, String> {
             continue;
         }
 
-        if let Some(rest) = trimmed.strip_prefix("title ") {
-            title = Some(rest.trim().to_string());
-            i += 1;
-            continue;
+        if let Some((label, desc_part)) = trimmed.split_once(" : ") {
+            let (desc, consumed) = parse_multiline_desc(desc_part.trim(), &lines, i)?;
+            i += consumed;
+            steps.push(Step {
+                name: label.trim().to_string(),
+                description: desc,
+            });
+        } else {
+            steps.push(Step {
+                name: trimmed.to_string(),
+                description: Vec::new(),
+            });
         }
-
-        if let Some(rest) = trimmed.strip_prefix("step ") {
-            let rest = rest.trim();
-            if let Some((label, desc_part)) = rest.split_once(" : ") {
-                let (desc, consumed) = parse_multiline_desc(desc_part.trim(), &lines, i)?;
-                i += consumed;
-                steps.push(Step {
-                    name: label.trim().to_string(),
-                    description: desc,
-                });
-            } else {
-                steps.push(Step {
-                    name: rest.to_string(),
-                    description: Vec::new(),
-                });
-            }
-            i += 1;
-            continue;
-        }
-
-        return Err(format!("Unknown syntax: {}", trimmed));
+        i += 1;
     }
 
     if steps.len() < 2 {
         return Err("At least 2 steps are required for a cycle".to_string());
     }
 
-    Ok(Diagram { title, steps })
+    Ok(Diagram { steps })
 }
 
 fn parse_multiline_desc(start: &str, lines: &[&str], current: usize) -> Result<(Vec<String>, usize), String> {
@@ -220,17 +206,6 @@ fn render_svg(diagram: &Diagram) -> String {
          </defs>",
         COLOR_EDGE
     ));
-
-    // Render title in center
-    if let Some(ref title) = diagram.title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            cx,
-            cy + 6.0,
-            COLOR_DARK,
-            escape_xml(title)
-        ));
-    }
 
     // Render arrows (curved arcs between nodes)
     for i in 0..n {
@@ -393,50 +368,35 @@ mod tests {
 
     #[test]
     fn parse_simple() {
-        let input = "step Plan\nstep Do\nstep Check\nstep Act\n";
+        let input = "Plan\nDo\nCheck\nAct\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps.len(), 4);
         assert_eq!(d.steps[0].name, "Plan");
-        assert!(d.title.is_none());
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = "title PDCA\nstep Plan\nstep Do\nstep Check\nstep Act\n";
-        let d = parse(input).unwrap();
-        assert_eq!(d.title.as_deref(), Some("PDCA"));
-        assert_eq!(d.steps.len(), 4);
     }
 
     #[test]
     fn parse_rejects_single_step() {
-        let input = "step Only\n";
+        let input = "Only\n";
         assert!(parse(input).is_err());
     }
 
     #[test]
     fn parse_skips_empty_lines() {
-        let input = "\nstep A\n\nstep B\n\n";
+        let input = "\nA\n\nB\n\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps.len(), 2);
     }
 
     #[test]
-    fn parse_unknown_syntax() {
-        let input = "step A\nstep B\nfoo bar\n";
-        assert!(parse(input).is_err());
-    }
-
-    #[test]
     fn parse_japanese() {
-        let input = "step 計画\nstep 実行\nstep 評価\nstep 改善\n";
+        let input = "計画\n実行\n評価\n改善\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].name, "計画");
     }
 
     #[test]
     fn render_produces_svg() {
-        let input = "step Plan\nstep Do\nstep Check\nstep Act\n";
+        let input = "Plan\nDo\nCheck\nAct\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.starts_with("<svg"));
@@ -447,7 +407,7 @@ mod tests {
 
     #[test]
     fn render_has_white_background() {
-        let input = "step A\nstep B\nstep C\n";
+        let input = "A\nB\nC\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("fill=\"white\""));
@@ -455,7 +415,7 @@ mod tests {
 
     #[test]
     fn render_has_arrows() {
-        let input = "step A\nstep B\nstep C\n";
+        let input = "A\nB\nC\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("marker-end=\"url(#arrow)\""));
@@ -463,7 +423,7 @@ mod tests {
 
     #[test]
     fn parse_with_description() {
-        let input = "step A : \"Do thing\"\nstep B\n";
+        let input = "A : \"Do thing\"\nB\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].description, vec!["Do thing"]);
         assert!(d.steps[1].description.is_empty());
@@ -471,22 +431,14 @@ mod tests {
 
     #[test]
     fn parse_multiline_description() {
-        let input = "step A : \"Line one\nLine two\"\nstep B\n";
+        let input = "A : \"Line one\nLine two\"\nB\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].description, vec!["Line one", "Line two"]);
     }
 
     #[test]
-    fn render_with_title() {
-        let input = "title MyTitle\nstep A\nstep B\n";
-        let d = parse(input).unwrap();
-        let svg = render_svg(&d);
-        assert!(svg.contains("MyTitle"));
-    }
-
-    #[test]
     fn render_node_count_matches() {
-        let input = "step A\nstep B\nstep C\nstep D\nstep E\n";
+        let input = "A\nB\nC\nD\nE\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         // 5 nodes = 5 rects (background rect uses width= not x=)

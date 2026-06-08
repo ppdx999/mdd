@@ -11,7 +11,6 @@ struct Piece {
 
 #[derive(Debug)]
 struct Puzzle {
-    title: Option<String>,
     pieces: Vec<Piece>,
 }
 
@@ -20,7 +19,6 @@ struct Puzzle {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<Puzzle, String> {
-    let mut title: Option<String> = None;
     let mut pieces: Vec<Piece> = Vec::new();
 
     for line in input.lines() {
@@ -29,36 +27,16 @@ fn parse(input: &str) -> Result<Puzzle, String> {
             continue;
         }
 
-        if trimmed.starts_with("title ") {
-            let rest = trimmed.strip_prefix("title ").unwrap().trim();
-            title = Some(strip_quotes(rest).to_string());
-            continue;
-        }
-
-        if trimmed.starts_with("piece ") {
-            let rest = trimmed.strip_prefix("piece ").unwrap().trim();
-            pieces.push(Piece {
-                label: strip_quotes(rest).to_string(),
-            });
-            continue;
-        }
-
-        return Err(format!("Unknown syntax: {}", trimmed));
+        pieces.push(Piece {
+            label: trimmed.to_string(),
+        });
     }
 
     if pieces.len() < 2 {
         return Err("At least 2 pieces are required".to_string());
     }
 
-    Ok(Puzzle { title, pieces })
-}
-
-fn strip_quotes(s: &str) -> &str {
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
+    Ok(Puzzle { pieces })
 }
 
 // ---------------------------------------------------------------------------
@@ -68,13 +46,10 @@ fn strip_quotes(s: &str) -> &str {
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
-const TITLE_FONT_SIZE: f64 = 16.0;
 const COLOR_DARK: &str = "#333";
 
 const HEX_RADIUS: f64 = 55.0;
 const PADDING: f64 = 40.0;
-const TITLE_HEIGHT: f64 = 24.0;
-const TITLE_GAP: f64 = 16.0;
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -125,12 +100,6 @@ fn render_svg(puzzle: &Puzzle) -> String {
     let col_step = hex_w;
     let row_step = hex_h * 0.75;
 
-    let title_space = if puzzle.title.is_some() {
-        TITLE_HEIGHT + TITLE_GAP
-    } else {
-        0.0
-    };
-
     // Calculate total dimensions
     let grid_w = if rows > 1 {
         cols as f64 * col_step + col_step * 0.5
@@ -140,7 +109,7 @@ fn render_svg(puzzle: &Puzzle) -> String {
     let grid_h = row_step * (rows - 1) as f64 + hex_h;
 
     let total_w = PADDING * 2.0 + grid_w;
-    let total_h = PADDING * 2.0 + title_space + grid_h;
+    let total_h = PADDING * 2.0 + grid_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -155,24 +124,9 @@ fn render_svg(puzzle: &Puzzle) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Title
-    let content_y = if let Some(ref title) = puzzle.title {
-        let title_y = PADDING + TITLE_HEIGHT / 2.0 + 6.0;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-            total_w / 2.0,
-            title_y,
-            TITLE_FONT_SIZE,
-            escape_xml(title)
-        ));
-        PADDING + TITLE_HEIGHT + TITLE_GAP
-    } else {
-        PADDING
-    };
-
     // Draw hexagons
     let origin_x = PADDING + hex_w / 2.0;
-    let origin_y = content_y + HEX_RADIUS;
+    let origin_y = PADDING + HEX_RADIUS;
 
     for (i, piece) in puzzle.pieces.iter().enumerate() {
         let row = i / cols;
@@ -239,13 +193,11 @@ mod tests {
     #[test]
     fn parse_basic() {
         let input = r#"
-title "Test"
-piece A
-piece B
-piece C
+A
+B
+C
 "#;
         let p = parse(input).unwrap();
-        assert_eq!(p.title.as_deref(), Some("Test"));
         assert_eq!(p.pieces.len(), 3);
         assert_eq!(p.pieces[0].label, "A");
         assert_eq!(p.pieces[1].label, "B");
@@ -253,19 +205,8 @@ piece C
     }
 
     #[test]
-    fn parse_no_title() {
-        let input = r#"
-piece X
-piece Y
-"#;
-        let p = parse(input).unwrap();
-        assert!(p.title.is_none());
-        assert_eq!(p.pieces.len(), 2);
-    }
-
-    #[test]
     fn parse_too_few_pieces() {
-        let input = "piece A\n";
+        let input = "A\n";
         assert!(parse(input).is_err());
     }
 
@@ -276,29 +217,15 @@ piece Y
     }
 
     #[test]
-    fn parse_unknown_syntax() {
-        let input = "piece A\npiece B\nfoo bar\n";
-        assert!(parse(input).is_err());
-    }
-
-    #[test]
     fn parse_japanese() {
-        let input = r#"
-title "チーム構成"
-piece リーダー
-piece デザイナー
-"#;
+        let input = "リーダー\nデザイナー\n";
         let p = parse(input).unwrap();
-        assert_eq!(p.title.as_deref(), Some("チーム構成"));
         assert_eq!(p.pieces[0].label, "リーダー");
     }
 
     #[test]
     fn render_produces_svg() {
-        let input = r#"
-piece A
-piece B
-"#;
+        let input = "A\nB\n";
         let p = parse(input).unwrap();
         let svg = render_svg(&p);
         assert!(svg.starts_with("<svg"));
@@ -308,29 +235,13 @@ piece B
 
     #[test]
     fn render_contains_pieces() {
-        let input = r#"
-piece Hello
-piece World
-piece Test
-"#;
+        let input = "Hello\nWorld\nTest\n";
         let p = parse(input).unwrap();
         let svg = render_svg(&p);
         assert!(svg.contains("Hello"));
         assert!(svg.contains("World"));
         assert!(svg.contains("Test"));
         assert!(svg.contains("<polygon"));
-    }
-
-    #[test]
-    fn render_with_title() {
-        let input = r#"
-title "My Puzzle"
-piece A
-piece B
-"#;
-        let p = parse(input).unwrap();
-        let svg = render_svg(&p);
-        assert!(svg.contains("My Puzzle"));
     }
 
     #[test]

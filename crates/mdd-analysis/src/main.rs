@@ -46,7 +46,6 @@ enum ChartData {
 struct Diagram {
     data: ChartData,
     colors: HashMap<String, ColorDef>,
-    title: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -90,8 +89,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let mut colors: HashMap<String, ColorDef> = HashMap::new();
     let mut bars: Vec<Bar> = Vec::new();
     let mut entries: Vec<WaterfallEntry> = Vec::new();
-    let mut title: Option<String> = None;
-
     for (line_no, line) in input.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
@@ -109,14 +106,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 ));
             }
             chart_type = Some(t);
-            continue;
-        }
-
-        // title "<text>"
-        if line.starts_with("title ") {
-            let rest = line.strip_prefix("title ").unwrap().trim();
-            let t = rest.trim_matches('"').to_string();
-            title = Some(t);
             continue;
         }
 
@@ -230,7 +219,6 @@ fn parse(input: &str) -> Result<Diagram, String> {
     Ok(Diagram {
         data,
         colors,
-        title,
     })
 }
 
@@ -271,8 +259,6 @@ const LABEL_GAP: f64 = 12.0;
 const LEGEND_SWATCH: f64 = 12.0;
 const LEGEND_GAP: f64 = 6.0;
 const LEGEND_ITEM_GAP: f64 = 20.0;
-const TITLE_HEIGHT: f64 = 28.0;
-
 const COLOR_DARK: &str = "#333";
 const COLOR_AXIS: &str = "#999";
 const COLOR_SUBTOTAL_BG: &str = "#e8eaf6";
@@ -313,9 +299,9 @@ fn format_number(v: f64) -> String {
 
 fn render_svg(diagram: &Diagram) -> String {
     match &diagram.data {
-        ChartData::StackedBar { bars } => render_stacked_bar(bars, &diagram.colors, &diagram.title),
+        ChartData::StackedBar { bars } => render_stacked_bar(bars, &diagram.colors),
         ChartData::Waterfall { entries } => {
-            render_waterfall(entries, &diagram.colors, &diagram.title)
+            render_waterfall(entries, &diagram.colors)
         }
     }
 }
@@ -327,7 +313,6 @@ fn render_svg(diagram: &Diagram) -> String {
 fn render_stacked_bar(
     bars: &[Bar],
     colors: &HashMap<String, ColorDef>,
-    title: &Option<String>,
 ) -> String {
     let palette = default_palette();
 
@@ -369,11 +354,10 @@ fn render_stacked_bar(
         + LABEL_GAP;
 
     let chart_w = 400.0;
-    let title_h = if title.is_some() { TITLE_HEIGHT } else { 0.0 };
     let legend_h = 30.0;
     let chart_h = bars.len() as f64 * (BAR_HEIGHT + BAR_GAP) - BAR_GAP;
     let total_w = PADDING * 2.0 + label_w + chart_w;
-    let total_h = PADDING * 2.0 + title_h + chart_h + legend_h + 10.0;
+    let total_h = PADDING * 2.0 + chart_h + legend_h + 10.0;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -385,18 +369,7 @@ fn render_stacked_bar(
         FONT_SIZE, COLOR_DARK
     ));
 
-    let mut y_offset = PADDING;
-
-    // Title
-    if let Some(t) = title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-weight=\"bold\" font-size=\"15px\">{}</text>",
-            PADDING,
-            y_offset + 15.0,
-            escape_xml(t)
-        ));
-        y_offset += TITLE_HEIGHT;
-    }
+    let y_offset = PADDING;
 
     let chart_x = PADDING + label_w;
 
@@ -495,7 +468,6 @@ fn render_stacked_bar(
 fn render_waterfall(
     entries: &[WaterfallEntry],
     colors: &HashMap<String, ColorDef>,
-    title: &Option<String>,
 ) -> String {
     // Resolve colors
     let pos_bg = colors
@@ -555,10 +527,9 @@ fn render_waterfall(
         + LABEL_GAP;
 
     let chart_w = 400.0;
-    let title_h = if title.is_some() { TITLE_HEIGHT } else { 0.0 };
     let chart_h = entries.len() as f64 * (BAR_HEIGHT + BAR_GAP) - BAR_GAP;
     let total_w = PADDING * 2.0 + label_w + chart_w + 60.0;
-    let total_h = PADDING * 2.0 + title_h + chart_h;
+    let total_h = PADDING * 2.0 + chart_h;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -570,18 +541,7 @@ fn render_waterfall(
         FONT_SIZE, COLOR_DARK
     ));
 
-    let mut y_offset = PADDING;
-
-    // Title
-    if let Some(t) = title {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-weight=\"bold\" font-size=\"15px\">{}</text>",
-            PADDING,
-            y_offset + 15.0,
-            escape_xml(t)
-        ));
-        y_offset += TITLE_HEIGHT;
-    }
+    let y_offset = PADDING;
 
     let chart_x = PADDING + label_w;
 
@@ -740,13 +700,6 @@ mod tests {
             }
             _ => panic!("Expected Waterfall"),
         }
-    }
-
-    #[test]
-    fn parse_with_title() {
-        let input = "type stacked-bar\ntitle \"売上分析\"\nbar Q1 : A 100\n";
-        let d = parse(input).unwrap();
-        assert_eq!(d.title.as_deref(), Some("売上分析"));
     }
 
     #[test]

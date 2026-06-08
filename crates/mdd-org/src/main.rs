@@ -3,15 +3,14 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Person { name: String, role: Option<String>, parent: Option<usize> }
 #[derive(Debug)]
-struct Org { title: Option<String>, people: Vec<Person> }
+struct Org { people: Vec<Person> }
 
 fn parse(input: &str) -> Result<Org, String> {
-    let mut title = None; let mut people: Vec<Person> = Vec::new();
+    let mut people: Vec<Person> = Vec::new();
     let mut name_to_id: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") { title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string()); continue; }
         if t.starts_with("member ") {
             let rest = t.strip_prefix("member ").unwrap().trim();
             let (name, role) = if let Some((n, r)) = rest.split_once(" : ") {
@@ -34,7 +33,7 @@ fn parse(input: &str) -> Result<Org, String> {
         return Err(format!("Unknown syntax: {}", t));
     }
     if people.is_empty() { return Err("At least 1 member required".to_string()); }
-    Ok(Org { title, people })
+    Ok(Org { people })
 }
 
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
@@ -80,18 +79,14 @@ fn render_svg(org: &Org) -> String {
         + (roots.len().saturating_sub(1)) as f64 * NODE_GAP_X;
     let max_depth = org.people.iter().enumerate().map(|(i, _)| depth(&org.people, i)).max().unwrap_or(0);
 
-    let title_space = if org.title.is_some() { 40.0 } else { 0.0 };
     let total_w = PAD * 2.0 + total_tree_w;
-    let total_h = PAD * 2.0 + title_space + (max_depth + 1) as f64 * (NODE_ROLE_H + LEVEL_GAP_Y);
+    let total_h = PAD * 2.0 + (max_depth + 1) as f64 * (NODE_ROLE_H + LEVEL_GAP_Y);
 
     let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">", total_w, total_h, total_w, total_h);
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 13px; fill: #333; }</style>");
 
-    let content_y = if let Some(ref t) = org.title {
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"16\" font-weight=\"bold\">{}</text>", total_w / 2.0, PAD + 18.0, ex(t)));
-        PAD + title_space
-    } else { PAD };
+    let content_y = PAD;
 
     fn render_node(svg: &mut String, people: &[Person], id: usize, cx: f64, y: f64) {
         let p = &people[id];

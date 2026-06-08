@@ -5,14 +5,13 @@ struct Change { kind: String, text: String }
 #[derive(Debug)]
 struct Release { version: String, date: Option<String>, changes: Vec<Change> }
 #[derive(Debug)]
-struct Changelog { title: Option<String>, releases: Vec<Release> }
+struct Changelog { releases: Vec<Release> }
 
 fn parse(input: &str) -> Result<Changelog, String> {
-    let mut title = None; let mut releases = Vec::new();
+    let mut releases = Vec::new();
     for line in input.lines() {
         let t = line.trim();
         if t.is_empty() { continue; }
-        if t.starts_with("title ") { title = Some(sq(t.strip_prefix("title ").unwrap().trim()).to_string()); continue; }
         if t.starts_with("release ") {
             let rest = t.strip_prefix("release ").unwrap().trim();
             let (version, date) = if let Some((v, d)) = rest.split_once(" : ") {
@@ -37,7 +36,7 @@ fn parse(input: &str) -> Result<Changelog, String> {
         return Err(format!("Unknown syntax: {}", t));
     }
     if releases.is_empty() { return Err("At least 1 release required".to_string()); }
-    Ok(Changelog { title, releases })
+    Ok(Changelog { releases })
 }
 
 fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 { &s[1..s.len()-1] } else { s } }
@@ -58,21 +57,16 @@ fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>
 
 fn render_svg(cl: &Changelog) -> String {
     let card_w = cl.releases.iter().flat_map(|r| r.changes.iter().map(|c| tw(&c.text) + 80.0)).fold(CARD_W, f64::max);
-    let title_space = if cl.title.is_some() { 40.0 } else { 0.0 };
     let total_cards_h: f64 = cl.releases.iter().map(|r| HEADER_H + CARD_PAD + r.changes.len() as f64 * ITEM_H + CARD_PAD).sum::<f64>()
         + (cl.releases.len() - 1) as f64 * REL_GAP;
     let total_w = PAD * 2.0 + card_w;
-    let total_h = PAD * 2.0 + title_space + total_cards_h;
+    let total_h = PAD * 2.0 + total_cards_h;
 
     let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">", total_w, total_h, total_w, total_h);
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str("<style>text { font-family: sans-serif; font-size: 13px; fill: #333; }</style>");
 
     let mut y = PAD;
-    if let Some(ref t) = cl.title {
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"18\" font-weight=\"bold\">{}</text>", PAD, y + 18.0, ex(t)));
-        y += title_space;
-    }
 
     for rel in &cl.releases {
         let card_h = HEADER_H + CARD_PAD + rel.changes.len() as f64 * ITEM_H + CARD_PAD;
