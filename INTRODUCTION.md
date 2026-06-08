@@ -336,9 +336,9 @@ frontend/ : "フロントエンド"
 docker-compose.yml : "開発環境構成"
 ```
 
-# このスライドの正体
+# (おまけ) このスライドの正体
 
-このスライド自体が、ただの Markdown テキストから生成されています。
+このスライド自体が、ただの Markdown テキストから自動生成されています。
 
 ```code
 title "INTRODUCTION.md"
@@ -356,57 +356,4 @@ package "認証" {
   usecase ログイン
 }
 顧客 -> ログイン
-```
-
-# MDDだと何が嬉しい
-
-```before-after
-before "既存ツール" {
-  レンダリングに数秒〜数十秒
-}
-after "MDD" {
-  1秒以下で生成
-}
-```
-
-# まとめ
-...
-```
-
-# このスライドの作り方
-
-```process
-step Markdownを書く : "テキストエディタで
-DSLを記述"
-step mdd slide : "コマンド一発で
-PDF生成"
-step 共有 : "GitにPushして
-チームに共有"
-```
-
-# まとめ
-
-```list-v
-title "MDD まとめ"
-item "テキストから図を生成" : "Markdownのコードブロックに書くだけ"
-item "1秒以下で変換" : "AIワークフローに最適"
-item "53種類のプラグイン" : "フロー、組織図、チャート、何でも"
-item "Git管理可能" : "テキストだから差分・レビュー・履歴管理"
-item "100%カスタマイズ" : "プラグインは自作可能"
-item "スライドもMarkdownから" : "mdd slide で PDF エクスポート"
-```
-
-# Try MDD
-
-## Mac/Linux
-
-```code
-curl -fsSL https://raw.githubusercontent.com/ppdx999/mdd/main/install.sh | sh
-```
-
-## Windows
-
-```code
-# Windows (PowerShell)
-iwr https://raw.githubusercontent.com/ppdx999/mdd/main/install.ps1 -useb | iex
 ```
