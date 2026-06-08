@@ -1,5 +1,5 @@
 ```title
-title "AIに爆速で正確な図を書かせる"
+"AIに爆速で正確な図を書かせる"
 subtitle "MDD(Markdown with Diagrams)を使ってAIにいい感じの図を作らせる技術"
 ```
 
@@ -96,12 +96,18 @@ package "認証" {
 # MDD の仕組み
 
 ```process
-step テキスト(DSL) : "ただのテキスト。
-AIが書いても人間が書いてもOK"
-step MDD : "AIは不要。
-これはただのプログラム。"
-step SVG : "ブラウザでもPDFでも
-簡単に誰でも見れる"
+テキスト(DSL) {
+  ただのテキスト。
+  AIが書いても人間が書いてもOK
+}
+MDD {
+  AIは不要。
+  これはただのプログラム。
+}
+SVG {
+  ブラウザでもPDFでも
+  簡単に誰でも見れる
+}
 ```
 
 ## 余談
@@ -129,7 +135,6 @@ after "MDD" {
 ```code
 lang gantt
 ---
-title 基幹システム刷新PJ
 unit day
 
 要件定義 : 2025-04-01, 3d
@@ -146,7 +151,6 @@ label "mddが変換"
 ```
 
 ```gantt
-title 基幹システム刷新PJ
 unit day
 
 要件定義 : 2025-04-01, 3d
@@ -280,7 +284,6 @@ lane 物流部
 ```code
 lang org
 ---
-title "プロジェクト体制図"
 member PM : "プロジェクトマネージャー"
 member AP_Lead : "APリーダー"
 member Infra_Lead : "インフラリーダー"
@@ -304,7 +307,6 @@ label "mddが変換"
 ```
 
 ```org
-title "プロジェクト体制図"
 member PM : "プロジェクトマネージャー"
 member AP_Lead : "APリーダー"
 member Infra_Lead : "インフラリーダー"
@@ -327,7 +329,6 @@ QA_Lead -> QA1
 ```code
 lang compare
 ---
-title "フレームワーク比較"
 option "Spring Boot" {
   言語: Java
   実績: 豊富
@@ -357,7 +358,6 @@ label "mddが変換"
 ```
 
 ```compare
-title "フレームワーク比較"
 option "Spring Boot" {
   言語: Java
   実績: 豊富
@@ -413,7 +413,6 @@ label "mddが変換"
 ```code
 lang matrix
 ---
-title "プロジェクトリスクマトリクス"
 x-axis "影響度：小" "影響度：大"
 y-axis "発生確率：低" "発生確率：高"
 quadrant 1 : "監視"
@@ -428,7 +427,6 @@ label "mddが変換"
 ```
 
 ```matrix
-title "プロジェクトリスクマトリクス"
 x-axis "影響度：小" "影響度：大"
 y-axis "発生確率：低" "発生確率：高"
 quadrant 1 : "監視"
@@ -495,7 +493,6 @@ AP2 -> Redis
 ```code
 lang swot
 ---
-title "プロジェクト SWOT"
 strengths {
   チームの技術力が高い
   既存業務知識が豊富
@@ -520,7 +517,6 @@ label "mddが変換"
 ```
 
 ```swot
-title "プロジェクト SWOT"
 strengths {
   チームの技術力が高い
   既存業務知識が豊富
