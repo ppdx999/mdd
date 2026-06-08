@@ -1,0 +1,25 @@
+title "設定画面"
+nav ホーム | 設定 | プロフィール
+header 設定
+---
+subheader 通知
+toggle on "メール通知"
+toggle "プッシュ通知"
+---
+subheader プロフィール
+avatar "田中太郎"
+input "表示名"
+textarea "自己紹介を入力"
+---
+subheader アカウント
+select "言語を選択"
+checkbox checked "利用規約に同意"
+radio selected "公開"
+radio "非公開"
+---
+subheader アップロード
+progress 65
+text "65% 完了"
+---
+link "ログアウト"
+button 保存
