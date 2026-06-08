@@ -1,0 +1,5 @@
+milestone 要件定義 : "ユーザー要件を収集・分析"
+milestone 設計 : "アーキテクチャとUIを設計"
+milestone 実装 : "コーディングとユニットテスト"
+milestone テスト : "結合テストと受入テスト"
+milestone リリース : "本番環境へデプロイ"

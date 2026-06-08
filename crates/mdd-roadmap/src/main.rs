@@ -28,7 +28,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
             continue;
         }
 
-        if let Some(rest) = line.strip_prefix("step ") {
+        if let Some(rest) = line.strip_prefix("milestone ") {
             let rest = rest.trim();
             if let Some((title, desc)) = rest.split_once(" : ") {
                 let title = title.trim().to_string();
@@ -49,7 +49,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
     }
 
     if steps.is_empty() {
-        return Err("No steps defined".to_string());
+        return Err("No milestones defined".to_string());
     }
 
     Ok(Diagram { steps })
@@ -67,13 +67,12 @@ const LINE_HEIGHT: f64 = 18.0;
 
 const STEP_WIDTH: f64 = 180.0;
 const STEP_HEIGHT: f64 = 60.0;
-const STEP_OFFSET_X: f64 = 40.0;
-const STEP_OFFSET_Y: f64 = 50.0;
-const PADDING: f64 = 40.0;
+const STEP_OFFSET_X: f64 = 60.0;
+const STEP_OFFSET_Y: f64 = 70.0;
+const PADDING: f64 = 50.0;
 const BADGE_RADIUS: f64 = 14.0;
 
 const COLOR_DARK: &str = "#333";
-const COLOR_EDGE: &str = "#999";
 
 // Step colors: (desc_bg, title_bg, accent)
 const STEP_COLORS: &[(&str, &str, &str)] = &[
@@ -145,21 +144,29 @@ fn render_svg(diagram: &Diagram) -> String {
         COLOR_DARK
     ));
 
-    // Draw connector line behind steps (ascending path)
-    if n > 1 {
-        let mut path = String::from("M");
-        for i in 0..n {
-            let x = PADDING + i as f64 * STEP_OFFSET_X + step_w / 2.0;
-            let y = PADDING + (n - 1 - i) as f64 * STEP_OFFSET_Y + step_h / 2.0;
-            if i == 0 {
-                path.push_str(&format!("{},{}", x, y));
-            } else {
-                path.push_str(&format!(" L{},{}", x, y));
-            }
-        }
+    // Draw background arrow (bottom-left to top-right, upward trend)
+    {
+        let arrow_margin = 20.0;
+        let ax1 = arrow_margin;
+        let ay1 = svg_h - arrow_margin;
+        let ax2 = svg_w - arrow_margin;
+        let ay2 = arrow_margin;
+        let head_len = 14.0;
+        // Arrowhead pointing upper-right (angle = atan2(ay2-ay1, ax2-ax1))
+        let dx = ax2 - ax1;
+        let dy = ay2 - ay1;
+        let angle = dy.atan2(dx);
+        let lx = ax2 - head_len * (angle - 0.35).cos();
+        let ly = ay2 - head_len * (angle - 0.35).sin();
+        let rx = ax2 - head_len * (angle + 0.35).cos();
+        let ry = ay2 - head_len * (angle + 0.35).sin();
         svg.push_str(&format!(
-            "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\" stroke-dasharray=\"6,4\"/>",
-            path, COLOR_EDGE
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"3\" stroke-linecap=\"round\"/>",
+            ax1, ay1, ax2, ay2
+        ));
+        svg.push_str(&format!(
+            "<polygon points=\"{},{} {},{} {},{}\" fill=\"#e0e0e0\"/>",
+            ax2, ay2, lx, ly, rx, ry
         ));
     }
 
@@ -240,7 +247,7 @@ fn main() {
     let diagram = match parse(&input) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("mdd-steps: {}", e);
+            eprintln!("mdd-roadmap: {}", e);
             std::process::exit(1);
         }
     };
@@ -257,8 +264,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_simple_steps() {
-        let input = "step First\nstep Second\nstep Third\n";
+    fn parse_simple_milestones() {
+        let input = "milestone First\nmilestone Second\nmilestone Third\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps.len(), 3);
         assert_eq!(d.steps[0].title, "First");
@@ -267,8 +274,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_step_with_description() {
-        let input = "step Design : \"Create wireframes\"\n";
+    fn parse_milestone_with_description() {
+        let input = "milestone Design : \"Create wireframes\"\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].title, "Design");
         assert_eq!(d.steps[0].description, "Create wireframes");
@@ -289,14 +296,14 @@ mod tests {
 
     #[test]
     fn parse_skips_empty_lines() {
-        let input = "\nstep A\n\nstep B\n\n";
+        let input = "\nmilestone A\n\nmilestone B\n\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps.len(), 2);
     }
 
     #[test]
     fn parse_japanese_titles() {
-        let input = "step 要件定義\nstep 設計\nstep 実装\n";
+        let input = "milestone 要件定義\nmilestone 設計\nmilestone 実装\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].title, "要件定義");
         assert_eq!(d.steps.len(), 3);
@@ -304,7 +311,7 @@ mod tests {
 
     #[test]
     fn render_produces_svg() {
-        let input = "step A\nstep B\nstep C\n";
+        let input = "milestone A\nmilestone B\nmilestone C\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.starts_with("<svg"));
@@ -313,7 +320,7 @@ mod tests {
 
     #[test]
     fn render_contains_white_background() {
-        let input = "step A\n";
+        let input = "milestone A\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("fill=\"white\""));
@@ -321,7 +328,7 @@ mod tests {
 
     #[test]
     fn render_contains_step_elements() {
-        let input = "step Alpha\nstep Beta\n";
+        let input = "milestone Alpha\nmilestone Beta\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("Alpha"));
@@ -332,17 +339,18 @@ mod tests {
 
     #[test]
     fn render_contains_description() {
-        let input = "step Plan : \"Make a plan\"\n";
+        let input = "milestone Plan : \"Make a plan\"\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
         assert!(svg.contains("Make a plan"));
     }
 
     #[test]
-    fn render_connector_line() {
-        let input = "step A\nstep B\nstep C\n";
+    fn render_background_arrow() {
+        let input = "milestone A\nmilestone B\nmilestone C\n";
         let d = parse(input).unwrap();
         let svg = render_svg(&d);
-        assert!(svg.contains("stroke-dasharray")); // dashed connector
+        assert!(svg.contains("<line")); // arrow shaft
+        assert!(svg.contains("<polygon")); // arrowhead
     }
 }
