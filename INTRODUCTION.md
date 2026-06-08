@@ -44,22 +44,7 @@ license MIT
 
 # MDD とは？
 
-Markdown のコードブロックにテキスト DSL を書くと、プログラムが図に変換する。
-
-```process
-step テキスト入力 : "Markdownに
-DSLを書く"
-step MDD変換 : "コマンド一発
-1秒以下"
-step SVG出力 : "美しい図が
-自動生成"
-step 共有 : "Git管理
-差分レビュー"
-```
-
-# MDD の仕組み — 入力
-
-テキストの DSL を書くだけ。これがユースケース図の入力。
+テキストからいい感じに図を作ってくれるやつ
 
 ```code
 lang usecase
@@ -77,9 +62,7 @@ Admin -> Login
 Admin -> Logout
 ```
 
-# MDD の仕組み — 変換
-
-上のテキストを MDD に通すと、下の図が自動生成される。
+↓ mddが変換
 
 ```usecase
 actor Customer
@@ -95,13 +78,27 @@ Admin -> Login
 Admin -> Logout
 ```
 
+# MDD の仕組み
+
+```process
+step テキスト入力 : "Markdownに
+DSLを書く"
+step MDD変換 : "コマンド一発
+1秒以下"
+step SVG出力 : "美しい図が
+自動生成"
+step 共有 : "Git管理
+差分レビュー"
+```
+
+
 # MDD の3つの強み
 
 ```list-h
 title "Why MDD?"
-card "爆速生成" : "1秒以下でSVG生成。AIの待ち時間ゼロ"
-card "トークン節約" : "テキストDSLだからAIの入出力が最小限"
-card "100%カスタマイズ" : "プラグインはただのCLI。自作も簡単"
+card "爆速生成" : "1秒以下でSVG生成 | AIの待ち時間ゼロ"
+card "トークン節約" : "テキストDSLだから | AIの入出力が最小限"
+card "100%カスタマイズ" : "プラグインはただのCLI | 自作も簡単"
 ```
 
 # 強み① 爆速生成
