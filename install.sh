@@ -24,7 +24,13 @@ TARGET="${arch}-${os}"
 
 # Get latest version if not specified
 if [ -z "${MDD_VERSION:-}" ]; then
-  MDD_VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+  RELEASE_RESPONSE=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest")
+  if echo "$RELEASE_RESPONSE" | grep -q '"Not Found"'; then
+    echo "Error: No releases found at https://github.com/${REPO}/releases"
+    echo "Please specify a version with MDD_VERSION=<version> or wait for the first release."
+    exit 1
+  fi
+  MDD_VERSION=$(echo "$RELEASE_RESPONSE" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 fi
 
 if [ -z "$MDD_VERSION" ]; then

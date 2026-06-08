@@ -6,8 +6,13 @@ $target = "x86_64-pc-windows-msvc"
 
 # Get latest version if not specified
 if (-not $env:MDD_VERSION) {
-    $release = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
-    $version = $release.tag_name
+    try {
+        $release = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
+        $version = $release.tag_name
+    } catch {
+        Write-Error "Failed to fetch the latest release. No releases found at https://github.com/$repo/releases"
+        exit 1
+    }
 } else {
     $version = $env:MDD_VERSION
 }
