@@ -98,6 +98,7 @@ const BODY_FONT_SIZE: f64 = 14.0;
 const BODY_LINE_HEIGHT: f64 = 22.0;
 const BLOCK_GAP: f64 = 20.0;
 const MIN_PAGE_W: f64 = 600.0;
+const MIN_PAGE_H: f64 = 400.0;
 const TITLE_BOTTOM_PAD: f64 = 16.0;
 
 fn escape_xml(s: &str) -> String {
@@ -121,28 +122,40 @@ fn svg_inner(svg: &str) -> &str {
     &svg[start..end]
 }
 
-fn build_page_svg(page: &Page) -> String {
-    let mut content_w: f64 = MIN_PAGE_W;
-    let mut content_h: f64 = 0.0;
+/// Compute the natural content width of a page (without padding).
+fn page_content_width(page: &Page) -> f64 {
+    let mut w: f64 = MIN_PAGE_W;
+    for block in &page.blocks {
+        if let Block::Svg(svg) = block {
+            let (sw, _) = svg_dimensions(svg);
+            w = w.max(sw);
+        }
+    }
+    w
+}
 
+fn build_page_svg(page: &Page, fixed_width: f64) -> String {
+    let page_w = fixed_width;
+    let content_area = page_w - PAGE_PAD * 2.0;
+
+    // Compute content height
+    let mut content_h: f64 = 0.0;
     if !page.title.is_empty() {
         content_h += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
     }
-
     for block in &page.blocks {
         content_h += BLOCK_GAP;
         match block {
             Block::Text(text) => { content_h += text.lines().count().max(1) as f64 * BODY_LINE_HEIGHT; }
             Block::Svg(svg) => {
                 let (sw, sh) = svg_dimensions(svg);
-                content_w = content_w.max(sw);
-                content_h += sh;
+                let scale = if sw > content_area { content_area / sw } else { 1.0 };
+                content_h += sh * scale;
             }
         }
     }
 
-    let page_w = content_w + PAGE_PAD * 2.0;
-    let page_h = content_h + PAGE_PAD * 2.0;
+    let page_h = (content_h + PAGE_PAD * 2.0).max(MIN_PAGE_H);
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -181,11 +194,22 @@ fn build_page_svg(page: &Page) -> String {
             Block::Svg(raw_svg) => {
                 let (sw, sh) = svg_dimensions(raw_svg);
                 let inner = svg_inner(raw_svg);
-                let offset_x = (page_w - sw) / 2.0;
-                svg.push_str(&format!("<g transform=\"translate({},{})\">", offset_x, y));
+                let scale = if sw > content_area { content_area / sw } else { 1.0 };
+                let scaled_w = sw * scale;
+                let scaled_h = sh * scale;
+                let offset_x = (page_w - scaled_w) / 2.0;
+
+                if (scale - 1.0).abs() < 0.001 {
+                    svg.push_str(&format!("<g transform=\"translate({},{})\">", offset_x, y));
+                } else {
+                    svg.push_str(&format!(
+                        "<g transform=\"translate({},{}) scale({})\">",
+                        offset_x, y, scale
+                    ));
+                }
                 svg.push_str(inner);
                 svg.push_str("</g>");
-                y += sh + BLOCK_GAP;
+                y += scaled_h + BLOCK_GAP;
             }
         }
     }
@@ -229,10 +253,16 @@ fn render_svg_to_pixels(svg_data: &str, scale: f64) -> Option<(Vec<u8>, u32, u32
 fn build_pdf(pages: &[Page], scale: f64) -> Vec<u8> {
     use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
 
+    // Compute unified page width (max content width + padding)
+    let max_content_w = pages.iter()
+        .map(|p| page_content_width(p))
+        .fold(MIN_PAGE_W, f64::max);
+    let unified_w = max_content_w + PAGE_PAD * 2.0;
+
     let rendered: Vec<(Vec<u8>, u32, u32, f64, f64)> = pages
         .iter()
         .map(|page| {
-            let svg = build_page_svg(page);
+            let svg = build_page_svg(page, unified_w);
             let (sw, sh) = svg_dimensions(&svg);
             let (pixels, pw, ph) = render_svg_to_pixels(&svg, scale)
                 .expect("Failed to render SVG");
