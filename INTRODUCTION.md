@@ -19,7 +19,7 @@ actor デザイナー : "仕様書に画面遷移図を付けたい"
 ```list-h
 card "Draw.io" : "オープンソースの作図ツール"
 card "PowerPoint / Google Slides" : "定番のプレゼンツール"
-card "Canva" : "デザインプラットフォーム"
+card "Figma" : "デザインプラットフォーム"
 card "Mermaid" : "テキストベースの図生成"
 ```
 
