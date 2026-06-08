@@ -30,6 +30,13 @@ image "画像の説明"
 avatar "ユーザー名"
 progress 75
 nav タブ1 | タブ2 | タブ3
+table 列1 | 列2 | 列3
+| 値1 | 値2 | 値3
+| 値4 | 値5 | 値6
+card-begin
+header カードタイトル
+text カード内コンテンツ
+card-end
 ---
 - リスト項目1
 - リスト項目2
@@ -39,3 +46,4 @@ nav タブ1 | タブ2 | タブ3
 
 ![login](examples/login.svg)
 ![settings](examples/settings.svg)
+![dashboard](examples/dashboard.svg)

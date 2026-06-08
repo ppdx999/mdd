@@ -1,0 +1,22 @@
+title "ダッシュボード"
+nav ホーム | 分析 | ユーザー | 設定
+header ダッシュボード
+---
+card-begin
+subheader 売上サマリー
+text "今月の売上状況"
+progress 78
+text "78% 目標達成"
+card-end
+card-begin
+subheader 最近のユーザー
+table 名前 | メール | ステータス
+| 田中太郎 | tanaka@example.com | アクティブ
+| 佐藤花子 | sato@example.com | アクティブ
+| 鈴木一郎 | suzuki@example.com | 休止中
+card-end
+card-begin
+subheader クイックアクション
+button レポート作成
+button データ出力
+card-end
