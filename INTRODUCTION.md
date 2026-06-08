@@ -35,7 +35,16 @@ item "共有・レビューが面倒" : "エクスポート→送付→確認の
 
 # そこで MDD
 
-テキストから図を生成する、軽量な Markdown プリプロセッサ。
+```github
+repo ppdx999/mdd
+desc "Markdown with Diagrams — テキストから図を生成する軽量プリプロセッサ"
+lang Rust
+license MIT
+```
+
+# MDD とは？
+
+Markdown のコードブロックにテキスト DSL を書くと、プログラムが図に変換する。
 
 ```process
 step テキスト入力 : "Markdownに

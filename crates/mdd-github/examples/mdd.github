@@ -1,0 +1,6 @@
+repo ppdx999/mdd
+desc "Markdown with Diagrams — テキストから図を生成する軽量プリプロセッサ"
+lang Rust
+stars 50
+forks 5
+license MIT
