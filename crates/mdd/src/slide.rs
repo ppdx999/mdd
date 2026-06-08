@@ -97,7 +97,7 @@ const TITLE_FONT_SIZE: f64 = 28.0;
 const BODY_FONT_SIZE: f64 = 14.0;
 const BODY_LINE_HEIGHT: f64 = 22.0;
 const BLOCK_GAP: f64 = 20.0;
-const MIN_PAGE_W: f64 = 600.0;
+const FIXED_PAGE_W: f64 = 800.0;
 const MIN_PAGE_H: f64 = 680.0;
 const TITLE_BOTTOM_PAD: f64 = 16.0;
 
@@ -120,18 +120,6 @@ fn svg_inner(svg: &str) -> &str {
     let start = svg.find('>').map(|i| i + 1).unwrap_or(0);
     let end = svg.rfind("</svg>").unwrap_or(svg.len());
     &svg[start..end]
-}
-
-/// Compute the natural content width of a page (without padding).
-fn page_content_width(page: &Page) -> f64 {
-    let mut w: f64 = MIN_PAGE_W;
-    for block in &page.blocks {
-        if let Block::Svg(svg) = block {
-            let (sw, _) = svg_dimensions(svg);
-            w = w.max(sw);
-        }
-    }
-    w
 }
 
 fn build_page_svg(page: &Page, fixed_width: f64) -> String {
@@ -261,16 +249,10 @@ fn render_svg_to_pixels(svg_data: &str, scale: f64) -> Option<(Vec<u8>, u32, u32
 fn build_pdf(pages: &[Page], scale: f64) -> Vec<u8> {
     use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
 
-    // Compute unified page width (max content width + padding)
-    let max_content_w = pages.iter()
-        .map(|p| page_content_width(p))
-        .fold(MIN_PAGE_W, f64::max);
-    let unified_w = max_content_w + PAGE_PAD * 2.0;
-
     let rendered: Vec<(Vec<u8>, u32, u32, f64, f64)> = pages
         .iter()
         .map(|page| {
-            let svg = build_page_svg(page, unified_w);
+            let svg = build_page_svg(page, FIXED_PAGE_W);
             let (sw, sh) = svg_dimensions(&svg);
             let (pixels, pw, ph) = render_svg_to_pixels(&svg, scale)
                 .expect("Failed to render SVG");
