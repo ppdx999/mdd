@@ -51,17 +51,17 @@ license MIT
 ```code
 lang usecase
 ---
-actor Customer
-actor Admin
+actor 顧客
+actor 管理者
 
 package "認証" {
-  usecase Login
-  usecase Logout
+  usecase ログイン
+  usecase ログアウト
 }
 
-Customer -> Login
-Admin -> Login
-Admin -> Logout
+顧客 -> ログイン
+管理者 -> ログイン
+管理者 -> ログアウト
 ```
 
 ```arrow
@@ -70,17 +70,17 @@ label "これをmddが変換すると..."
 ```
 
 ```usecase
-actor Customer
-actor Admin
+actor 顧客
+actor 管理者
 
 package "認証" {
-  usecase Login
-  usecase Logout
+  usecase ログイン
+  usecase ログアウト
 }
 
-Customer -> Login
-Admin -> Login
-Admin -> Logout
+顧客 -> ログイン
+管理者 -> ログイン
+管理者 -> ログアウト
 ```
 
 # MDD の仕組み
