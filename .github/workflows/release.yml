@@ -123,5 +123,5 @@ jobs:
           MDD_VERSION: ${{ github.ref_name }}
         run: |
           .\install.ps1
-          $output = & "$env:USERPROFILE\.local\bin\mdd.exe" 2>&1
+          $output = & "$env:USERPROFILE\.local\bin\mdd.exe" 2>&1 | Out-String
           if ($output -notmatch "Usage:") { exit 1 }
