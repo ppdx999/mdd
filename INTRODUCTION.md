@@ -258,6 +258,85 @@ option "Next.js" {
 2026-06-01 : 本番移行
 ```
 
+# どんな図が作れる？ — リスク分析
+
+```matrix
+title "プロジェクトリスクマトリクス"
+x-axis "影響度：小" "影響度：大"
+y-axis "発生確率：低" "発生確率：高"
+quadrant 1 : "監視"
+quadrant 2 : "最優先対応"
+quadrant 3 : "許容"
+quadrant 4 : "軽減策検討"
+```
+
+# どんな図が作れる？ — インフラ構成
+
+```infra
+node ユーザー type=user
+node CDN type=cdn
+
+group "AWS" {
+  node ALB type=lb
+  group "VPC" {
+    node AP1 type=server
+    node AP2 type=server
+    node RDS type=db
+    node Redis type=cache
+  }
+}
+
+ユーザー -> CDN : "HTTPS"
+CDN -> ALB
+ALB -> AP1
+ALB -> AP2
+AP1 -> RDS : "SQL"
+AP2 -> RDS : "SQL"
+AP1 -> Redis
+AP2 -> Redis
+```
+
+# どんな図が作れる？ — SWOT分析
+
+```swot
+title "プロジェクト SWOT"
+strengths {
+  チームの技術力が高い
+  既存業務知識が豊富
+}
+weaknesses {
+  レガシーシステムとの依存
+  テスト環境が不十分
+}
+opportunities {
+  クラウド移行でコスト削減
+  DXによる業務効率化
+}
+threats {
+  納期遅延リスク
+  要件変更の頻発
+}
+```
+
+# どんな図が作れる？ — コード構成
+
+```dirtree
+backend/ : "バックエンド"
+  src/
+    controllers/ : "APIエンドポイント"
+    services/ : "ビジネスロジック"
+    repositories/ : "データアクセス"
+    models/ : "エンティティ定義"
+  tests/
+  Dockerfile
+frontend/ : "フロントエンド"
+  src/
+    components/
+    pages/
+    hooks/
+  package.json
+docker-compose.yml : "開発環境構成"
+```
 
 # このスライドの正体
 
