@@ -7,7 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct ListItem {
     label: String,
-    description: Option<String>,
+    description: Vec<String>,
     ordered: bool,
 }
 
@@ -72,7 +72,7 @@ fn strip_ordered_prefix(s: &str) -> Option<&str> {
     after_digits.strip_prefix(". ").map(|r| r.trim())
 }
 
-fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Option<String>, usize), String> {
+fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Vec<String>, usize), String> {
     let s = s.trim();
     if !s.starts_with('"') {
         return Err(format!("Expected quoted label, got: {}", s));
@@ -85,7 +85,7 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Option
     let rest = s[end_quote + 2..].trim();
 
     if rest.is_empty() {
-        return Ok((label, None, 0));
+        return Ok((label, Vec::new(), 0));
     }
 
     if rest.starts_with('{') {
@@ -94,9 +94,9 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Option
         if let Some(end) = after_brace.strip_suffix('}') {
             let desc = end.trim().to_string();
             if desc.is_empty() {
-                return Ok((label, None, 0));
+                return Ok((label, Vec::new(), 0));
             }
-            return Ok((label, Some(desc), 0));
+            return Ok((label, vec![desc], 0));
         }
         // Multi-line block
         let mut desc_lines = Vec::new();
@@ -112,11 +112,7 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Option
             }
             desc_lines.push(bl.to_string());
         }
-        let desc = desc_lines.join("\n");
-        if desc.is_empty() {
-            return Ok((label, None, extra));
-        }
-        return Ok((label, Some(desc), extra));
+        return Ok((label, desc_lines, extra));
     }
 
     Err(format!("Expected '{{' after label, got: {}", rest))
@@ -137,6 +133,7 @@ const ITEM_H_PAD: f64 = 16.0;
 const ITEM_MIN_HEIGHT: f64 = 48.0;
 const ITEM_GAP: f64 = 8.0;
 const PADDING: f64 = 40.0;
+const DESC_LINE_HEIGHT: f64 = 15.0;
 const SEPARATOR_COLOR: &str = "#e0e0e0";
 
 const COLORS: &[(&str, &str)] = &[
@@ -172,9 +169,9 @@ fn render_svg(list: &ListV) -> String {
         let label_w = text_width(&item.label);
         let desc_w = item
             .description
-            .as_ref()
+            .iter()
             .map(|d| text_width(d))
-            .unwrap_or(0.0);
+            .fold(0.0_f64, f64::max);
         let w = label_w.max(desc_w);
         if w > max_content_w {
             max_content_w = w;
@@ -188,10 +185,10 @@ fn render_svg(list: &ListV) -> String {
         .items
         .iter()
         .map(|item| {
-            if item.description.is_some() {
-                ITEM_MIN_HEIGHT + DESC_FONT_SIZE + 4.0
-            } else {
+            if item.description.is_empty() {
                 ITEM_MIN_HEIGHT
+            } else {
+                ITEM_MIN_HEIGHT + item.description.len() as f64 * DESC_LINE_HEIGHT
             }
         })
         .collect();
@@ -252,8 +249,8 @@ fn render_svg(list: &ListV) -> String {
 
         // Label text (bold)
         let text_x = PADDING + badge_area;
-        let label_y = if item.description.is_some() {
-            y + item_h / 2.0 - 2.0
+        let label_y = if !item.description.is_empty() {
+            y + ITEM_MIN_HEIGHT / 2.0 - 2.0
         } else {
             y + item_h / 2.0 + 5.0
         };
@@ -265,15 +262,17 @@ fn render_svg(list: &ListV) -> String {
         ));
 
         // Description text
-        if let Some(ref desc) = item.description {
-            let desc_y = label_y + DESC_FONT_SIZE + 6.0;
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#666\">{}</text>",
-                text_x,
-                desc_y,
-                DESC_FONT_SIZE,
-                escape_xml(desc)
-            ));
+        if !item.description.is_empty() {
+            let desc_base_y = label_y + DESC_FONT_SIZE + 6.0;
+            for (j, desc_line) in item.description.iter().enumerate() {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#666\">{}</text>",
+                    text_x,
+                    desc_base_y + j as f64 * DESC_LINE_HEIGHT,
+                    DESC_FONT_SIZE,
+                    escape_xml(desc_line)
+                ));
+            }
         }
 
         y += item_h;
@@ -361,7 +360,7 @@ mod tests {
         let list = parse(input).unwrap();
         assert_eq!(list.items.len(), 2);
         assert_eq!(list.items[0].label, "First");
-        assert!(list.items[0].description.is_none());
+        assert!(list.items[0].description.is_empty());
         assert_eq!(list.items[1].label, "Second");
     }
 
@@ -374,9 +373,9 @@ mod tests {
         let list = parse(input).unwrap();
         assert_eq!(list.items.len(), 2);
         assert_eq!(list.items[0].label, "Label");
-        assert_eq!(list.items[0].description.as_deref(), Some("Description"));
+        assert_eq!(list.items[0].description, vec!["Description"]);
         assert_eq!(list.items[1].label, "Other");
-        assert_eq!(list.items[1].description.as_deref(), Some("Details"));
+        assert_eq!(list.items[1].description, vec!["Details"]);
     }
 
     #[test]
@@ -384,7 +383,7 @@ mod tests {
         let input = "1. \"Label\" {\n  line one\n  line two\n}\n";
         let list = parse(input).unwrap();
         assert_eq!(list.items[0].label, "Label");
-        assert_eq!(list.items[0].description.as_deref(), Some("line one\nline two"));
+        assert_eq!(list.items[0].description, vec!["line one", "line two"]);
     }
 
     #[test]
@@ -413,8 +412,8 @@ mod tests {
 "#;
         let list = parse(input).unwrap();
         assert_eq!(list.items.len(), 2);
-        assert!(list.items[0].description.is_some());
-        assert!(list.items[1].description.is_none());
+        assert!(!list.items[0].description.is_empty());
+        assert!(list.items[1].description.is_empty());
     }
 
     #[test]
@@ -439,8 +438,8 @@ mod tests {
 "#;
         let list = parse(input).unwrap();
         assert_eq!(list.items.len(), 2);
-        assert_eq!(list.items[0].description.as_deref(), Some("Some detail"));
-        assert!(list.items[1].description.is_none());
+        assert_eq!(list.items[0].description, vec!["Some detail"]);
+        assert!(list.items[1].description.is_empty());
     }
 
     #[test]

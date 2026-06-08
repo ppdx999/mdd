@@ -7,7 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Step {
     title: String,
-    description: String,
+    description: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -39,7 +39,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
             if let Some(end) = after_brace.strip_suffix('}') {
                 steps.push(Step {
                     title,
-                    description: end.trim().to_string(),
+                    description: vec![end.trim().to_string()],
                 });
             } else {
                 // Multiline block
@@ -58,14 +58,14 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 }
                 steps.push(Step {
                     title,
-                    description: desc_lines.join("\n"),
+                    description: desc_lines,
                 });
             }
         } else {
             // Plain name, no description
             steps.push(Step {
                 title: line.to_string(),
-                description: String::new(),
+                description: Vec::new(),
             });
         }
         i += 1;
@@ -90,6 +90,7 @@ const LINE_HEIGHT: f64 = 18.0;
 
 const STEP_WIDTH: f64 = 180.0;
 const STEP_HEIGHT: f64 = 60.0;
+const DESC_LINE_HEIGHT: f64 = 15.0;
 const STEP_OFFSET_X: f64 = 60.0;
 const STEP_OFFSET_Y: f64 = 70.0;
 const PADDING: f64 = 50.0;
@@ -138,16 +139,23 @@ fn render_svg(diagram: &Diagram) -> String {
         .iter()
         .map(|s| {
             let title_w = text_width(&s.title) + 50.0; // room for badge
-            let desc_w = if s.description.is_empty() {
-                0.0
-            } else {
-                text_width(&s.description) + 20.0
-            };
+            let desc_w = s
+                .description
+                .iter()
+                .map(|line| text_width(line) + 20.0)
+                .fold(0.0_f64, f64::max);
             title_w.max(desc_w).max(STEP_WIDTH)
         })
         .fold(0.0_f64, f64::max);
 
-    let step_h = STEP_HEIGHT;
+    // Compute per-step height based on description line count
+    let max_desc_lines = diagram
+        .steps
+        .iter()
+        .map(|s| s.description.len())
+        .max()
+        .unwrap_or(0);
+    let step_h = STEP_HEIGHT + if max_desc_lines > 1 { (max_desc_lines - 1) as f64 * DESC_LINE_HEIGHT } else { 0.0 };
 
     // Staircase layout: step i is at position (i * offset_x, (n-1-i) * offset_y)
     // So step 0 is at bottom-left, step n-1 is at top-right
@@ -243,13 +251,15 @@ fn render_svg(diagram: &Diagram) -> String {
 
         // Description text (if present)
         if !step.description.is_empty() {
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#666\">{}</text>",
-                text_x,
-                text_y + LINE_HEIGHT - 2.0,
-                DESC_FONT_SIZE,
-                escape_xml(&step.description)
-            ));
+            for (j, line) in step.description.iter().enumerate() {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#666\">{}</text>",
+                    text_x,
+                    text_y + LINE_HEIGHT - 2.0 + j as f64 * DESC_LINE_HEIGHT,
+                    DESC_FONT_SIZE,
+                    escape_xml(line)
+                ));
+            }
         }
     }
 
@@ -324,7 +334,7 @@ mod tests {
         let input = "Design { Create wireframes }\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].title, "Design");
-        assert_eq!(d.steps[0].description, "Create wireframes");
+        assert_eq!(d.steps[0].description, vec!["Create wireframes"]);
     }
 
     #[test]
@@ -332,7 +342,7 @@ mod tests {
         let input = "Design {\n  Line one\n  Line two\n}\n";
         let d = parse(input).unwrap();
         assert_eq!(d.steps[0].title, "Design");
-        assert_eq!(d.steps[0].description, "Line one\nLine two");
+        assert_eq!(d.steps[0].description, vec!["Line one", "Line two"]);
     }
 
     #[test]

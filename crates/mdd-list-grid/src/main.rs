@@ -7,7 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct GridItem {
     label: String,
-    description: Option<String>,
+    description: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -83,7 +83,7 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(GridItem, usiz
     if rest.is_empty() {
         return Ok((GridItem {
             label,
-            description: None,
+            description: Vec::new(),
         }, 0));
     }
 
@@ -94,9 +94,9 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(GridItem, usiz
         if let Some(end) = after_brace.strip_suffix('}') {
             let desc = end.trim().to_string();
             if desc.is_empty() {
-                return Ok((GridItem { label, description: None }, 0));
+                return Ok((GridItem { label, description: Vec::new() }, 0));
             }
-            return Ok((GridItem { label, description: Some(desc) }, 0));
+            return Ok((GridItem { label, description: vec![desc] }, 0));
         }
         // Multi-line block
         let mut desc_lines = Vec::new();
@@ -112,11 +112,7 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(GridItem, usiz
             }
             desc_lines.push(bl.to_string());
         }
-        let desc = desc_lines.join("\n");
-        if desc.is_empty() {
-            return Ok((GridItem { label, description: None }, extra));
-        }
-        return Ok((GridItem { label, description: Some(desc) }, extra));
+        return Ok((GridItem { label, description: desc_lines }, extra));
     }
 
     Err(format!("Unexpected content after label: {}", rest))
@@ -138,6 +134,7 @@ const CARD_MIN_HEIGHT: f64 = 60.0;
 const CARD_GAP: f64 = 12.0;
 const LEFT_ACCENT_WIDTH: f64 = 4.0;
 const DEFAULT_COLUMNS: usize = 3;
+const DESC_LINE_HEIGHT: f64 = 15.0;
 const PADDING: f64 = 40.0;
 
 const COLORS: &[(&str, &str)] = &[
@@ -177,16 +174,21 @@ fn render_svg(grid: &ListGrid) -> String {
     let max_desc_w = grid
         .items
         .iter()
-        .filter_map(|item| item.description.as_ref())
-        .map(|desc| text_width(desc) * (DESC_FONT_SIZE / FONT_SIZE))
+        .flat_map(|item| item.description.iter())
+        .map(|line| text_width(line) * (DESC_FONT_SIZE / FONT_SIZE))
         .fold(0.0_f64, f64::max);
     let content_w = max_label_w.max(max_desc_w);
     let card_w = (content_w + CARD_H_PAD * 2.0 + LEFT_ACCENT_WIDTH).max(CARD_MIN_WIDTH);
 
-    // Compute card height
-    let has_any_desc = grid.items.iter().any(|item| item.description.is_some());
-    let card_h = if has_any_desc {
-        CARD_MIN_HEIGHT + DESC_FONT_SIZE + 4.0
+    // Compute card height – scale with the maximum number of description lines
+    let max_desc_lines = grid
+        .items
+        .iter()
+        .map(|item| item.description.len())
+        .max()
+        .unwrap_or(0);
+    let card_h = if max_desc_lines > 0 {
+        CARD_MIN_HEIGHT + max_desc_lines as f64 * DESC_LINE_HEIGHT + 4.0
     } else {
         CARD_MIN_HEIGHT
     };
@@ -238,8 +240,8 @@ fn render_svg(grid: &ListGrid) -> String {
 
         // Label
         let label_x = x + LEFT_ACCENT_WIDTH + CARD_H_PAD;
-        let label_y = if item.description.is_some() {
-            y + card_h / 2.0 - 4.0
+        let label_y = if !item.description.is_empty() {
+            y + FONT_SIZE + 12.0
         } else {
             y + card_h / 2.0 + 5.0
         };
@@ -251,16 +253,16 @@ fn render_svg(grid: &ListGrid) -> String {
             escape_xml(&item.label)
         ));
 
-        // Description
-        if let Some(ref desc) = item.description {
-            let desc_y = label_y + DESC_FONT_SIZE + 6.0;
+        // Description lines
+        for (li, line) in item.description.iter().enumerate() {
+            let desc_y = label_y + DESC_FONT_SIZE + 6.0 + li as f64 * DESC_LINE_HEIGHT;
             svg.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                 label_x,
                 desc_y,
                 DESC_FONT_SIZE,
                 COLOR_DARK,
-                escape_xml(desc)
+                escape_xml(line)
             ));
         }
     }
@@ -336,9 +338,9 @@ item "C"
         assert_eq!(g.columns, 3);
         assert_eq!(g.items.len(), 3);
         assert_eq!(g.items[0].label, "A");
-        assert_eq!(g.items[0].description.as_deref(), Some("desc A"));
+        assert_eq!(g.items[0].description, vec!["desc A"]);
         assert_eq!(g.items[2].label, "C");
-        assert!(g.items[2].description.is_none());
+        assert!(g.items[2].description.is_empty());
     }
 
     #[test]
@@ -357,7 +359,7 @@ item "Y"
     fn parse_multiline_desc() {
         let input = "item \"X\" {\n  line one\n  line two\n}\nitem \"Y\"\n";
         let g = parse(input).unwrap();
-        assert_eq!(g.items[0].description.as_deref(), Some("line one\nline two"));
+        assert_eq!(g.items[0].description, vec!["line one", "line two"]);
     }
 
     #[test]
