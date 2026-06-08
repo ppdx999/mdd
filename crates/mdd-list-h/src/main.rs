@@ -146,11 +146,44 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+const MAX_CARD_WIDTH: f64 = 250.0;
+
+fn wrap_desc_lines(description: &[String]) -> Vec<String> {
+    let max_w = MAX_CARD_WIDTH - CARD_H_PAD * 2.0;
+    description.iter()
+        .flat_map(|line| wrap_text(line, max_w, DESC_FONT_SIZE))
+        .collect()
+}
+
 fn card_height(card: &Card) -> f64 {
-    if card.description.is_empty() {
+    let wrapped = wrap_desc_lines(&card.description);
+    if wrapped.is_empty() {
         CARD_BASE_HEIGHT
     } else {
-        CARD_BASE_HEIGHT + (card.description.len() as f64 - 1.0) * DESC_LINE_H
+        CARD_BASE_HEIGHT + (wrapped.len() as f64 - 1.0) * DESC_LINE_H
     }
 }
 
@@ -161,12 +194,12 @@ fn render_svg(list: &ListH) -> String {
         .iter()
         .map(|card| {
             let label_w = text_width(&card.label) * (LABEL_FONT_SIZE / FONT_SIZE) + CARD_H_PAD * 2.0;
-            let desc_w = card
-                .description
+            let wrapped = wrap_desc_lines(&card.description);
+            let desc_w = wrapped
                 .iter()
                 .map(|d| text_width(d) * (DESC_FONT_SIZE / FONT_SIZE) + CARD_H_PAD * 2.0)
                 .fold(0.0_f64, f64::max);
-            label_w.max(desc_w).max(CARD_MIN_WIDTH)
+            label_w.max(desc_w).max(CARD_MIN_WIDTH).min(MAX_CARD_WIDTH)
         })
         .collect();
 
@@ -227,10 +260,11 @@ fn render_svg(list: &ListH) -> String {
             escape_xml(&card.label)
         ));
 
-        // Description (multi-line)
-        if !card.description.is_empty() {
+        // Description (multi-line, with wrapping)
+        let wrapped_desc = wrap_desc_lines(&card.description);
+        if !wrapped_desc.is_empty() {
             let desc_start_y = label_y + 18.0;
-            for (j, desc_line) in card.description.iter().enumerate() {
+            for (j, desc_line) in wrapped_desc.iter().enumerate() {
                 svg.push_str(&format!(
                     "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" fill=\"#666\">{}</text>",
                     cx + w / 2.0,

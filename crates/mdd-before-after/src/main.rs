@@ -145,7 +145,6 @@ const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
 
 const PADDING: f64 = 24.0;
-const ITEM_HEIGHT: f64 = 40.0;
 const ITEM_V_GAP: f64 = 8.0;
 const ITEM_H_PAD: f64 = 16.0;
 const ITEM_RADIUS: f64 = 8.0;
@@ -180,32 +179,81 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+const LINE_HEIGHT: f64 = 18.0;
+
+/// Compute the height of a single item box given its wrapped line count.
+fn item_box_height(num_lines: usize) -> f64 {
+    let text_h = num_lines.max(1) as f64 * LINE_HEIGHT;
+    // vertical padding inside the box
+    text_h + 12.0
+}
+
+/// Pre-compute wrapped lines for each item in a section, given content width.
+fn wrap_section_items(section: &Section, content_w: f64) -> Vec<Vec<String>> {
+    let max_text_w = content_w - ITEM_H_PAD * 2.0;
+    section
+        .items
+        .iter()
+        .map(|item| wrap_text(&item.text, max_text_w, FONT_SIZE))
+        .collect()
+}
+
+/// Compute the total body height for a section given wrapped items.
+fn section_body_height(wrapped: &[Vec<String>], max_rows: usize) -> f64 {
+    let mut h = SECTION_V_GAP;
+    for i in 0..max_rows {
+        let num_lines = if i < wrapped.len() { wrapped[i].len().max(1) } else { 1 };
+        if i > 0 {
+            h += ITEM_V_GAP;
+        }
+        h += item_box_height(num_lines);
+    }
+    h += SECTION_V_GAP;
+    h
+}
+
 fn render_svg(diagram: &Diagram) -> String {
     let max_rows = diagram.before.items.len().max(diagram.after.items.len());
 
-    // Compute section widths based on content
-    let before_content_w = diagram
-        .before
-        .items
-        .iter()
-        .map(|i| text_width(&i.text) + ITEM_H_PAD * 2.0)
-        .fold(text_width(&diagram.before.label) + ITEM_H_PAD * 2.0, f64::max)
-        .max(MIN_ITEM_WIDTH);
-
-    let after_content_w = diagram
-        .after
-        .items
-        .iter()
-        .map(|i| text_width(&i.text) + ITEM_H_PAD * 2.0)
-        .fold(text_width(&diagram.after.label) + ITEM_H_PAD * 2.0, f64::max)
-        .max(MIN_ITEM_WIDTH);
-
+    // Compute section widths based on label width (content will wrap)
     let section_inner_pad: f64 = 12.0;
+
+    let before_content_w = (text_width(&diagram.before.label) + ITEM_H_PAD * 2.0).max(MIN_ITEM_WIDTH);
+    let after_content_w = (text_width(&diagram.after.label) + ITEM_H_PAD * 2.0).max(MIN_ITEM_WIDTH);
+
     let before_w = before_content_w + section_inner_pad * 2.0;
     let after_w = after_content_w + section_inner_pad * 2.0;
 
-    let section_body_h =
-        SECTION_V_GAP + max_rows as f64 * ITEM_HEIGHT + (max_rows.saturating_sub(1)) as f64 * ITEM_V_GAP + SECTION_V_GAP;
+    // Pre-wrap items
+    let before_wrapped = wrap_section_items(&diagram.before, before_content_w);
+    let after_wrapped = wrap_section_items(&diagram.after, after_content_w);
+
+    let before_body_h = section_body_height(&before_wrapped, max_rows);
+    let after_body_h = section_body_height(&after_wrapped, max_rows);
+    let section_body_h = before_body_h.max(after_body_h);
     let section_h = SECTION_HEADER_HEIGHT + section_body_h;
 
     let total_w = PADDING + before_w + ARROW_ZONE_WIDTH + after_w + PADDING;
@@ -232,6 +280,7 @@ fn render_svg(diagram: &Diagram) -> String {
         before_w,
         section_h,
         &diagram.before,
+        &before_wrapped,
         COLOR_BEFORE_BG,
         COLOR_BEFORE_HEADER_BG,
         COLOR_ITEM_BEFORE_BG,
@@ -250,6 +299,7 @@ fn render_svg(diagram: &Diagram) -> String {
         after_w,
         section_h,
         &diagram.after,
+        &after_wrapped,
         COLOR_AFTER_BG,
         COLOR_AFTER_HEADER_BG,
         COLOR_ITEM_AFTER_BG,
@@ -259,16 +309,29 @@ fn render_svg(diagram: &Diagram) -> String {
         max_rows,
     );
 
-    // Arrows between corresponding items
+    // Arrows between corresponding items — use the larger wrapped heights
     let arrow_x1 = PADDING + before_w;
     let arrow_x2 = after_x;
-    let arrow_mid = (arrow_x1 + arrow_x2) / 2.0;
 
     let paired = diagram.before.items.len().min(diagram.after.items.len());
+    // Compute cumulative item positions (using the max of both columns)
+    let mut item_mid_ys = Vec::new();
+    {
+        let mut y_off = content_y + SECTION_HEADER_HEIGHT + SECTION_V_GAP;
+        for i in 0..max_rows {
+            let bl = if i < before_wrapped.len() { before_wrapped[i].len().max(1) } else { 1 };
+            let al = if i < after_wrapped.len() { after_wrapped[i].len().max(1) } else { 1 };
+            let bh = item_box_height(bl.max(al));
+            if i > 0 {
+                y_off += ITEM_V_GAP;
+            }
+            item_mid_ys.push(y_off + bh / 2.0);
+            y_off += bh;
+        }
+    }
+
     for i in 0..paired {
-        let item_y = content_y + SECTION_HEADER_HEIGHT + SECTION_V_GAP
-            + i as f64 * (ITEM_HEIGHT + ITEM_V_GAP)
-            + ITEM_HEIGHT / 2.0;
+        let item_y = item_mid_ys[i];
 
         // Arrow line
         svg.push_str(&format!(
@@ -284,15 +347,13 @@ fn render_svg(diagram: &Diagram) -> String {
             tip_x - 8.0, item_y + 5.0,
             COLOR_ARROW
         ));
-
-        // Arrow label (arrow icon in the middle is implicit from the line)
-        let _ = arrow_mid; // mid point available if needed
     }
 
     svg.push_str("</svg>");
     svg
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_section(
     svg: &mut String,
     x: f64,
@@ -300,6 +361,7 @@ fn render_section(
     w: f64,
     h: f64,
     section: &Section,
+    wrapped_items: &[Vec<String>],
     bg_color: &str,
     header_bg: &str,
     item_bg: &str,
@@ -314,12 +376,11 @@ fn render_section(
         x, y, w, h, bg_color, border_color
     ));
 
-    // Header background (clipped to top rounded corners via a clip-path)
+    // Header background
     svg.push_str(&format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"10\" fill=\"{}\"/>",
         x, y, w, SECTION_HEADER_HEIGHT, header_bg
     ));
-    // Fill the bottom corners of the header
     svg.push_str(&format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
         x,
@@ -339,30 +400,41 @@ fn render_section(
 
     // Items
     let item_x = x + inner_pad;
-    for (i, item) in section.items.iter().enumerate() {
-        let item_y = y + SECTION_HEADER_HEIGHT + SECTION_V_GAP
-            + i as f64 * (ITEM_HEIGHT + ITEM_V_GAP);
+    let mut item_y = y + SECTION_HEADER_HEIGHT + SECTION_V_GAP;
+    for i in 0..max_rows {
+        let num_lines = if i < wrapped_items.len() { wrapped_items[i].len().max(1) } else { 1 };
+        let box_h = item_box_height(num_lines);
 
-        svg.push_str(&format!(
-            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-            item_x, item_y, content_w, ITEM_HEIGHT, ITEM_RADIUS, item_bg, border_color
-        ));
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
-            item_x + content_w / 2.0,
-            item_y + ITEM_HEIGHT / 2.0 + 5.0,
-            escape_xml(&item.text)
-        ));
-    }
+        if i > 0 {
+            item_y += ITEM_V_GAP;
+        }
 
-    // If this section has fewer items than the other, show empty slots
-    for i in section.items.len()..max_rows {
-        let item_y = y + SECTION_HEADER_HEIGHT + SECTION_V_GAP
-            + i as f64 * (ITEM_HEIGHT + ITEM_V_GAP);
-        svg.push_str(&format!(
-            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"4,4\"/>",
-            item_x, item_y, content_w, ITEM_HEIGHT, ITEM_RADIUS, border_color
-        ));
+        if i < section.items.len() {
+            svg.push_str(&format!(
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+                item_x, item_y, content_w, box_h, ITEM_RADIUS, item_bg, border_color
+            ));
+
+            let lines = &wrapped_items[i];
+            let total_text_h = lines.len() as f64 * LINE_HEIGHT;
+            let text_start_y = item_y + (box_h - total_text_h) / 2.0 + LINE_HEIGHT - 4.0;
+            for (k, line) in lines.iter().enumerate() {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
+                    item_x + content_w / 2.0,
+                    text_start_y + k as f64 * LINE_HEIGHT,
+                    escape_xml(line)
+                ));
+            }
+        } else {
+            // Empty slot
+            svg.push_str(&format!(
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"4,4\"/>",
+                item_x, item_y, content_w, box_h, ITEM_RADIUS, border_color
+            ));
+        }
+
+        item_y += box_h;
     }
 }
 

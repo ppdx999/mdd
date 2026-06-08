@@ -53,18 +53,52 @@ const ACCENT_W: f64 = 4.0;
 
 const COLORS: &[&str] = &["#1565c0", "#2e7d32", "#f57f17", "#7b1fa2", "#00695c", "#c62828"];
 
+#[allow(dead_code)]
 fn tw(s: &str) -> f64 { s.chars().map(|c| if c.is_ascii() { CW } else { CJK }).sum() }
 fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;").replace('"',"&quot;") }
 
-fn quote_h(q: &Quote) -> f64 {
-    let text_h = q.text.len() as f64 * QUOTE_LINE_H;
-    let author_h = if q.author.is_some() { AUTHOR_H + 8.0 } else { 0.0 };
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / 14.0;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CW } else { CJK };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() { lines.push(current); }
+    lines
+}
+
+fn quote_h_wrapped(num_lines: usize, has_author: bool) -> f64 {
+    let text_h = num_lines.max(1) as f64 * QUOTE_LINE_H;
+    let author_h = if has_author { AUTHOR_H + 8.0 } else { 0.0 };
     CARD_PAD + text_h + author_h + CARD_PAD
 }
 
 fn render_svg(diagram: &Diagram) -> String {
-    let card_w = diagram.quotes.iter().flat_map(|q| q.text.iter().map(|l| tw(l) + CARD_PAD * 2.0 + 20.0)).fold(CARD_W, f64::max);
-    let total_h_cards: f64 = diagram.quotes.iter().map(|q| quote_h(q)).sum::<f64>() + (diagram.quotes.len()-1) as f64 * CARD_GAP;
+    let card_w = CARD_W;
+    // Text starts at PAD + 20.0, so max text width is card_w minus left offset minus right padding
+    let tx = PAD + 20.0;
+    let max_text_w = card_w - 20.0 - CARD_PAD;
+
+    // Pre-wrap all quote lines
+    let wrapped_quotes: Vec<Vec<String>> = diagram.quotes.iter().map(|q| {
+        q.text.iter()
+            .flat_map(|line| wrap_text(line, max_text_w, 14.0))
+            .collect()
+    }).collect();
+
+    let total_h_cards: f64 = diagram.quotes.iter().enumerate()
+        .map(|(i, q)| quote_h_wrapped(wrapped_quotes[i].len(), q.author.is_some()))
+        .sum::<f64>() + (diagram.quotes.len()-1) as f64 * CARD_GAP;
     let total_w = PAD * 2.0 + card_w;
     let total_h = PAD * 2.0 + total_h_cards;
 
@@ -74,7 +108,8 @@ fn render_svg(diagram: &Diagram) -> String {
 
     let mut y = PAD;
     for (i, q) in diagram.quotes.iter().enumerate() {
-        let h = quote_h(q);
+        let lines = &wrapped_quotes[i];
+        let h = quote_h_wrapped(lines.len(), q.author.is_some());
         let color = COLORS[i % COLORS.len()];
 
         svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"#fafafa\" stroke=\"#e8e8e8\" stroke-width=\"1\"/>", PAD, y, card_w, h));
@@ -84,16 +119,15 @@ fn render_svg(diagram: &Diagram) -> String {
         // Quote mark
         svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"32\" fill=\"{}\" opacity=\"0.3\">\u{201C}</text>", PAD + 16.0, y + CARD_PAD + 24.0, color));
 
-        // Text
-        let tx = PAD + 20.0;
-        for (j, line) in q.text.iter().enumerate() {
+        // Wrapped text lines
+        for (j, line) in lines.iter().enumerate() {
             svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"14\" font-style=\"italic\" fill=\"#444\">{}</text>",
                 tx, y + CARD_PAD + j as f64 * QUOTE_LINE_H + 16.0, ex(line)));
         }
 
         // Author
         if let Some(ref author) = q.author {
-            let ay = y + CARD_PAD + q.text.len() as f64 * QUOTE_LINE_H + 20.0;
+            let ay = y + CARD_PAD + lines.len() as f64 * QUOTE_LINE_H + 20.0;
             let author_text = if let Some(ref role) = q.role {
                 format!("— {} / {}", author, role)
             } else {

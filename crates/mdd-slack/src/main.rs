@@ -227,6 +227,29 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
 fn emoji_to_unicode(code: &str) -> &str {
     match code {
         ":+1:" | ":thumbsup:" => "\u{1F44D}",
@@ -282,11 +305,19 @@ fn emoji_to_unicode(code: &str) -> &str {
 // SVG rendering
 // ---------------------------------------------------------------------------
 
+fn wrap_body_lines(body: &[String]) -> Vec<String> {
+    let max_w = CARD_WIDTH - CARD_H_PAD * 2.0 - AVATAR_SIZE - AVATAR_GAP - 20.0;
+    body.iter()
+        .flat_map(|line| wrap_text(line, max_w, BODY_FONT_SIZE))
+        .collect()
+}
+
 fn msg_height(msg: &Message) -> f64 {
-    let body_h = if msg.body.is_empty() {
+    let wrapped = wrap_body_lines(&msg.body);
+    let body_h = if wrapped.is_empty() {
         0.0
     } else {
-        msg.body.len() as f64 * BODY_LINE_HEIGHT
+        wrapped.len() as f64 * BODY_LINE_HEIGHT
     };
 
     let reactions_h = if msg.reactions.is_empty() {
@@ -309,12 +340,8 @@ fn msg_height(msg: &Message) -> f64 {
 fn render_svg(diagram: &Diagram) -> String {
     let n = diagram.messages.len();
 
-    let max_body_w = diagram.messages.iter()
-        .flat_map(|m| m.body.iter())
-        .map(|line| text_width(line) * (BODY_FONT_SIZE / FONT_SIZE))
-        .fold(0.0_f64, f64::max);
-    let card_w = (AVATAR_SIZE + AVATAR_GAP + max_body_w + CARD_H_PAD * 2.0 + 20.0)
-        .max(CARD_WIDTH);
+    // Card width is capped at CARD_WIDTH
+    let card_w = CARD_WIDTH;
 
     let channel_h = if diagram.channel.is_some() { CHANNEL_BAR_H } else { 0.0 };
 
@@ -414,8 +441,9 @@ fn render_svg(diagram: &Diagram) -> String {
 
         cy += NAME_FONT_SIZE + 4.0;
 
-        // Body
-        for line in &msg.body {
+        // Body (with wrapping)
+        let wrapped_body = wrap_body_lines(&msg.body);
+        for line in &wrapped_body {
             svg.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                 text_x, cy + BODY_FONT_SIZE, BODY_FONT_SIZE, COLOR_BODY, escape_xml(line)

@@ -183,19 +183,52 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
+
+const MAX_BUBBLE_WIDTH: f64 = 300.0;
+
+fn wrap_speech_lines(speech: &[String]) -> Vec<String> {
+    let max_w = MAX_BUBBLE_WIDTH - BUBBLE_H_PAD * 2.0;
+    speech.iter()
+        .flat_map(|line| wrap_text(line, max_w, SPEECH_FONT_SIZE))
+        .collect()
+}
 
 fn bubble_size(speech: &[String]) -> (f64, f64) {
     if speech.is_empty() {
         return (0.0, 0.0);
     }
-    let max_w = speech.iter()
+    let wrapped = wrap_speech_lines(speech);
+    let max_w = wrapped.iter()
         .map(|s| text_width(s) * (SPEECH_FONT_SIZE / FONT_SIZE))
         .fold(0.0_f64, f64::max);
-    let w = max_w + BUBBLE_H_PAD * 2.0;
-    let h = speech.len() as f64 * BUBBLE_LINE_HEIGHT + BUBBLE_V_PAD * 2.0;
+    let w = (max_w + BUBBLE_H_PAD * 2.0).min(MAX_BUBBLE_WIDTH);
+    let h = wrapped.len() as f64 * BUBBLE_LINE_HEIGHT + BUBBLE_V_PAD * 2.0;
     (w.max(60.0), h)
 }
 
@@ -320,8 +353,9 @@ fn render_svg(diagram: &Diagram) -> String {
                 tail_x - 5.0, tail_top, tail_x + 5.0, tail_top, COLOR_BUBBLE_BG
             ));
 
-            // Speech text
-            for (j, line) in actor.speech.iter().enumerate() {
+            // Speech text (with wrapping)
+            let wrapped_speech = wrap_speech_lines(&actor.speech);
+            for (j, line) in wrapped_speech.iter().enumerate() {
                 svg.push_str(&format!(
                     "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     cx,

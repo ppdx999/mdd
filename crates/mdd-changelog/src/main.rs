@@ -55,10 +55,48 @@ fn kind_label(k: &str) -> &str {
 fn tw(s: &str) -> f64 { s.chars().map(|c| if c.is_ascii() { CW } else { CJK }).sum() }
 fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;").replace('"',"&quot;") }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / 13.0;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CW } else { CJK };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() { lines.push(current); }
+    lines
+}
+
+const CHANGE_LINE_H: f64 = 18.0;
+
 fn render_svg(cl: &Changelog) -> String {
-    let card_w = cl.releases.iter().flat_map(|r| r.changes.iter().map(|c| tw(&c.text) + 80.0)).fold(CARD_W, f64::max);
-    let total_cards_h: f64 = cl.releases.iter().map(|r| HEADER_H + CARD_PAD + r.changes.len() as f64 * ITEM_H + CARD_PAD).sum::<f64>()
-        + (cl.releases.len() - 1) as f64 * REL_GAP;
+    let card_w = CARD_W;
+    // The text area for change text starts after the kind badge
+    let badge_max_w: f64 = 50.0; // approximate max badge width
+    let text_x_offset = CARD_PAD + badge_max_w + 8.0;
+    let max_text_w = card_w - text_x_offset - CARD_PAD;
+
+    // Pre-wrap all change texts and compute heights
+    let wrapped: Vec<Vec<Vec<String>>> = cl.releases.iter().map(|r| {
+        r.changes.iter().map(|c| wrap_text(&c.text, max_text_w, 12.0)).collect()
+    }).collect();
+
+    let total_cards_h: f64 = cl.releases.iter().enumerate().map(|(ri, _r)| {
+        let changes_h: f64 = wrapped[ri].iter().map(|lines| {
+            let num = lines.len().max(1);
+            num as f64 * CHANGE_LINE_H + (ITEM_H - CHANGE_LINE_H)
+        }).sum();
+        HEADER_H + CARD_PAD + changes_h + CARD_PAD
+    }).sum::<f64>() + (cl.releases.len() - 1) as f64 * REL_GAP;
+
     let total_w = PAD * 2.0 + card_w;
     let total_h = PAD * 2.0 + total_cards_h;
 
@@ -68,8 +106,13 @@ fn render_svg(cl: &Changelog) -> String {
 
     let mut y = PAD;
 
-    for rel in &cl.releases {
-        let card_h = HEADER_H + CARD_PAD + rel.changes.len() as f64 * ITEM_H + CARD_PAD;
+    for (ri, rel) in cl.releases.iter().enumerate() {
+        let changes_h: f64 = wrapped[ri].iter().map(|lines| {
+            let num = lines.len().max(1);
+            num as f64 * CHANGE_LINE_H + (ITEM_H - CHANGE_LINE_H)
+        }).sum();
+        let card_h = HEADER_H + CARD_PAD + changes_h + CARD_PAD;
+
         svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"#fafafa\" stroke=\"#e8e8e8\" stroke-width=\"1\"/>", PAD, y, card_w, card_h));
         svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"15\" font-weight=\"bold\">{}</text>", PAD + CARD_PAD, y + HEADER_H / 2.0 + 6.0, ex(&rel.version)));
         if let Some(ref date) = rel.date {
@@ -78,14 +121,21 @@ fn render_svg(cl: &Changelog) -> String {
         }
 
         let mut iy = y + HEADER_H + CARD_PAD;
-        for change in &rel.changes {
+        for (ci, change) in rel.changes.iter().enumerate() {
             let (bg, fg) = kind_color(&change.kind);
             let label = kind_label(&change.kind);
             let lw = tw(label) * 0.75 + 12.0;
             svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"18\" rx=\"3\" fill=\"{}\"/>", PAD + CARD_PAD, iy, lw, bg));
             svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"10\" font-weight=\"bold\" fill=\"{}\">{}</text>", PAD + CARD_PAD + 6.0, iy + 13.0, fg, label));
-            svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\">{}</text>", PAD + CARD_PAD + lw + 8.0, iy + 13.0, ex(&change.text)));
-            iy += ITEM_H;
+
+            let lines = &wrapped[ri][ci];
+            let text_x = PAD + CARD_PAD + lw + 8.0;
+            for (k, line) in lines.iter().enumerate() {
+                svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\">{}</text>", text_x, iy + 13.0 + k as f64 * CHANGE_LINE_H, ex(line)));
+            }
+
+            let num = lines.len().max(1);
+            iy += num as f64 * CHANGE_LINE_H + (ITEM_H - CHANGE_LINE_H);
         }
         y += card_h + REL_GAP;
     }

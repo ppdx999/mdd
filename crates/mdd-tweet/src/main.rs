@@ -200,15 +200,46 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
 // ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
 
+fn wrap_body_lines(body: &[String]) -> Vec<String> {
+    let max_w = CARD_WIDTH - CARD_H_PAD * 2.0 - AVATAR_SIZE - AVATAR_GAP;
+    body.iter()
+        .flat_map(|line| wrap_text(line, max_w, BODY_FONT_SIZE))
+        .collect()
+}
+
 fn tweet_height(tweet: &Tweet) -> f64 {
-    let body_h = if tweet.body.is_empty() {
+    let wrapped = wrap_body_lines(&tweet.body);
+    let body_h = if wrapped.is_empty() {
         0.0
     } else {
-        tweet.body.len() as f64 * BODY_LINE_HEIGHT + 8.0
+        wrapped.len() as f64 * BODY_LINE_HEIGHT + 8.0
     };
 
     let has_meta = tweet.likes.is_some() || tweet.retweets.is_some();
@@ -226,13 +257,8 @@ fn tweet_height(tweet: &Tweet) -> f64 {
 fn render_svg(diagram: &Diagram) -> String {
     let n = diagram.tweets.len();
 
-    // Compute card width based on content
-    let max_body_w = diagram.tweets.iter()
-        .flat_map(|t| t.body.iter())
-        .map(|line| text_width(line) * (BODY_FONT_SIZE / FONT_SIZE))
-        .fold(0.0_f64, f64::max);
-    let card_w = (AVATAR_SIZE + AVATAR_GAP + max_body_w + CARD_H_PAD * 2.0)
-        .max(CARD_WIDTH);
+    // Card width is capped at CARD_WIDTH
+    let card_w = CARD_WIDTH;
 
     let total_h_cards: f64 = diagram.tweets.iter()
         .map(|t| tweet_height(t))
@@ -296,9 +322,10 @@ fn render_svg(diagram: &Diagram) -> String {
 
         cy += HEADER_HEIGHT + 4.0;
 
-        // Body text
-        if !tweet.body.is_empty() {
-            for line in &tweet.body {
+        // Body text (with wrapping)
+        let wrapped_body = wrap_body_lines(&tweet.body);
+        if !wrapped_body.is_empty() {
+            for line in &wrapped_body {
                 svg.push_str(&format!(
                     "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     text_x, cy + BODY_FONT_SIZE, BODY_FONT_SIZE, COLOR_BODY, escape_xml(line)

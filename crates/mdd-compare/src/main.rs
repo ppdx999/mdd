@@ -132,29 +132,74 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+const LINE_HEIGHT: f64 = 18.0;
+
 fn render_svg(compare: &Compare) -> String {
     let num_options = compare.options.len();
-    let max_items = compare.options.iter().map(|o| o.items.len()).max().unwrap_or(0);
 
-    // Compute column widths
+    // Compute column widths (capped at COLUMN_MIN_WIDTH)
     let column_widths: Vec<f64> = compare
         .options
         .iter()
         .map(|opt| {
             let label_w = text_width(&opt.label) + COLUMN_H_PAD * 2.0;
-            let max_item_w = opt
-                .items
-                .iter()
-                .map(|item| text_width(item) + COLUMN_H_PAD * 2.0 + BULLET_RADIUS * 2.0 + 12.0)
-                .fold(0.0_f64, f64::max);
-            label_w.max(max_item_w).max(COLUMN_MIN_WIDTH)
+            label_w.max(COLUMN_MIN_WIDTH)
         })
         .collect();
+
+    // Compute wrapped lines per item per column, and the max total lines across columns
+    let text_x_offset = COLUMN_H_PAD + BULLET_RADIUS * 2.0 + 6.0;
+    let wrapped_items: Vec<Vec<Vec<String>>> = compare
+        .options
+        .iter()
+        .enumerate()
+        .map(|(i, opt)| {
+            let max_text_w = column_widths[i] - text_x_offset - COLUMN_H_PAD;
+            opt.items
+                .iter()
+                .map(|item| wrap_text(item, max_text_w, FONT_SIZE))
+                .collect()
+        })
+        .collect();
+
+    // Each original item occupies: max(1, wrapped_lines) * LINE_HEIGHT + gap
+    let item_gap = ITEM_HEIGHT - LINE_HEIGHT; // gap between items beyond line height
+    let column_body_h: f64 = wrapped_items
+        .iter()
+        .map(|col_items| {
+            col_items
+                .iter()
+                .map(|lines| lines.len().max(1) as f64 * LINE_HEIGHT + item_gap)
+                .sum::<f64>()
+        })
+        .fold(0.0_f64, f64::max);
 
     let total_columns_w: f64 = column_widths.iter().sum::<f64>()
         + COLUMN_GAP * (num_options.saturating_sub(1)) as f64;
 
-    let column_body_h = max_items as f64 * ITEM_HEIGHT;
     let column_h = HEADER_HEIGHT + column_body_h;
 
     let total_w = PADDING * 2.0 + total_columns_w;
@@ -208,26 +253,34 @@ fn render_svg(compare: &Compare) -> String {
             escape_xml(&opt.label)
         ));
 
-        // Items
-        for (j, item) in opt.items.iter().enumerate() {
-            let item_y = content_y + HEADER_HEIGHT + j as f64 * ITEM_HEIGHT;
-            let text_y = item_y + ITEM_HEIGHT / 2.0 + 4.5;
-            let bullet_x = col_x + COLUMN_H_PAD;
-            let bullet_y = item_y + ITEM_HEIGHT / 2.0;
+        // Items with wrapping
+        let mut item_y_offset = content_y + HEADER_HEIGHT;
+        for (j, _item) in opt.items.iter().enumerate() {
+            let wrapped = &wrapped_items[i][j];
+            let block_h = wrapped.len().max(1) as f64 * LINE_HEIGHT + item_gap;
 
-            // Bullet dot
+            let bullet_x = col_x + COLUMN_H_PAD;
+            let bullet_y = item_y_offset + LINE_HEIGHT / 2.0 + item_gap / 2.0;
+
+            // Bullet dot (aligned with first line)
             svg.push_str(&format!(
                 "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>",
                 bullet_x, bullet_y, BULLET_RADIUS, header_text_color
             ));
 
-            // Item text
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\">{}</text>",
-                bullet_x + BULLET_RADIUS * 2.0 + 6.0,
-                text_y,
-                escape_xml(item)
-            ));
+            // Wrapped text lines
+            let text_x = bullet_x + BULLET_RADIUS * 2.0 + 6.0;
+            for (k, line) in wrapped.iter().enumerate() {
+                let text_y = item_y_offset + item_gap / 2.0 + (k as f64 + 1.0) * LINE_HEIGHT - 4.0;
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\">{}</text>",
+                    text_x,
+                    text_y,
+                    escape_xml(line)
+                ));
+            }
+
+            item_y_offset += block_h;
         }
 
         col_x += col_w + COLUMN_GAP;

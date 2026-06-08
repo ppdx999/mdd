@@ -125,6 +125,7 @@ fn parse_item(s: &str, lines: &[&str], current: usize) -> Result<(String, Vec<St
 const CHAR_WIDTH: f64 = 8.0;
 const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
+const TITLE_FONT_SIZE: f64 = 15.0;
 const DESC_FONT_SIZE: f64 = 11.0;
 const COLOR_DARK: &str = "#333";
 
@@ -255,9 +256,10 @@ fn render_svg(list: &ListV) -> String {
             y + item_h / 2.0 + 5.0
         };
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-weight=\"800\">{}</text>",
+            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"900\">{}</text>",
             text_x,
             label_y,
+            TITLE_FONT_SIZE,
             escape_xml(&item.label)
         ));
 

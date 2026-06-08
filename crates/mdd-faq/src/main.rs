@@ -53,18 +53,47 @@ fn sq(s: &str) -> &str { if s.starts_with('"') && s.ends_with('"') && s.len() >=
 const CW: f64 = 8.0; const CJK: f64 = 14.0; const CARD_W: f64 = 400.0; const PAD: f64 = 24.0;
 const Q_H: f64 = 32.0; const A_LINE_H: f64 = 18.0; const A_PAD: f64 = 10.0;
 const DIVIDER_PAD: f64 = 12.0;
+#[allow(dead_code)]
 fn tw(s: &str) -> f64 { s.chars().map(|c| if c.is_ascii() { CW } else { CJK }).sum() }
 fn ex(s: &str) -> String { s.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;").replace('"',"&quot;") }
 
-fn qa_h(qa: &QA) -> f64 { Q_H + A_PAD + qa.answer.len().max(1) as f64 * A_LINE_H + A_PAD }
+fn wrap_text(s: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    let scale = font_size / 13.0;
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_w = 0.0;
+    for c in s.chars() {
+        let cw = if c.is_ascii() { CW } else { CJK };
+        let w = cw * scale;
+        if current_w + w > max_width && !current.is_empty() {
+            lines.push(current.clone());
+            current.clear();
+            current_w = 0.0;
+        }
+        current.push(c);
+        current_w += w;
+    }
+    if !current.is_empty() { lines.push(current); }
+    lines
+}
+
+fn qa_h_wrapped(wrapped_lines: usize) -> f64 { Q_H + A_PAD + wrapped_lines.max(1) as f64 * A_LINE_H + A_PAD }
 
 fn render_svg(faq: &Faq) -> String {
-    let card_w = faq.items.iter().map(|qa| {
-        let qw = tw(&qa.question) + 40.0;
-        let aw = qa.answer.iter().map(|a| tw(a) + 40.0).fold(0.0_f64, f64::max);
-        qw.max(aw)
-    }).fold(CARD_W, f64::max);
-    let total_items_h: f64 = faq.items.iter().map(|qa| qa_h(qa)).sum::<f64>() + (faq.items.len().saturating_sub(1)) as f64 * (DIVIDER_PAD * 2.0);
+    let card_w = CARD_W;
+    // Max text width for answer wrapping: card_w minus left offset (badge area) minus right padding
+    let answer_text_x = 42.0;
+    let max_answer_w = card_w - answer_text_x - PAD;
+
+    // Pre-wrap all answer lines
+    let wrapped_answers: Vec<Vec<String>> = faq.items.iter().map(|qa| {
+        qa.answer.iter()
+            .flat_map(|line| wrap_text(line, max_answer_w, 12.0))
+            .collect()
+    }).collect();
+
+    let total_items_h: f64 = wrapped_answers.iter().map(|lines| qa_h_wrapped(lines.len())).sum::<f64>()
+        + (faq.items.len().saturating_sub(1)) as f64 * (DIVIDER_PAD * 2.0);
     let total_w = PAD * 2.0 + card_w;
     let total_h = PAD * 2.0 + total_items_h;
 
@@ -75,24 +104,24 @@ fn render_svg(faq: &Faq) -> String {
     let mut y = PAD;
 
     for (i, qa) in faq.items.iter().enumerate() {
-        let h = qa_h(qa);
+        let lines = &wrapped_answers[i];
+        let h = qa_h_wrapped(lines.len());
 
-        // Q badge (light background)
+        // Q badge
         svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#e3f2fd\" stroke=\"#90caf9\" stroke-width=\"1\"/>", PAD + 12.0, y + Q_H / 2.0 - 11.0));
         svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"#1565c0\">Q</text>", PAD + 23.0, y + Q_H / 2.0 + 5.0));
-        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"13\" font-weight=\"bold\">{}</text>", PAD + 42.0, y + Q_H / 2.0 + 5.0, ex(&qa.question)));
+        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"13\" font-weight=\"bold\">{}</text>", PAD + answer_text_x, y + Q_H / 2.0 + 5.0, ex(&qa.question)));
 
-        // A badge (light background)
+        // A badge
         let ay = y + Q_H + A_PAD;
         svg.push_str(&format!("<rect x=\"{}\" y=\"{}\" width=\"22\" height=\"22\" rx=\"4\" fill=\"#e8f5e9\" stroke=\"#a5d6a7\" stroke-width=\"1\"/>", PAD + 12.0, ay - 2.0));
         svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"#2e7d32\">A</text>", PAD + 23.0, ay + 14.0));
-        for (j, line) in qa.answer.iter().enumerate() {
-            svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#555\">{}</text>", PAD + 42.0, ay + j as f64 * A_LINE_H + 14.0, ex(line)));
+        for (j, line) in lines.iter().enumerate() {
+            svg.push_str(&format!("<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#555\">{}</text>", PAD + answer_text_x, ay + j as f64 * A_LINE_H + 14.0, ex(line)));
         }
 
         y += h;
 
-        // Divider line between items (not after the last one)
         if i < faq.items.len() - 1 {
             y += DIVIDER_PAD;
             svg.push_str(&format!("<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e8e8e8\" stroke-width=\"1\"/>",
