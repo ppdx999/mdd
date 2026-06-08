@@ -125,5 +125,5 @@ jobs:
           .\install.ps1
           $mdd = "$env:USERPROFILE\.local\bin\mdd.exe"
           if (-not (Test-Path $mdd)) { Write-Error "mdd.exe not found"; exit 1 }
-          $output = cmd /c "`"$mdd`" 2>&1"
+          $output = (cmd /c "`"$mdd`" 2>&1") -join "`n"
           if ($output -notmatch "Usage:") { Write-Host "Unexpected output: $output"; exit 1 }
