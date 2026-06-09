@@ -347,6 +347,169 @@ pub fn generate_slide(path: &Path) {
         .expect("Failed to write PDF");
 }
 
+fn build_document_svg(pages: &[Page], fixed_width: f64) -> String {
+    let content_area = fixed_width - PAGE_PAD * 2.0;
+
+    // Compute total height across all pages
+    let mut total_h: f64 = PAGE_PAD;
+    for page in pages {
+        if !page.title.is_empty() {
+            total_h += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD + BLOCK_GAP;
+        }
+        for block in &page.blocks {
+            total_h += BLOCK_GAP;
+            match block {
+                Block::Text(text) => {
+                    total_h += text.lines().count().max(1) as f64 * BODY_LINE_HEIGHT;
+                }
+                Block::Svg(svg) => {
+                    let (sw, sh) = svg_dimensions(svg);
+                    let scale = if sw > content_area { content_area / sw } else { 1.0 };
+                    total_h += sh * scale;
+                }
+            }
+        }
+        total_h += BLOCK_GAP; // gap between pages
+    }
+    total_h += PAGE_PAD;
+
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
+        fixed_width, total_h, fixed_width, total_h
+    );
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
+    svg.push_str("<style>text { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>");
+
+    let mut y = PAGE_PAD;
+
+    for page in pages {
+        if !page.title.is_empty() {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#1a1a1a\">{}</text>",
+                PAGE_PAD, y + TITLE_FONT_SIZE * 0.85, TITLE_FONT_SIZE, escape_xml(&page.title)
+            ));
+            y += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
+            svg.push_str(&format!(
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>",
+                PAGE_PAD, y, fixed_width - PAGE_PAD, y
+            ));
+            y += BLOCK_GAP;
+        }
+
+        for block in &page.blocks {
+            match block {
+                Block::Text(text) => {
+                    for line in text.lines() {
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#333\">{}</text>",
+                            PAGE_PAD, y + BODY_FONT_SIZE * 0.85, BODY_FONT_SIZE, escape_xml(line)
+                        ));
+                        y += BODY_LINE_HEIGHT;
+                    }
+                    y += BLOCK_GAP;
+                }
+                Block::Svg(raw_svg) => {
+                    let (sw, sh) = svg_dimensions(raw_svg);
+                    let inner = svg_inner(raw_svg);
+                    let scale = if sw > content_area { content_area / sw } else { 1.0 };
+                    let scaled_w = sw * scale;
+                    let scaled_h = sh * scale;
+                    let offset_x = (fixed_width - scaled_w) / 2.0;
+
+                    if (scale - 1.0).abs() < 0.001 {
+                        svg.push_str(&format!("<g transform=\"translate({},{})\">", offset_x, y));
+                    } else {
+                        svg.push_str(&format!(
+                            "<g transform=\"translate({},{}) scale({})\">",
+                            offset_x, y, scale
+                        ));
+                    }
+                    svg.push_str(inner);
+                    svg.push_str("</g>");
+                    y += scaled_h + BLOCK_GAP;
+                }
+            }
+        }
+        y += BLOCK_GAP;
+    }
+
+    svg.push_str("</svg>");
+    svg
+}
+
+fn build_single_page_pdf(svg_data: &str, scale: f64) -> Vec<u8> {
+    use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
+
+    let (svg_w, svg_h) = svg_dimensions(svg_data);
+    let (pixels, pw, ph) = render_svg_to_pixels(svg_data, scale)
+        .expect("Failed to render SVG");
+
+    let mut pdf = Pdf::new();
+    let catalog_ref = Ref::new(1);
+    let pages_ref = Ref::new(2);
+    let page_ref = Ref::new(3);
+    let content_ref = Ref::new(4);
+    let image_ref = Ref::new(5);
+
+    pdf.catalog(catalog_ref).pages(pages_ref);
+
+    let mut pages_obj = pdf.pages(pages_ref);
+    pages_obj.count(1);
+    pages_obj.kids([page_ref]);
+    pages_obj.finish();
+
+    let pdf_w = svg_w as f32;
+    let pdf_h = svg_h as f32;
+
+    let mut page = pdf.page(page_ref);
+    page.parent(pages_ref);
+    page.media_box(Rect::new(0.0, 0.0, pdf_w, pdf_h));
+    page.contents(content_ref);
+    let image_name = Name(b"Im1");
+    page.resources().x_objects().pair(image_name, image_ref);
+    page.finish();
+
+    let mut content = Content::new();
+    content.save_state();
+    content.transform([pdf_w, 0.0, 0.0, pdf_h, 0.0, 0.0]);
+    content.x_object(image_name);
+    content.restore_state();
+    pdf.stream(content_ref, &content.finish());
+
+    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&pixels, 6);
+    let mut image = pdf.image_xobject(image_ref, &compressed);
+    image.filter(pdf_writer::Filter::FlateDecode);
+    image.width(pw as i32);
+    image.height(ph as i32);
+    image.color_space().device_rgb();
+    image.bits_per_component(8);
+    image.finish();
+
+    pdf.finish()
+}
+
+pub fn build_preview_pdf(path: &Path) -> Vec<u8> {
+    let input = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("mdd: Failed to read {}: {}", path.display(), e);
+        std::process::exit(1);
+    });
+
+    let processed = crate::process::process(&input, path).unwrap_or_else(|e| {
+        eprintln!("mdd: {}", e);
+        std::process::exit(1);
+    });
+
+    let pages = split_pages(&processed);
+
+    if pages.is_empty() {
+        eprintln!("mdd: No content found");
+        std::process::exit(1);
+    }
+
+    let svg = build_document_svg(&pages, FIXED_PAGE_W);
+    build_single_page_pdf(&svg, 2.0)
+}
+
 pub fn preview_slide(path: &Path) {
     use std::thread;
     use std::time::Duration;
