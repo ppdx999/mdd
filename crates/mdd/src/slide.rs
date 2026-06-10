@@ -347,31 +347,362 @@ pub fn generate_slide(path: &Path) {
         .expect("Failed to write PDF");
 }
 
-fn build_document_svg(pages: &[Page], fixed_width: f64) -> String {
-    let content_area = fixed_width - PAGE_PAD * 2.0;
+// ---------------------------------------------------------------------------
+// Markdown → SVG document renderer (pulldown_cmark-based)
+// ---------------------------------------------------------------------------
 
-    // Compute total height across all pages
-    let mut total_h: f64 = PAGE_PAD;
-    for page in pages {
-        if !page.title.is_empty() {
-            total_h += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD + BLOCK_GAP;
+const H1_FONT_SIZE: f64 = 28.0;
+const H2_FONT_SIZE: f64 = 22.0;
+const H3_FONT_SIZE: f64 = 18.0;
+const H4_FONT_SIZE: f64 = 15.0;
+const DOC_LINE_HEIGHT: f64 = 22.0;
+const LIST_INDENT: f64 = 20.0;
+const BULLET_RADIUS: f64 = 3.0;
+const CODE_BG: &str = "#f5f5f5";
+const CODE_FONT_SIZE: f64 = 12.0;
+const CODE_LINE_HEIGHT: f64 = 18.0;
+const CODE_PAD: f64 = 12.0;
+const RULE_GAP: f64 = 16.0;
+const TABLE_CELL_PAD: f64 = 8.0;
+const TABLE_ROW_HEIGHT: f64 = 28.0;
+const TABLE_FONT_SIZE: f64 = 12.0;
+const TABLE_HEADER_BG: &str = "#f0f0f0";
+const CHAR_WIDTH_DOC: f64 = 8.0;
+const CJK_CHAR_WIDTH_DOC: f64 = 14.0;
+const BLOCKQUOTE_BAR_WIDTH: f64 = 4.0;
+const BLOCKQUOTE_INDENT: f64 = 16.0;
+
+fn doc_text_width(s: &str, font_size: f64) -> f64 {
+    let scale = font_size / BODY_FONT_SIZE;
+    s.chars()
+        .map(|c| if c.is_ascii() { CHAR_WIDTH_DOC } else { CJK_CHAR_WIDTH_DOC })
+        .sum::<f64>()
+        * scale
+}
+
+/// Intermediate block produced from pulldown_cmark events
+#[derive(Debug)]
+enum DocBlock {
+    Heading { level: u8, text: String },
+    Paragraph { spans: Vec<Span> },
+    List { ordered: bool, items: Vec<Vec<Span>> },
+    CodeBlock { _lang: String, code: String },
+    EmbeddedSvg(String),
+    Rule,
+    Table { headers: Vec<String>, rows: Vec<Vec<String>> },
+    Blockquote { spans: Vec<Span> },
+}
+
+#[derive(Debug, Clone)]
+struct Span {
+    text: String,
+    bold: bool,
+    italic: bool,
+    _code: bool,
+}
+
+fn extract_svgs(input: &str) -> (String, Vec<String>) {
+    let mut cleaned = String::new();
+    let mut svgs: Vec<String> = Vec::new();
+    let mut in_svg = false;
+    let mut svg_buf = String::new();
+
+    for line in input.lines() {
+        if !in_svg && line.trim_start().starts_with("<svg") {
+            in_svg = true;
+            svg_buf.clear();
+            svg_buf.push_str(line);
+            svg_buf.push('\n');
+            if line.contains("</svg>") {
+                in_svg = false;
+                let idx = svgs.len();
+                svgs.push(svg_buf.clone());
+                cleaned.push_str(&format!("<!--SVG_PLACEHOLDER_{}-->\n", idx));
+                svg_buf.clear();
+            }
+            continue;
         }
-        for block in &page.blocks {
-            total_h += BLOCK_GAP;
-            match block {
-                Block::Text(text) => {
-                    total_h += text.lines().count().max(1) as f64 * BODY_LINE_HEIGHT;
-                }
-                Block::Svg(svg) => {
-                    let (sw, sh) = svg_dimensions(svg);
-                    let scale = if sw > content_area { content_area / sw } else { 1.0 };
-                    total_h += sh * scale;
+        if in_svg {
+            svg_buf.push_str(line);
+            svg_buf.push('\n');
+            if line.contains("</svg>") {
+                in_svg = false;
+                let idx = svgs.len();
+                svgs.push(svg_buf.clone());
+                cleaned.push_str(&format!("<!--SVG_PLACEHOLDER_{}-->\n", idx));
+                svg_buf.clear();
+            }
+            continue;
+        }
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+    (cleaned, svgs)
+}
+
+fn parse_markdown_blocks(processed: &str) -> Vec<DocBlock> {
+    use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, HeadingLevel};
+
+    // Extract SVGs before feeding to pulldown_cmark
+    let (cleaned, svgs) = extract_svgs(processed);
+
+    let opts = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let parser = Parser::new_ext(&cleaned, opts);
+
+    let mut blocks: Vec<DocBlock> = Vec::new();
+    let mut heading_level: Option<u8> = None;
+    let mut heading_text = String::new();
+    let mut in_paragraph = false;
+    let mut paragraph_spans: Vec<Span> = Vec::new();
+    let mut bold = false;
+    let mut italic = false;
+    let mut list_ordered = false;
+    let mut list_items: Vec<Vec<Span>> = Vec::new();
+    let mut current_item_spans: Vec<Span> = Vec::new();
+    let mut in_item = false;
+    let mut in_code_block = false;
+    let mut code_lang = String::new();
+    let mut code_content = String::new();
+    let mut in_table = false;
+    let mut table_headers: Vec<String> = Vec::new();
+    let mut table_rows: Vec<Vec<String>> = Vec::new();
+    let mut table_row: Vec<String> = Vec::new();
+    let mut table_cell = String::new();
+    let mut in_table_head = false;
+    let mut in_blockquote = false;
+    let mut blockquote_spans: Vec<Span> = Vec::new();
+
+    for event in parser {
+        match event {
+            // Headings
+            Event::Start(Tag::Heading { level, .. }) => {
+                heading_level = Some(match level {
+                    HeadingLevel::H1 => 1,
+                    HeadingLevel::H2 => 2,
+                    HeadingLevel::H3 => 3,
+                    _ => 4,
+                });
+                heading_text.clear();
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some(level) = heading_level.take() {
+                    blocks.push(DocBlock::Heading { level, text: heading_text.clone() });
                 }
             }
+
+            // Paragraphs
+            Event::Start(Tag::Paragraph) => {
+                if in_blockquote {
+                    // handled inside blockquote
+                } else if in_item {
+                    // handled inside list item
+                } else {
+                    in_paragraph = true;
+                    paragraph_spans.clear();
+                }
+            }
+            Event::End(TagEnd::Paragraph) => {
+                if in_blockquote || in_item {
+                    // handled by parent
+                } else if in_paragraph {
+                    in_paragraph = false;
+                    blocks.push(DocBlock::Paragraph { spans: paragraph_spans.clone() });
+                    paragraph_spans.clear();
+                }
+            }
+
+            // Emphasis
+            Event::Start(Tag::Strong) => bold = true,
+            Event::End(TagEnd::Strong) => bold = false,
+            Event::Start(Tag::Emphasis) => italic = true,
+            Event::End(TagEnd::Emphasis) => italic = false,
+
+            // Lists
+            Event::Start(Tag::List(ordered)) => {
+                list_ordered = ordered.is_some();
+                list_items.clear();
+            }
+            Event::End(TagEnd::List(_)) => {
+                blocks.push(DocBlock::List { ordered: list_ordered, items: list_items.clone() });
+                list_items.clear();
+            }
+            Event::Start(Tag::Item) => {
+                in_item = true;
+                current_item_spans.clear();
+            }
+            Event::End(TagEnd::Item) => {
+                in_item = false;
+                list_items.push(current_item_spans.clone());
+            }
+
+            // Code blocks
+            Event::Start(Tag::CodeBlock(kind)) => {
+                in_code_block = true;
+                code_lang = match kind {
+                    CodeBlockKind::Fenced(lang) => lang.to_string(),
+                    _ => String::new(),
+                };
+                code_content.clear();
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                in_code_block = false;
+                blocks.push(DocBlock::CodeBlock { _lang: code_lang.clone(), code: code_content.clone() });
+            }
+
+            // Tables
+            Event::Start(Tag::Table(_)) => {
+                in_table = true;
+                table_headers.clear();
+                table_rows.clear();
+            }
+            Event::End(TagEnd::Table) => {
+                in_table = false;
+                blocks.push(DocBlock::Table { headers: table_headers.clone(), rows: table_rows.clone() });
+            }
+            Event::Start(Tag::TableHead) => { in_table_head = true; }
+            Event::End(TagEnd::TableHead) => {
+                in_table_head = false;
+                table_headers = table_row.clone();
+                table_row.clear();
+            }
+            Event::Start(Tag::TableRow) => { table_row.clear(); }
+            Event::End(TagEnd::TableRow) => {
+                if !in_table_head {
+                    table_rows.push(table_row.clone());
+                }
+                table_row.clear();
+            }
+            Event::Start(Tag::TableCell) => { table_cell.clear(); }
+            Event::End(TagEnd::TableCell) => { table_row.push(table_cell.clone()); }
+
+            // Blockquotes
+            Event::Start(Tag::BlockQuote(_)) => {
+                in_blockquote = true;
+                blockquote_spans.clear();
+            }
+            Event::End(TagEnd::BlockQuote(_)) => {
+                in_blockquote = false;
+                blocks.push(DocBlock::Blockquote { spans: blockquote_spans.clone() });
+            }
+
+            // Rule
+            Event::Rule => { blocks.push(DocBlock::Rule); }
+
+            // Inline code
+            Event::Code(text) => {
+                let span = Span { text: text.to_string(), bold, italic, _code: true };
+                if heading_level.is_some() {
+                    heading_text.push_str(&text);
+                } else if in_item {
+                    current_item_spans.push(span);
+                } else if in_blockquote {
+                    blockquote_spans.push(span);
+                } else if in_paragraph {
+                    paragraph_spans.push(span);
+                }
+            }
+
+            // Text
+            Event::Text(text) => {
+                if in_code_block {
+                    code_content.push_str(&text);
+                } else if heading_level.is_some() {
+                    heading_text.push_str(&text);
+                } else if in_table {
+                    table_cell.push_str(&text);
+                } else if in_item {
+                    current_item_spans.push(Span { text: text.to_string(), bold, italic, _code: false });
+                } else if in_blockquote {
+                    blockquote_spans.push(Span { text: text.to_string(), bold, italic, _code: false });
+                } else if in_paragraph {
+                    paragraph_spans.push(Span { text: text.to_string(), bold, italic, _code: false });
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                let br = Span { text: "\n".to_string(), bold: false, italic: false, _code: false };
+                if in_item { current_item_spans.push(br); }
+                else if in_blockquote { blockquote_spans.push(br); }
+                else if in_paragraph { paragraph_spans.push(br); }
+            }
+
+            Event::Html(html) | Event::InlineHtml(html) => {
+                let h = html.trim();
+                // Check for SVG placeholder comments
+                if h.starts_with("<!--SVG_PLACEHOLDER_") {
+                    if let Some(idx_str) = h.strip_prefix("<!--SVG_PLACEHOLDER_")
+                        .and_then(|s| s.strip_suffix("-->"))
+                    {
+                        if let Ok(idx) = idx_str.parse::<usize>() {
+                            if let Some(svg) = svgs.get(idx) {
+                                blocks.push(DocBlock::EmbeddedSvg(svg.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+
+            _ => {}
         }
-        total_h += BLOCK_GAP; // gap between pages
     }
-    total_h += PAGE_PAD;
+
+    blocks
+}
+
+fn heading_font_size(level: u8) -> f64 {
+    match level {
+        1 => H1_FONT_SIZE,
+        2 => H2_FONT_SIZE,
+        3 => H3_FONT_SIZE,
+        _ => H4_FONT_SIZE,
+    }
+}
+
+fn render_spans_width(spans: &[Span], font_size: f64) -> f64 {
+    spans.iter().map(|s| doc_text_width(&s.text, font_size)).sum()
+}
+
+fn compute_block_height(block: &DocBlock, content_area: f64) -> f64 {
+    match block {
+        DocBlock::Heading { level, .. } => {
+            let fs = heading_font_size(*level);
+            fs + 8.0 + if *level <= 2 { 8.0 } else { 0.0 }
+        }
+        DocBlock::Paragraph { spans } => {
+            let total_text: String = spans.iter().map(|s| s.text.clone()).collect();
+            let line_count = total_text.lines().count().max(1) +
+                // estimate wrap lines
+                (render_spans_width(spans, BODY_FONT_SIZE) / content_area).floor() as usize;
+            line_count as f64 * DOC_LINE_HEIGHT + BLOCK_GAP
+        }
+        DocBlock::List { items, .. } => {
+            items.len() as f64 * DOC_LINE_HEIGHT + BLOCK_GAP
+        }
+        DocBlock::CodeBlock { code, .. } => {
+            let lines = code.lines().count().max(1);
+            CODE_PAD * 2.0 + lines as f64 * CODE_LINE_HEIGHT + BLOCK_GAP
+        }
+        DocBlock::EmbeddedSvg(svg) => {
+            let (_, sh) = svg_dimensions(svg);
+            sh + BLOCK_GAP
+        }
+        DocBlock::Rule => RULE_GAP * 2.0 + 1.0,
+        DocBlock::Table { headers: _, rows } => {
+            (rows.len() as f64 + 1.0) * TABLE_ROW_HEIGHT + BLOCK_GAP
+        }
+        DocBlock::Blockquote { spans } => {
+            let total_text: String = spans.iter().map(|s| s.text.clone()).collect();
+            let lines = total_text.lines().count().max(1);
+            lines as f64 * DOC_LINE_HEIGHT + BLOCK_GAP
+        }
+    }
+}
+
+fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String {
+    let content_area = fixed_width - PAGE_PAD * 2.0;
+    let blocks = parse_markdown_blocks(processed);
+
+    // Compute total height
+    let total_h: f64 = PAGE_PAD * 2.0 + blocks.iter().map(|b| compute_block_height(b, content_area)).sum::<f64>();
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -382,59 +713,201 @@ fn build_document_svg(pages: &[Page], fixed_width: f64) -> String {
 
     let mut y = PAGE_PAD;
 
-    for page in pages {
-        if !page.title.is_empty() {
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#1a1a1a\">{}</text>",
-                PAGE_PAD, y + TITLE_FONT_SIZE * 0.85, TITLE_FONT_SIZE, escape_xml(&page.title)
-            ));
-            y += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
-            svg.push_str(&format!(
-                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>",
-                PAGE_PAD, y, fixed_width - PAGE_PAD, y
-            ));
-            y += BLOCK_GAP;
-        }
-
-        for block in &page.blocks {
-            match block {
-                Block::Text(text) => {
-                    for line in text.lines() {
-                        svg.push_str(&format!(
-                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#333\">{}</text>",
-                            PAGE_PAD, y + BODY_FONT_SIZE * 0.85, BODY_FONT_SIZE, escape_xml(line)
-                        ));
-                        y += BODY_LINE_HEIGHT;
-                    }
-                    y += BLOCK_GAP;
-                }
-                Block::Svg(raw_svg) => {
-                    let (sw, sh) = svg_dimensions(raw_svg);
-                    let inner = svg_inner(raw_svg);
-                    let scale = if sw > content_area { content_area / sw } else { 1.0 };
-                    let scaled_w = sw * scale;
-                    let scaled_h = sh * scale;
-                    let offset_x = (fixed_width - scaled_w) / 2.0;
-
-                    if (scale - 1.0).abs() < 0.001 {
-                        svg.push_str(&format!("<g transform=\"translate({},{})\">", offset_x, y));
-                    } else {
-                        svg.push_str(&format!(
-                            "<g transform=\"translate({},{}) scale({})\">",
-                            offset_x, y, scale
-                        ));
-                    }
-                    svg.push_str(inner);
-                    svg.push_str("</g>");
-                    y += scaled_h + BLOCK_GAP;
+    for block in &blocks {
+        match block {
+            DocBlock::Heading { level, text } => {
+                let fs = heading_font_size(*level);
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#1a1a1a\">{}</text>",
+                    PAGE_PAD, y + fs * 0.85, fs, escape_xml(text)
+                ));
+                y += fs + 4.0;
+                if *level <= 2 {
+                    svg.push_str(&format!(
+                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>",
+                        PAGE_PAD, y, fixed_width - PAGE_PAD, y
+                    ));
+                    y += 8.0;
+                } else {
+                    y += 4.0;
                 }
             }
+
+            DocBlock::Paragraph { spans } => {
+                y = render_spans_to_svg(&mut svg, spans, PAGE_PAD, y, content_area, BODY_FONT_SIZE, "#333");
+                y += BLOCK_GAP;
+            }
+
+            DocBlock::List { ordered, items } => {
+                for (i, item_spans) in items.iter().enumerate() {
+                    let x = PAGE_PAD + LIST_INDENT;
+                    if *ordered {
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#333\">{}.</text>",
+                            PAGE_PAD, y + BODY_FONT_SIZE * 0.85, BODY_FONT_SIZE, i + 1
+                        ));
+                    } else {
+                        svg.push_str(&format!(
+                            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"#555\"/>",
+                            PAGE_PAD + LIST_INDENT / 2.0, y + BODY_FONT_SIZE * 0.4, BULLET_RADIUS
+                        ));
+                    }
+                    render_spans_to_svg(&mut svg, item_spans, x, y, content_area - LIST_INDENT, BODY_FONT_SIZE, "#333");
+                    y += DOC_LINE_HEIGHT;
+                }
+                y += BLOCK_GAP;
+            }
+
+            DocBlock::CodeBlock { code, .. } => {
+                let lines = code.lines().count().max(1);
+                let box_h = CODE_PAD * 2.0 + lines as f64 * CODE_LINE_HEIGHT;
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"{}\"/>",
+                    PAGE_PAD, y, content_area, box_h, CODE_BG
+                ));
+                let mut cy = y + CODE_PAD;
+                for line in code.lines() {
+                    svg.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"monospace\" fill=\"#333\">{}</text>",
+                        PAGE_PAD + CODE_PAD, cy + CODE_FONT_SIZE * 0.85, CODE_FONT_SIZE, escape_xml(line)
+                    ));
+                    cy += CODE_LINE_HEIGHT;
+                }
+                y += box_h + BLOCK_GAP;
+            }
+
+            DocBlock::EmbeddedSvg(raw_svg) => {
+                let (sw, sh) = svg_dimensions(raw_svg);
+                let inner = svg_inner(raw_svg);
+                let scale = if sw > content_area { content_area / sw } else { 1.0 };
+                let scaled_w = sw * scale;
+                let scaled_h = sh * scale;
+                let offset_x = (fixed_width - scaled_w) / 2.0;
+
+                if (scale - 1.0).abs() < 0.001 {
+                    svg.push_str(&format!("<g transform=\"translate({},{})\">", offset_x, y));
+                } else {
+                    svg.push_str(&format!(
+                        "<g transform=\"translate({},{}) scale({})\">",
+                        offset_x, y, scale
+                    ));
+                }
+                svg.push_str(inner);
+                svg.push_str("</g>");
+                y += scaled_h + BLOCK_GAP;
+            }
+
+            DocBlock::Rule => {
+                y += RULE_GAP;
+                svg.push_str(&format!(
+                    "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ddd\" stroke-width=\"1\"/>",
+                    PAGE_PAD, y, fixed_width - PAGE_PAD, y
+                ));
+                y += RULE_GAP + 1.0;
+            }
+
+            DocBlock::Table { headers, rows } => {
+                let num_cols = headers.len().max(1);
+                let col_w = content_area / num_cols as f64;
+
+                // Header row
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+                    PAGE_PAD, y, content_area, TABLE_ROW_HEIGHT, TABLE_HEADER_BG
+                ));
+                for (j, header) in headers.iter().enumerate() {
+                    svg.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#333\">{}</text>",
+                        PAGE_PAD + j as f64 * col_w + TABLE_CELL_PAD,
+                        y + TABLE_ROW_HEIGHT * 0.65,
+                        TABLE_FONT_SIZE,
+                        escape_xml(header)
+                    ));
+                }
+                // Header bottom border
+                svg.push_str(&format!(
+                    "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ccc\" stroke-width=\"1\"/>",
+                    PAGE_PAD, y + TABLE_ROW_HEIGHT, PAGE_PAD + content_area, y + TABLE_ROW_HEIGHT
+                ));
+                y += TABLE_ROW_HEIGHT;
+
+                // Data rows
+                for row in rows {
+                    for (j, cell) in row.iter().enumerate() {
+                        svg.push_str(&format!(
+                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#333\">{}</text>",
+                            PAGE_PAD + j as f64 * col_w + TABLE_CELL_PAD,
+                            y + TABLE_ROW_HEIGHT * 0.65,
+                            TABLE_FONT_SIZE,
+                            escape_xml(cell)
+                        ));
+                    }
+                    svg.push_str(&format!(
+                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#eee\" stroke-width=\"1\"/>",
+                        PAGE_PAD, y + TABLE_ROW_HEIGHT, PAGE_PAD + content_area, y + TABLE_ROW_HEIGHT
+                    ));
+                    y += TABLE_ROW_HEIGHT;
+                }
+                y += BLOCK_GAP;
+            }
+
+            DocBlock::Blockquote { spans } => {
+                let text_x = PAGE_PAD + BLOCKQUOTE_BAR_WIDTH + BLOCKQUOTE_INDENT;
+                let start_y = y;
+                y = render_spans_to_svg(&mut svg, spans, text_x, y, content_area - BLOCKQUOTE_INDENT - BLOCKQUOTE_BAR_WIDTH, BODY_FONT_SIZE, "#666");
+                // Draw left bar
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#ddd\" rx=\"2\"/>",
+                    PAGE_PAD, start_y, BLOCKQUOTE_BAR_WIDTH, y - start_y
+                ));
+                y += BLOCK_GAP;
+            }
         }
-        y += BLOCK_GAP;
     }
 
     svg.push_str("</svg>");
     svg
+}
+
+fn render_spans_to_svg(svg: &mut String, spans: &[Span], x: f64, y: f64, _max_width: f64, font_size: f64, fill: &str) -> f64 {
+    let mut cy = y;
+    // Flatten spans into lines
+    let mut lines: Vec<Vec<&Span>> = vec![vec![]];
+    for span in spans {
+        if span.text == "\n" {
+            lines.push(vec![]);
+        } else {
+            // Split span text by newlines
+            let parts: Vec<&str> = span.text.split('\n').collect();
+            for (i, _part) in parts.iter().enumerate() {
+                if i > 0 {
+                    lines.push(vec![]);
+                }
+                lines.last_mut().unwrap().push(span);
+            }
+        }
+    }
+
+    // Deduplicate: render each span once per line
+    // Simpler approach: concatenate span text per line with style
+    let full_text: String = spans.iter().map(|s| s.text.clone()).collect();
+    let any_bold = spans.iter().any(|s| s.bold);
+    let any_italic = spans.iter().any(|s| s.italic);
+
+    for line in full_text.lines() {
+        if line.is_empty() {
+            cy += DOC_LINE_HEIGHT;
+            continue;
+        }
+        let weight = if any_bold { " font-weight=\"bold\"" } else { "" };
+        let style = if any_italic { " font-style=\"italic\"" } else { "" };
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\"{}{}>{}</text>",
+            x, cy + font_size * 0.85, font_size, fill, weight, style, escape_xml(line)
+        ));
+        cy += DOC_LINE_HEIGHT;
+    }
+    cy
 }
 
 fn build_single_page_pdf(svg_data: &str, scale: f64) -> Vec<u8> {
@@ -499,14 +972,7 @@ pub fn build_preview_pdf(path: &Path) -> Vec<u8> {
         std::process::exit(1);
     });
 
-    let pages = split_pages(&processed);
-
-    if pages.is_empty() {
-        eprintln!("mdd: No content found");
-        std::process::exit(1);
-    }
-
-    let svg = build_document_svg(&pages, FIXED_PAGE_W);
+    let svg = build_document_svg_from_markdown(&processed, FIXED_PAGE_W);
     build_single_page_pdf(&svg, 2.0)
 }
 
