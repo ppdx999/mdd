@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-use rust_sugiyama::{configure::Config, from_vertices_and_edges};
-
 // ---------------------------------------------------------------------------
 // Data structures
 // ---------------------------------------------------------------------------
@@ -201,7 +199,6 @@ const ICON_SIZE: f64 = 32.0;
 const GROUP_H_PAD: f64 = 16.0;
 const GROUP_V_PAD: f64 = 12.0;
 const GROUP_HEADER_H: f64 = 28.0;
-const GROUP_INNER_GAP: f64 = 16.0;
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
 const COLOR_GROUP_FILL: &str = "#fafafa";
@@ -236,7 +233,7 @@ fn text_width(s: &str) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Sizing & Layout (bottom-up Sugiyama)
+// Compound Layout Engine (Graphviz-style global Sugiyama with cluster support)
 // ---------------------------------------------------------------------------
 
 /// Get the name of an element (node or group)
@@ -247,264 +244,583 @@ fn element_name(elem: &Element, nodes: &[Node], groups: &[Group]) -> String {
     }
 }
 
-/// Collect all node/group names reachable from an element (recursively for groups)
-fn element_all_names(elem: &Element, nodes: &[Node], groups: &[Group]) -> Vec<String> {
-    match elem {
-        Element::NodeRef(i) => vec![nodes[*i].name.clone()],
-        Element::GroupRef(i) => {
-            let mut names = vec![groups[*i].name.clone()];
-            for child in &groups[*i].children {
-                names.extend(element_all_names(child, nodes, groups));
-            }
-            names
-        }
-    }
-}
-
-/// Recursively layout elements using Sugiyama, bottom-up.
-/// First layout children of each group, compute their sizes,
-/// then layout this level's elements using edges between them.
-fn layout_elements(
+/// Flatten all nodes from the element tree, recording cluster membership.
+/// Returns (flat_node_indices, cluster_chains) where cluster_chains[i] is
+/// the list of group indices the node belongs to (outermost first).
+fn flatten_nodes(
     elements: &[Element],
     nodes: &[Node],
     groups: &[Group],
-    edges: &[Edge],
-    start_x: f64,
-    start_y: f64,
-    positions: &mut HashMap<String, (f64, f64, f64, f64)>,
-) -> (f64, f64) {
-    if elements.is_empty() {
-        return (0.0, 0.0);
-    }
-
-    // Step 1: Recursively layout children of each group (bottom-up)
-    // and compute the size of each element at this level.
-    let mut elem_sizes: Vec<(f64, f64)> = Vec::new();
-    // Temporarily store group internal sizes for later positioning
-    let mut group_internal: HashMap<usize, (f64, f64)> = HashMap::new();
-
+    parent_chain: &[usize],
+) -> Vec<(usize, Vec<usize>)> {
+    let mut result = Vec::new();
     for elem in elements {
         match elem {
-            Element::NodeRef(_) => {
-                elem_sizes.push((NODE_W, NODE_H));
-            }
-            Element::GroupRef(gi) => {
-                let g = &groups[*gi];
-                if g.children.is_empty() {
-                    let w = (text_width(&g.name) + GROUP_H_PAD * 2.0).max(NODE_W);
-                    let h = GROUP_HEADER_H + GROUP_V_PAD;
-                    elem_sizes.push((w, h));
-                } else {
-                    // Layout children in a temporary coordinate space
-                    let mut child_positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
-                    let (inner_w, inner_h) = layout_elements(
-                        &g.children,
-                        nodes,
-                        groups,
-                        edges,
-                        0.0,
-                        0.0,
-                        &mut child_positions,
-                    );
-                    // Store child positions relative to (0,0) for later offset
-                    for (name, pos) in &child_positions {
-                        positions.insert(name.clone(), *pos);
-                    }
-                    group_internal.insert(*gi, (inner_w, inner_h));
-
-                    let header_w = text_width(&g.name) + GROUP_H_PAD * 2.0;
-                    let w = inner_w.max(header_w) + GROUP_H_PAD * 2.0;
-                    let h = GROUP_HEADER_H + inner_h + GROUP_V_PAD * 2.0;
-                    elem_sizes.push((w, h));
-                }
-            }
-        }
-    }
-
-    // Step 2: Build name-to-local-index map for this level's elements
-    let mut name_to_local: HashMap<String, usize> = HashMap::new();
-    // Also track which names belong to which element (including nested)
-    let mut name_to_elem_idx: HashMap<String, usize> = HashMap::new();
-    for (i, elem) in elements.iter().enumerate() {
-        for name in element_all_names(elem, nodes, groups) {
-            name_to_elem_idx.insert(name, i);
-        }
-        name_to_local.insert(element_name(elem, nodes, groups), i);
-    }
-
-    // Step 3: Find edges between elements at this level
-    let mut local_edges: Vec<(u32, u32)> = Vec::new();
-    let mut seen_edges: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    for edge in edges {
-        let from_idx = name_to_elem_idx.get(&edge.from);
-        let to_idx = name_to_elem_idx.get(&edge.to);
-        if let (Some(&fi), Some(&ti)) = (from_idx, to_idx) {
-            if fi != ti && seen_edges.insert((fi, ti)) {
-                local_edges.push((fi as u32, ti as u32));
-            }
-        }
-    }
-
-    // Step 4: Layout this level.
-    // Use Sugiyama (LTR) when edges exist for edge-aware placement.
-    // Fall back to grid when there are no edges at this level.
-    let mut local_positions: HashMap<usize, (f64, f64)> = HashMap::new();
-
-    // Compute complexity: element count + edges touching this level
-    let mut edge_count = 0_usize;
-    for edge in edges {
-        let from_here = name_to_elem_idx.contains_key(&edge.from);
-        let to_here = name_to_elem_idx.contains_key(&edge.to);
-        if from_here || to_here {
-            edge_count += 1;
-        }
-    }
-    let n = elements.len().max(1) as f64;
-    let edge_density = edge_count as f64 / n; // edges per element
-    // complexity considers both total size and edge density:
-    // a group with 4 nodes and 8 edges (density=2) should be spacious
-    let complexity = elements.len() as f64 + edge_count as f64 + edge_density * 8.0;
-    // complexity_factor: 0.8 for simple, up to 3.0 for dense
-    let complexity_factor = if complexity <= 8.0 {
-        0.8 + complexity * 0.025
-    } else {
-        (1.0 + (complexity / 6.0).sqrt() * 0.4).min(3.0)
-    };
-    let gap_h = GROUP_INNER_GAP * complexity_factor;
-    let gap_v = GROUP_INNER_GAP * complexity_factor * 1.3;
-
-    // Use grid when:
-    // - No edges at this level, OR
-    // - Edge density is low (edges < elements/2): avoids stretching
-    //   groups into long chains when most nodes are independent
-    let use_grid = local_edges.is_empty()
-        || (local_edges.len() * 2 <= elements.len() && elements.len() > 3);
-
-    if use_grid {
-        // Columns: fewer for high complexity (more external edges)
-        let max_cols = if edge_count > elements.len() { 2 } else { 3 };
-        let cols = elements.len().min(max_cols);
-        let rows = (elements.len() + cols - 1) / cols;
-
-        let mut col_widths = vec![0.0_f64; cols];
-        let mut row_heights = vec![0.0_f64; rows];
-        for (i, (w, h)) in elem_sizes.iter().enumerate() {
-            col_widths[i % cols] = col_widths[i % cols].max(*w);
-            row_heights[i / cols] = row_heights[i / cols].max(*h);
-        }
-
-        for i in 0..elem_sizes.len() {
-            let col = i % cols;
-            let row = i / cols;
-            let cx: f64 = col_widths[..col].iter().sum::<f64>() + col as f64 * gap_h;
-            let ry: f64 = row_heights[..row].iter().sum::<f64>() + row as f64 * gap_v;
-            let (ew, eh) = elem_sizes[i];
-            let x = cx + (col_widths[col] - ew) / 2.0;
-            let y = ry + (row_heights[row] - eh) / 2.0;
-            local_positions.insert(i, (x, y));
-        }
-    } else {
-        // Sugiyama LTR layout for edge-aware placement
-        let vertices: Vec<(u32, (f64, f64))> = elem_sizes
-            .iter()
-            .enumerate()
-            .map(|(i, (w, h))| (i as u32, (*h, *w))) // swap for LTR
-            .collect();
-
-        let max_dim = elem_sizes
-            .iter()
-            .map(|(w, h)| w.max(*h))
-            .fold(0.0_f64, f64::max);
-        let base_spacing = (max_dim * 0.2).max(12.0) + elements.len() as f64 * 2.0;
-        let config = Config {
-            vertex_spacing: base_spacing * complexity_factor,
-            ..Config::default()
-        };
-
-        let layouts = from_vertices_and_edges(&vertices, &local_edges, &config);
-        let component_gap = gap_h * 2.0;
-        let mut x_cursor: f64 = 0.0;
-
-        for (coords, _w, _h) in &layouts {
-            let mut comp_min_x = f64::MAX;
-            let mut comp_min_y = f64::MAX;
-            let mut comp_max_x = f64::MIN;
-
-            for &(id, (sx, sy)) in coords {
-                let final_x = sy; // swap back for LTR
-                let final_y = sx;
-                let (w, _h) = elem_sizes[id];
-                comp_min_x = comp_min_x.min(final_x);
-                comp_min_y = comp_min_y.min(final_y);
-                comp_max_x = comp_max_x.max(final_x + w);
-            }
-
-            for &(id, (sx, sy)) in coords {
-                let final_x = sy - comp_min_x + x_cursor;
-                let final_y = sx - comp_min_y;
-                local_positions.insert(id, (final_x, final_y));
-            }
-
-            x_cursor += (comp_max_x - comp_min_x) + component_gap;
-        }
-    }
-
-    // Step 5: Compute total bounding box and place elements
-    let mut total_max_x: f64 = 0.0;
-    let mut total_max_y: f64 = 0.0;
-
-    for (i, elem) in elements.iter().enumerate() {
-        let (lx, ly) = local_positions.get(&i).copied().unwrap_or((0.0, 0.0));
-        let (ew, eh) = elem_sizes[i];
-        let ex = start_x + lx;
-        let ey = start_y + ly;
-
-        total_max_x = total_max_x.max(lx + ew);
-        total_max_y = total_max_y.max(ly + eh);
-
-        match elem {
             Element::NodeRef(ni) => {
-                positions.insert(nodes[*ni].name.clone(), (ex, ey, ew, eh));
+                result.push((*ni, parent_chain.to_vec()));
             }
             Element::GroupRef(gi) => {
-                let g = &groups[*gi];
-                positions.insert(g.name.clone(), (ex, ey, ew, eh));
-
-                // Offset pre-computed child positions into this group's space
-                let content_x = ex + GROUP_H_PAD;
-                let content_y = ey + GROUP_HEADER_H + GROUP_V_PAD;
-                // Center inner content
-                let (inner_w, _inner_h) = group_internal.get(gi).copied().unwrap_or((0.0, 0.0));
-                let offset_x = content_x + (ew - GROUP_H_PAD * 2.0 - inner_w).max(0.0) / 2.0;
-                let offset_y = content_y;
-
-                for child in &g.children {
-                    offset_positions(child, nodes, groups, offset_x, offset_y, positions);
-                }
+                let mut chain = parent_chain.to_vec();
+                chain.push(*gi);
+                result.extend(flatten_nodes(&groups[*gi].children, nodes, groups, &chain));
             }
         }
     }
-
-    (total_max_x, total_max_y)
+    result
 }
 
-/// Offset pre-computed positions (from 0,0-based child layout) by the group's absolute position
-fn offset_positions(
+/// Longest-path rank assignment. Returns rank for each flat node index.
+fn assign_ranks(
+    flat_nodes: &[(usize, Vec<usize>)],
+    edges: &[Edge],
+    nodes: &[Node],
+) -> Vec<usize> {
+    let n = flat_nodes.len();
+    // Map node name → flat index
+    let mut name_to_flat: HashMap<&str, usize> = HashMap::new();
+    for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+        name_to_flat.insert(&nodes[*ni].name, fi);
+    }
+
+    // Build adjacency
+    let mut successors: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut in_degree: Vec<usize> = vec![0; n];
+    for edge in edges {
+        if let (Some(&from), Some(&to)) = (name_to_flat.get(edge.from.as_str()), name_to_flat.get(edge.to.as_str())) {
+            if from != to {
+                successors[from].push(to);
+                in_degree[to] += 1;
+            }
+        }
+    }
+
+    // Topological sort + longest path
+    let mut rank = vec![0usize; n];
+    let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+    for i in 0..n {
+        if in_degree[i] == 0 {
+            queue.push_back(i);
+        }
+    }
+
+    while let Some(u) = queue.pop_front() {
+        for &v in &successors[u] {
+            rank[v] = rank[v].max(rank[u] + 1);
+            in_degree[v] -= 1;
+            if in_degree[v] == 0 {
+                queue.push_back(v);
+            }
+        }
+    }
+
+    rank
+}
+
+/// Median heuristic for ordering nodes within each rank.
+/// Iterates up/down sweeps to minimize crossings.
+/// Returns ordered node indices per rank.
+fn order_ranks(
+    flat_nodes: &[(usize, Vec<usize>)],
+    ranks: &[usize],
+    edges: &[Edge],
+    nodes: &[Node],
+) -> Vec<Vec<usize>> {
+    let max_rank = ranks.iter().copied().max().unwrap_or(0);
+
+    // Build rank buckets: rank → list of flat indices
+    let mut rank_buckets: Vec<Vec<usize>> = vec![vec![]; max_rank + 1];
+    for (fi, _) in flat_nodes.iter().enumerate() {
+        rank_buckets[ranks[fi]].push(fi);
+    }
+
+    // Name → flat index
+    let mut name_to_flat: HashMap<&str, usize> = HashMap::new();
+    for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+        name_to_flat.insert(&nodes[*ni].name, fi);
+    }
+
+    // Build predecessor/successor lists
+    let n = flat_nodes.len();
+    let mut predecessors: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut successors: Vec<Vec<usize>> = vec![vec![]; n];
+    for edge in edges {
+        if let (Some(&from), Some(&to)) = (name_to_flat.get(edge.from.as_str()), name_to_flat.get(edge.to.as_str())) {
+            if from != to {
+                successors[from].push(to);
+                predecessors[to].push(from);
+            }
+        }
+    }
+
+    // Position lookup: flat_index → position within its rank
+    let mut pos: Vec<usize> = vec![0; n];
+    for bucket in &rank_buckets {
+        for (p, &fi) in bucket.iter().enumerate() {
+            pos[fi] = p;
+        }
+    }
+
+    let max_iter = 24;
+    for iter in 0..max_iter {
+        if iter % 2 == 0 {
+            // Down sweep: for each rank from 1..max, order by median of predecessors
+            for r in 1..=max_rank {
+                let mut medians: Vec<(f64, usize)> = Vec::new();
+                for &fi in &rank_buckets[r] {
+                    let preds = &predecessors[fi];
+                    if preds.is_empty() {
+                        medians.push((pos[fi] as f64, fi));
+                    } else {
+                        let mut positions: Vec<f64> = preds.iter().map(|&p| pos[p] as f64).collect();
+                        positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        let med = if positions.len() % 2 == 1 {
+                            positions[positions.len() / 2]
+                        } else {
+                            let l = positions.len() / 2 - 1;
+                            (positions[l] + positions[l + 1]) / 2.0
+                        };
+                        medians.push((med, fi));
+                    }
+                }
+                medians.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                rank_buckets[r] = medians.iter().map(|&(_, fi)| fi).collect();
+                // Enforce cluster contiguity
+                enforce_cluster_contiguity(&mut rank_buckets[r], flat_nodes);
+                // Update positions
+                for (p, &fi) in rank_buckets[r].iter().enumerate() {
+                    pos[fi] = p;
+                }
+            }
+        } else {
+            // Up sweep: for each rank from max-1..0, order by median of successors
+            for r in (0..max_rank).rev() {
+                let mut medians: Vec<(f64, usize)> = Vec::new();
+                for &fi in &rank_buckets[r] {
+                    let succs = &successors[fi];
+                    if succs.is_empty() {
+                        medians.push((pos[fi] as f64, fi));
+                    } else {
+                        let mut positions: Vec<f64> = succs.iter().map(|&s| pos[s] as f64).collect();
+                        positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        let med = if positions.len() % 2 == 1 {
+                            positions[positions.len() / 2]
+                        } else {
+                            let l = positions.len() / 2 - 1;
+                            (positions[l] + positions[l + 1]) / 2.0
+                        };
+                        medians.push((med, fi));
+                    }
+                }
+                medians.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                rank_buckets[r] = medians.iter().map(|&(_, fi)| fi).collect();
+                enforce_cluster_contiguity(&mut rank_buckets[r], flat_nodes);
+                for (p, &fi) in rank_buckets[r].iter().enumerate() {
+                    pos[fi] = p;
+                }
+            }
+        }
+
+        // Transpose step: swap adjacent pairs if it reduces crossings
+        for r in 0..=max_rank {
+            let bucket = &mut rank_buckets[r];
+            let mut improved = true;
+            while improved {
+                improved = false;
+                for i in 0..bucket.len().saturating_sub(1) {
+                    let v = bucket[i];
+                    let w = bucket[i + 1];
+                    // Don't swap nodes from different clusters
+                    if !same_cluster(v, w, flat_nodes) {
+                        continue;
+                    }
+                    let cross_before = count_crossings_pair(v, w, &successors, &pos);
+                    let cross_after = count_crossings_pair(w, v, &successors, &pos);
+                    if cross_after < cross_before {
+                        bucket.swap(i, i + 1);
+                        pos[v] = i + 1;
+                        pos[w] = i;
+                        improved = true;
+                    }
+                }
+            }
+        }
+    }
+
+    rank_buckets
+}
+
+/// Check if two flat nodes are in the same innermost cluster (or both unclustered)
+fn same_cluster(a: usize, b: usize, flat_nodes: &[(usize, Vec<usize>)]) -> bool {
+    let ca = flat_nodes[a].1.last();
+    let cb = flat_nodes[b].1.last();
+    ca == cb
+}
+
+/// Enforce cluster contiguity: group nodes by their innermost cluster,
+/// keeping cluster blocks together while preserving relative order.
+fn enforce_cluster_contiguity(bucket: &mut Vec<usize>, flat_nodes: &[(usize, Vec<usize>)]) {
+    if bucket.len() <= 1 {
+        return;
+    }
+
+    // Determine innermost cluster for each node
+    // Group by cluster, preserving first-appearance order
+    let mut cluster_order: Vec<Option<usize>> = Vec::new();
+    let mut cluster_groups: HashMap<Option<usize>, Vec<usize>> = HashMap::new();
+    let mut seen_clusters: std::collections::HashSet<Option<usize>> = std::collections::HashSet::new();
+
+    for &fi in bucket.iter() {
+        let cluster = flat_nodes[fi].1.last().copied();
+        if seen_clusters.insert(cluster) {
+            cluster_order.push(cluster);
+        }
+        cluster_groups.entry(cluster).or_default().push(fi);
+    }
+
+    // Rebuild bucket: clusters in order of first appearance, nodes within cluster in original order
+    bucket.clear();
+    for cluster in &cluster_order {
+        if let Some(group) = cluster_groups.get(cluster) {
+            bucket.extend(group);
+        }
+    }
+}
+
+/// Count edge crossings between two nodes assuming v is at position before w
+fn count_crossings_pair(v: usize, w: usize, successors: &[Vec<usize>], pos: &[usize]) -> usize {
+    let mut count = 0;
+    for &sv in &successors[v] {
+        for &sw in &successors[w] {
+            if pos[sv] > pos[sw] {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// Assign coordinates and compute cluster boundaries.
+/// Returns positions HashMap with entries for both nodes and groups.
+fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
+    let mut positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
+
+    // Phase 1: Flatten
+    let flat_nodes = flatten_nodes(
+        &diagram.top_level,
+        &diagram.nodes,
+        &diagram.groups,
+        &[],
+    );
+
+    if flat_nodes.is_empty() {
+        return positions;
+    }
+
+    // Phase 2: Rank assignment
+    let ranks = assign_ranks(&flat_nodes, &diagram.edges, &diagram.nodes);
+
+    // Phase 3: Order within ranks
+    let rank_buckets = order_ranks(&flat_nodes, &ranks, &diagram.edges, &diagram.nodes);
+
+    // Phase 4: Coordinate assignment
+    let max_rank = ranks.iter().copied().max().unwrap_or(0);
+    let rank_sep = 40.0;
+    let node_sep = 20.0;
+    let cluster_sep = GROUP_H_PAD * 2.0 + 16.0; // extra spacing between different clusters
+
+    // Compute the minimum spacing between two adjacent nodes in a rank.
+    // If they belong to different clusters, add cluster separation.
+    let spacing = |a: usize, b: usize| -> f64 {
+        let ca = &flat_nodes[a].1;
+        let cb = &flat_nodes[b].1;
+        if ca == cb {
+            // Same cluster chain — just node_sep
+            node_sep
+        } else {
+            // Different clusters — add cluster boundary padding
+            // Count how many cluster boundaries are crossed
+            let shared = ca.iter().zip(cb.iter()).take_while(|(x, y)| x == y).count();
+            let boundaries = (ca.len() - shared) + (cb.len() - shared);
+            node_sep + cluster_sep * (boundaries as f64).max(1.0)
+        }
+    };
+
+    // Compute rank heights, accounting for cluster headers.
+    // If a rank contains the topmost node of a cluster, add header space.
+    let rank_height: Vec<f64> = vec![NODE_H; max_rank + 1];
+
+    // Find the minimum rank for each cluster
+    let mut cluster_min_rank: HashMap<usize, usize> = HashMap::new();
+    for (fi, (_, chain)) in flat_nodes.iter().enumerate() {
+        for &gi in chain {
+            let entry = cluster_min_rank.entry(gi).or_insert(ranks[fi]);
+            *entry = (*entry).min(ranks[fi]);
+        }
+    }
+
+    // Add cluster header heights to the ranks that contain cluster tops
+    let mut rank_extra_top: Vec<f64> = vec![0.0; max_rank + 1];
+    for (_, &min_r) in &cluster_min_rank {
+        // Each cluster header adds GROUP_HEADER_H + GROUP_V_PAD to its top rank
+        rank_extra_top[min_r] += GROUP_HEADER_H + GROUP_V_PAD;
+    }
+    // Cap the extra to avoid excessive spacing when many clusters start at the same rank
+    for extra in &mut rank_extra_top {
+        *extra = extra.min(GROUP_HEADER_H * 2.0 + GROUP_V_PAD * 2.0);
+    }
+
+    // Y coordinate per rank
+    let mut rank_y: Vec<f64> = vec![0.0; max_rank + 1];
+    rank_y[0] = PADDING + rank_extra_top[0];
+    for r in 1..=max_rank {
+        rank_y[r] = rank_y[r - 1] + rank_height[r - 1] + rank_sep + rank_extra_top[r];
+    }
+
+    // X coordinate: place nodes left to right within each rank
+    // Use cluster-aware spacing between nodes
+    let mut node_x: Vec<f64> = vec![0.0; flat_nodes.len()];
+    let mut node_y: Vec<f64> = vec![0.0; flat_nodes.len()];
+
+    for r in 0..=max_rank {
+        let mut x_cursor = PADDING;
+        for (idx, &fi) in rank_buckets[r].iter().enumerate() {
+            if idx > 0 {
+                let prev_fi = rank_buckets[r][idx - 1];
+                x_cursor += spacing(prev_fi, fi);
+            }
+            node_x[fi] = x_cursor;
+            node_y[fi] = rank_y[r];
+            x_cursor += NODE_W;
+        }
+    }
+
+    // Center alignment: for each node, try to center it under/over its
+    // connected nodes in adjacent ranks (simple barycenter adjustment)
+    let name_to_flat: HashMap<&str, usize> = flat_nodes
+        .iter()
+        .enumerate()
+        .map(|(fi, (ni, _))| (diagram.nodes[*ni].name.as_str(), fi))
+        .collect();
+
+    for _pass in 0..4 {
+        for r in 0..=max_rank {
+            let bucket = &rank_buckets[r];
+            if bucket.is_empty() {
+                continue;
+            }
+
+            // Compute target x for each node based on connected nodes
+            let mut targets: Vec<(usize, f64)> = Vec::new();
+
+            for &fi in bucket {
+                let name = &diagram.nodes[flat_nodes[fi].0].name;
+                let mut connected_xs: Vec<f64> = Vec::new();
+                for edge in &diagram.edges {
+                    if edge.from == *name {
+                        if let Some(&to_fi) = name_to_flat.get(edge.to.as_str()) {
+                            if ranks[to_fi] != r {
+                                connected_xs.push(node_x[to_fi] + NODE_W / 2.0);
+                            }
+                        }
+                    }
+                    if edge.to == *name {
+                        if let Some(&from_fi) = name_to_flat.get(edge.from.as_str()) {
+                            if ranks[from_fi] != r {
+                                connected_xs.push(node_x[from_fi] + NODE_W / 2.0);
+                            }
+                        }
+                    }
+                }
+                if !connected_xs.is_empty() {
+                    let avg = connected_xs.iter().sum::<f64>() / connected_xs.len() as f64;
+                    targets.push((fi, avg - NODE_W / 2.0));
+                }
+            }
+
+            // Apply targets while maintaining order and minimum spacing
+            for (fi, target_x) in &targets {
+                let idx = bucket.iter().position(|&f| f == *fi).unwrap();
+                let min_x = if idx == 0 {
+                    PADDING
+                } else {
+                    let prev = bucket[idx - 1];
+                    node_x[prev] + NODE_W + spacing(prev, *fi)
+                };
+                let max_x = if idx == bucket.len() - 1 {
+                    f64::MAX
+                } else {
+                    let next = bucket[idx + 1];
+                    node_x[next] - NODE_W - spacing(*fi, next)
+                };
+                node_x[*fi] = target_x.max(min_x).min(max_x);
+            }
+        }
+    }
+
+    // Store node positions
+    for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+        positions.insert(
+            diagram.nodes[*ni].name.clone(),
+            (node_x[fi], node_y[fi], NODE_W, NODE_H),
+        );
+    }
+
+    // Phase 5: Compute cluster boundaries from node positions
+    compute_cluster_bounds(
+        &diagram.top_level,
+        &diagram.nodes,
+        &diagram.groups,
+        &mut positions,
+    );
+
+    // Phase 6: Fix cluster overlaps by shifting nodes
+    // Repeat until no overlaps remain (typically 1-3 iterations)
+    for _ in 0..5 {
+        let shifts = find_cluster_shifts(
+            &diagram.top_level,
+            &diagram.nodes,
+            &diagram.groups,
+            &positions,
+        );
+        if shifts.is_empty() {
+            break;
+        }
+        // Apply shifts to node x-coordinates
+        for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+            if let Some(&dx) = shifts.get(&diagram.nodes[*ni].name) {
+                node_x[fi] += dx;
+            }
+        }
+        // Recompute all positions
+        positions.clear();
+        for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+            positions.insert(
+                diagram.nodes[*ni].name.clone(),
+                (node_x[fi], node_y[fi], NODE_W, NODE_H),
+            );
+        }
+        compute_cluster_bounds(
+            &diagram.top_level,
+            &diagram.nodes,
+            &diagram.groups,
+            &mut positions,
+        );
+    }
+
+    positions
+}
+
+/// Recursively compute cluster (group) bounding boxes from the positions of their children.
+fn compute_cluster_bounds(
+    elements: &[Element],
+    nodes: &[Node],
+    groups: &[Group],
+    positions: &mut HashMap<String, (f64, f64, f64, f64)>,
+) {
+    for elem in elements {
+        if let Element::GroupRef(gi) = elem {
+            let g = &groups[*gi];
+            // Recurse first so nested groups have bounds
+            compute_cluster_bounds(&g.children, nodes, groups, positions);
+
+            // Collect bounds of all children
+            let mut min_x = f64::MAX;
+            let mut min_y = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_y = f64::MIN;
+
+            for child in &g.children {
+                let name = element_name(child, nodes, groups);
+                if let Some(&(cx, cy, cw, ch)) = positions.get(&name) {
+                    min_x = min_x.min(cx);
+                    min_y = min_y.min(cy);
+                    max_x = max_x.max(cx + cw);
+                    max_y = max_y.max(cy + ch);
+                }
+            }
+
+            if min_x < f64::MAX {
+                // Add padding for group border and header
+                let gx = min_x - GROUP_H_PAD;
+                let gy = min_y - GROUP_HEADER_H - GROUP_V_PAD;
+                let gw = (max_x - min_x + GROUP_H_PAD * 2.0)
+                    .max(text_width(&g.name) + GROUP_H_PAD * 2.0);
+                let gh = max_y - min_y + GROUP_HEADER_H + GROUP_V_PAD * 2.0;
+                positions.insert(g.name.clone(), (gx, gy, gw, gh));
+            }
+        }
+    }
+}
+
+/// Find x-shifts needed to eliminate overlaps between sibling elements (groups and standalone nodes).
+/// Returns a map of node_name → dx shift for all nodes that need to move.
+fn find_cluster_shifts(
+    elements: &[Element],
+    nodes: &[Node],
+    groups: &[Group],
+    positions: &HashMap<String, (f64, f64, f64, f64)>,
+) -> HashMap<String, f64> {
+    let mut shifts: HashMap<String, f64> = HashMap::new();
+    let gap = GROUP_H_PAD;
+
+    // Collect sibling element bounds sorted by x position
+    let mut sibling_bounds: Vec<(usize, String, f64, f64, f64, f64)> = Vec::new(); // (elem_idx, name, x, y, w, h)
+    for (i, elem) in elements.iter().enumerate() {
+        let name = element_name(elem, nodes, groups);
+        if let Some(&(x, y, w, h)) = positions.get(&name) {
+            sibling_bounds.push((i, name, x, y, w, h));
+        }
+    }
+    sibling_bounds.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+
+    // Check consecutive pairs for x-overlap
+    for idx in 0..sibling_bounds.len().saturating_sub(1) {
+        let (_, _, ax, ay, aw, ah) = &sibling_bounds[idx];
+        let (ei, _, bx, by, _bw, bh) = &sibling_bounds[idx + 1];
+
+        // Check if they overlap vertically (y ranges intersect)
+        let y_overlap = *ay < by + bh && *by < ay + ah;
+        if !y_overlap {
+            continue;
+        }
+
+        let needed_x = ax + aw + gap;
+        if *bx < needed_x {
+            let dx = needed_x - bx;
+            // Shift element and all its descendant nodes
+            collect_node_shifts(&elements[*ei], nodes, groups, dx, &mut shifts);
+        }
+    }
+
+    // Recurse into groups to fix overlaps among their children
+    for elem in elements {
+        if let Element::GroupRef(gi) = elem {
+            let child_shifts = find_cluster_shifts(&groups[*gi].children, nodes, groups, positions);
+            for (name, dx) in child_shifts {
+                *shifts.entry(name).or_insert(0.0) += dx;
+            }
+        }
+    }
+
+    shifts
+}
+
+/// Collect all node names under an element and assign them a dx shift.
+fn collect_node_shifts(
     elem: &Element,
     nodes: &[Node],
     groups: &[Group],
-    offset_x: f64,
-    offset_y: f64,
-    positions: &mut HashMap<String, (f64, f64, f64, f64)>,
+    dx: f64,
+    shifts: &mut HashMap<String, f64>,
 ) {
-    let name = element_name(elem, nodes, groups);
-    if let Some(pos) = positions.get_mut(&name) {
-        pos.0 += offset_x;
-        pos.1 += offset_y;
-    }
-    if let Element::GroupRef(gi) = elem {
-        for child in &groups[*gi].children {
-            offset_positions(child, nodes, groups, offset_x, offset_y, positions);
+    match elem {
+        Element::NodeRef(ni) => {
+            *shifts.entry(nodes[*ni].name.clone()).or_insert(0.0) += dx;
+        }
+        Element::GroupRef(gi) => {
+            for child in &groups[*gi].children {
+                collect_node_shifts(child, nodes, groups, dx, shifts);
+            }
         }
     }
 }
@@ -705,18 +1021,7 @@ fn clip_to_rect(cx: f64, cy: f64, tx: f64, ty: f64, hw: f64, hh: f64) -> (f64, f
 // ---------------------------------------------------------------------------
 
 fn render_svg(diagram: &Diagram) -> String {
-    let mut positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
-
-    // Layout top-level elements
-    layout_elements(
-        &diagram.top_level,
-        &diagram.nodes,
-        &diagram.groups,
-        &diagram.edges,
-        PADDING,
-        PADDING,
-        &mut positions,
-    );
+    let positions = compound_layout(diagram);
 
     // SVG dimensions
     let mut max_x: f64 = 0.0;
