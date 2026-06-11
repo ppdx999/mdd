@@ -405,10 +405,37 @@ fn wrap_text_lines(text: &str, max_width: f64, font_size: f64) -> Vec<String> {
     lines
 }
 
-fn table_row_height(cells: &[String], col_w: f64, font_size: f64) -> f64 {
-    let cell_content_w = col_w - TABLE_CELL_PAD;
-    let max_lines = cells.iter()
-        .map(|cell| wrap_text_lines(cell, cell_content_w, font_size).len())
+const MIN_COL_WIDTH: f64 = 40.0;
+
+fn compute_col_widths(headers: &[String], rows: &[Vec<String>], content_area: f64, font_size: f64) -> Vec<f64> {
+    let num_cols = headers.len().max(1);
+    let mut max_widths: Vec<f64> = vec![0.0; num_cols];
+
+    for (j, header) in headers.iter().enumerate() {
+        max_widths[j] = max_widths[j].max(doc_text_width(header, font_size));
+    }
+    for row in rows {
+        for (j, cell) in row.iter().enumerate() {
+            if j < num_cols {
+                max_widths[j] = max_widths[j].max(doc_text_width(cell, font_size));
+            }
+        }
+    }
+
+    let weights: Vec<f64> = max_widths.iter()
+        .map(|w| (w + TABLE_CELL_PAD * 2.0).max(MIN_COL_WIDTH))
+        .collect();
+    let total: f64 = weights.iter().sum();
+
+    weights.iter().map(|w| content_area * w / total).collect()
+}
+
+fn table_row_height(cells: &[String], col_widths: &[f64], font_size: f64) -> f64 {
+    let max_lines = cells.iter().enumerate()
+        .map(|(j, cell)| {
+            let cw = col_widths.get(j).copied().unwrap_or(MIN_COL_WIDTH);
+            wrap_text_lines(cell, cw - TABLE_CELL_PAD, font_size).len()
+        })
         .max()
         .unwrap_or(1);
     if max_lines <= 1 {
@@ -725,11 +752,10 @@ fn compute_block_height(block: &DocBlock, content_area: f64) -> f64 {
         }
         DocBlock::Rule => RULE_GAP * 2.0 + 1.0,
         DocBlock::Table { headers, rows } => {
-            let num_cols = headers.len().max(1);
-            let col_w = content_area / num_cols as f64;
-            let header_h = table_row_height(headers, col_w, TABLE_FONT_SIZE);
+            let col_widths = compute_col_widths(headers, rows, content_area, TABLE_FONT_SIZE);
+            let header_h = table_row_height(headers, &col_widths, TABLE_FONT_SIZE);
             let rows_h: f64 = rows.iter()
-                .map(|row| table_row_height(row, col_w, TABLE_FONT_SIZE))
+                .map(|row| table_row_height(row, &col_widths, TABLE_FONT_SIZE))
                 .sum();
             header_h + rows_h + BLOCK_GAP
         }
@@ -742,13 +768,15 @@ fn compute_block_height(block: &DocBlock, content_area: f64) -> f64 {
 }
 
 fn render_table_row_cells(
-    svg: &mut String, cells: &[String], y: f64, col_w: f64,
+    svg: &mut String, cells: &[String], y: f64, col_widths: &[f64],
     content_area: f64, font_size: f64, bold: bool, fill: &str,
 ) -> f64 {
-    let row_h = table_row_height(cells, col_w, font_size);
-    let cell_content_w = col_w - TABLE_CELL_PAD;
+    let row_h = table_row_height(cells, col_widths, font_size);
+    let mut cell_x_start = PAGE_PAD;
     for (j, cell) in cells.iter().enumerate() {
-        let cell_x = PAGE_PAD + j as f64 * col_w + TABLE_CELL_PAD;
+        let cw = col_widths.get(j).copied().unwrap_or(MIN_COL_WIDTH);
+        let cell_content_w = cw - TABLE_CELL_PAD;
+        let cell_x = cell_x_start + TABLE_CELL_PAD;
         let wrapped = wrap_text_lines(cell, cell_content_w, font_size);
         let weight = if bold { " font-weight=\"bold\"" } else { "" };
         for (k, line) in wrapped.iter().enumerate() {
@@ -759,6 +787,7 @@ fn render_table_row_cells(
                 font_size, fill, weight, escape_xml(line)
             ));
         }
+        cell_x_start += cw;
     }
     // Row border
     svg.push_str(&format!(
@@ -863,18 +892,16 @@ fn render_doc_blocks(blocks: &[DocBlock], svg: &mut String, mut y: f64, content_
             }
 
             DocBlock::Table { headers, rows } => {
-                let num_cols = headers.len().max(1);
-                let col_w = content_area / num_cols as f64;
+                let col_widths = compute_col_widths(headers, rows, content_area, TABLE_FONT_SIZE);
 
                 // Header row background
-                let header_h = table_row_height(headers, col_w, TABLE_FONT_SIZE);
+                let header_h = table_row_height(headers, &col_widths, TABLE_FONT_SIZE);
                 svg.push_str(&format!(
                     "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
                     PAGE_PAD, y, content_area, header_h, TABLE_HEADER_BG
                 ));
-                let h = render_table_row_cells(svg, headers, y, col_w, content_area, TABLE_FONT_SIZE, true, "#333");
+                let h = render_table_row_cells(svg, headers, y, &col_widths, content_area, TABLE_FONT_SIZE, true, "#333");
                 // Override header border to use darker color
-                // (render_table_row_cells already drew #eee border, overwrite with #ccc)
                 svg.push_str(&format!(
                     "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ccc\" stroke-width=\"1\"/>",
                     PAGE_PAD, y + h, PAGE_PAD + content_area, y + h
@@ -883,7 +910,7 @@ fn render_doc_blocks(blocks: &[DocBlock], svg: &mut String, mut y: f64, content_
 
                 // Data rows
                 for row in rows {
-                    let row_h = render_table_row_cells(svg, row, y, col_w, content_area, TABLE_FONT_SIZE, false, "#333");
+                    let row_h = render_table_row_cells(svg, row, y, &col_widths, content_area, TABLE_FONT_SIZE, false, "#333");
                     y += row_h;
                 }
                 y += BLOCK_GAP;
