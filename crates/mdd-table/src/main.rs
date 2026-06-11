@@ -183,6 +183,21 @@ fn render_svg(table: &Table) -> String {
         vec![MIN_COL_WIDTH; num_cols]
     };
 
+    // Ensure columns are wide enough for summary row text (subtotal/total),
+    // since summary rows don't wrap text.
+    for row in &table.rows {
+        if row.kind != RowKind::Normal {
+            for (i, cell) in row.cells.iter().enumerate() {
+                if i < num_cols {
+                    let min_w = text_width(cell) + CELL_H_PAD * 2.0;
+                    if col_widths[i] < min_w {
+                        col_widths[i] = min_w;
+                    }
+                }
+            }
+        }
+    }
+
     // Clamp columns to MAX_COL_WIDTH — text will wrap within this limit
     for w in col_widths.iter_mut() {
         if *w > MAX_COL_WIDTH {
