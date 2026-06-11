@@ -18,6 +18,8 @@ enum NodeType {
     Cdn,
     Network,
     User,
+    Phone,
+    Cloud,
     Generic,
 }
 
@@ -33,6 +35,8 @@ impl NodeType {
             "cdn" => NodeType::Cdn,
             "network" | "vpc" | "subnet" => NodeType::Network,
             "user" | "client" => NodeType::User,
+            "phone" | "telephone" => NodeType::Phone,
+            "cloud" | "internet" | "pstn" => NodeType::Cloud,
             _ => NodeType::Generic,
         }
     }
@@ -207,6 +211,8 @@ fn node_colors(nt: &NodeType) -> (&'static str, &'static str) {
         NodeType::Cdn => ("#fff8e1", "#f9a825"),
         NodeType::Network => ("#e8eaf6", "#283593"),
         NodeType::User => ("#fafafa", "#616161"),
+        NodeType::Phone => ("#e8eaf6", "#4527a0"),
+        NodeType::Cloud => ("#e0f7fa", "#00838f"),
         NodeType::Generic => ("#f5f5f5", "#757575"),
     }
 }
@@ -1003,6 +1009,48 @@ fn render_icon(svg: &mut String, cx: f64, cy: f64, nt: &NodeType, color: &str) {
             svg.push_str(&format!(
                 "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
                 cx - 7.0, cy + 1.0, cx + 7.0, cy + 1.0, color
+            ));
+        }
+        NodeType::Phone => {
+            // Landline phone: base + handset
+            // Base
+            svg.push_str(&format!(
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"2\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                cx - r * 0.55, cy + 1.0, r * 1.1, r * 0.5, color
+            ));
+            // Handset (receiver arc)
+            svg.push_str(&format!(
+                "<path d=\"M{},{} Q{},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2.5\" stroke-linecap=\"round\"/>",
+                cx - r * 0.45, cy + 1.0,
+                cx, cy - r * 0.7,
+                cx + r * 0.45, cy + 1.0,
+                color
+            ));
+        }
+        NodeType::Cloud => {
+            // Network cloud shape using arcs
+            let w = r * 0.8;
+            let h = r * 0.5;
+            svg.push_str(&format!(
+                "<path d=\"M{},{} \
+                 a{},{} 0 0,1 {},{} \
+                 a{},{} 0 0,1 {},{} \
+                 a{},{} 0 0,1 {},{} \
+                 a{},{} 0 0,1 {},{} \
+                 a{},{} 0 0,1 {},{}\" \
+                 fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                cx - w * 0.6, cy + h * 0.4,
+                // bottom-left bump
+                h * 0.7, h * 0.7, w * 0.1, -(h * 0.8),
+                // top-left bump
+                h * 0.6, h * 0.6, w * 0.5, -(h * 0.3),
+                // top-right bump
+                h * 0.7, h * 0.7, w * 0.6, h * 0.2,
+                // right bump
+                h * 0.6, h * 0.6, w * 0.0, h * 0.9,
+                // bottom line back
+                h * 0.3, h * 0.3, -(w * 1.2), 0.0,
+                color
             ));
         }
         NodeType::Generic => {
