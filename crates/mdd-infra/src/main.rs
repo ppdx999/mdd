@@ -85,7 +85,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let mut edges: Vec<Edge> = Vec::new();
     let mut name_to_node: HashMap<String, usize> = HashMap::new();
     let mut name_to_group: HashMap<String, usize> = HashMap::new();
-    let mut show_type = true;
+    let mut show_type = false;
 
     // Stack for nested groups: (group_index, children_so_far)
     let mut group_stack: Vec<(usize, Vec<Element>)> = Vec::new();
@@ -96,8 +96,8 @@ fn parse(input: &str) -> Result<Diagram, String> {
             continue;
         }
 
-        if line == "hide type" {
-            show_type = false;
+        if line == "show type" {
+            show_type = true;
             continue;
         }
 
