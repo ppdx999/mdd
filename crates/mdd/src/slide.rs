@@ -95,7 +95,6 @@ fn split_pages(input: &str) -> Vec<Page> {
 const PAGE_PAD: f64 = 40.0;
 const TITLE_FONT_SIZE: f64 = 28.0;
 const BODY_FONT_SIZE: f64 = 14.0;
-const BODY_LINE_HEIGHT: f64 = 22.0;
 const BLOCK_GAP: f64 = 20.0;
 const FIXED_PAGE_W: f64 = 800.0;
 const MIN_PAGE_H: f64 = 680.0;
@@ -132,10 +131,13 @@ fn build_page_svg(page: &Page, fixed_width: f64) -> String {
         content_h += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
     }
     for block in &page.blocks {
-        content_h += BLOCK_GAP;
         match block {
-            Block::Text(text) => { content_h += text.lines().count().max(1) as f64 * BODY_LINE_HEIGHT; }
+            Block::Text(text) => {
+                let md_blocks = parse_markdown_blocks(text);
+                content_h += md_blocks.iter().map(|b| compute_block_height(b, content_area)).sum::<f64>();
+            }
             Block::Svg(svg) => {
+                content_h += BLOCK_GAP;
                 let (sw, sh) = svg_dimensions(svg);
                 let scale = if sw > content_area { content_area / sw } else { 1.0 };
                 content_h += sh * scale;
@@ -178,14 +180,8 @@ fn build_page_svg(page: &Page, fixed_width: f64) -> String {
     for block in &page.blocks {
         match block {
             Block::Text(text) => {
-                for line in text.lines() {
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#333\">{}</text>",
-                        PAGE_PAD, y + BODY_FONT_SIZE * 0.85, BODY_FONT_SIZE, escape_xml(line)
-                    ));
-                    y += BODY_LINE_HEIGHT;
-                }
-                y += BLOCK_GAP;
+                let md_blocks = parse_markdown_blocks(text);
+                y = render_doc_blocks(&md_blocks, &mut svg, y, content_area, page_w);
             }
             Block::Svg(raw_svg) => {
                 let (sw, sh) = svg_dimensions(raw_svg);
@@ -366,6 +362,7 @@ const RULE_GAP: f64 = 16.0;
 const TABLE_CELL_PAD: f64 = 8.0;
 const TABLE_ROW_HEIGHT: f64 = 28.0;
 const TABLE_FONT_SIZE: f64 = 12.0;
+const TABLE_INNER_LINE_HEIGHT: f64 = 16.0;
 const TABLE_HEADER_BG: &str = "#f0f0f0";
 const CHAR_WIDTH_DOC: f64 = 8.0;
 const CJK_CHAR_WIDTH_DOC: f64 = 14.0;
@@ -378,6 +375,47 @@ fn doc_text_width(s: &str, font_size: f64) -> f64 {
         .map(|c| if c.is_ascii() { CHAR_WIDTH_DOC } else { CJK_CHAR_WIDTH_DOC })
         .sum::<f64>()
         * scale
+}
+
+fn wrap_text_lines(text: &str, max_width: f64, font_size: f64) -> Vec<String> {
+    if text.is_empty() || max_width <= 0.0 {
+        return vec![String::new()];
+    }
+    let scale = font_size / BODY_FONT_SIZE;
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+    let mut current_width = 0.0;
+
+    for ch in text.chars() {
+        let ch_width = (if ch.is_ascii() { CHAR_WIDTH_DOC } else { CJK_CHAR_WIDTH_DOC }) * scale;
+        if current_width + ch_width > max_width && !current_line.is_empty() {
+            lines.push(current_line.clone());
+            current_line.clear();
+            current_width = 0.0;
+        }
+        current_line.push(ch);
+        current_width += ch_width;
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+fn table_row_height(cells: &[String], col_w: f64, font_size: f64) -> f64 {
+    let cell_content_w = col_w - TABLE_CELL_PAD;
+    let max_lines = cells.iter()
+        .map(|cell| wrap_text_lines(cell, cell_content_w, font_size).len())
+        .max()
+        .unwrap_or(1);
+    if max_lines <= 1 {
+        TABLE_ROW_HEIGHT
+    } else {
+        TABLE_ROW_HEIGHT + (max_lines as f64 - 1.0) * TABLE_INNER_LINE_HEIGHT
+    }
 }
 
 /// Intermediate block produced from pulldown_cmark events
@@ -686,8 +724,14 @@ fn compute_block_height(block: &DocBlock, content_area: f64) -> f64 {
             sh + BLOCK_GAP
         }
         DocBlock::Rule => RULE_GAP * 2.0 + 1.0,
-        DocBlock::Table { headers: _, rows } => {
-            (rows.len() as f64 + 1.0) * TABLE_ROW_HEIGHT + BLOCK_GAP
+        DocBlock::Table { headers, rows } => {
+            let num_cols = headers.len().max(1);
+            let col_w = content_area / num_cols as f64;
+            let header_h = table_row_height(headers, col_w, TABLE_FONT_SIZE);
+            let rows_h: f64 = rows.iter()
+                .map(|row| table_row_height(row, col_w, TABLE_FONT_SIZE))
+                .sum();
+            header_h + rows_h + BLOCK_GAP
         }
         DocBlock::Blockquote { spans } => {
             let total_text: String = spans.iter().map(|s| s.text.clone()).collect();
@@ -697,23 +741,35 @@ fn compute_block_height(block: &DocBlock, content_area: f64) -> f64 {
     }
 }
 
-fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String {
-    let content_area = fixed_width - PAGE_PAD * 2.0;
-    let blocks = parse_markdown_blocks(processed);
+fn render_table_row_cells(
+    svg: &mut String, cells: &[String], y: f64, col_w: f64,
+    content_area: f64, font_size: f64, bold: bool, fill: &str,
+) -> f64 {
+    let row_h = table_row_height(cells, col_w, font_size);
+    let cell_content_w = col_w - TABLE_CELL_PAD;
+    for (j, cell) in cells.iter().enumerate() {
+        let cell_x = PAGE_PAD + j as f64 * col_w + TABLE_CELL_PAD;
+        let wrapped = wrap_text_lines(cell, cell_content_w, font_size);
+        let weight = if bold { " font-weight=\"bold\"" } else { "" };
+        for (k, line) in wrapped.iter().enumerate() {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\"{}>{}</text>",
+                cell_x,
+                y + font_size + 4.0 + k as f64 * TABLE_INNER_LINE_HEIGHT,
+                font_size, fill, weight, escape_xml(line)
+            ));
+        }
+    }
+    // Row border
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#eee\" stroke-width=\"1\"/>",
+        PAGE_PAD, y + row_h, PAGE_PAD + content_area, y + row_h
+    ));
+    row_h
+}
 
-    // Compute total height
-    let total_h: f64 = PAGE_PAD * 2.0 + blocks.iter().map(|b| compute_block_height(b, content_area)).sum::<f64>();
-
-    let mut svg = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
-        fixed_width, total_h, fixed_width, total_h
-    );
-    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
-    svg.push_str("<style>text { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>");
-
-    let mut y = PAGE_PAD;
-
-    for block in &blocks {
+fn render_doc_blocks(blocks: &[DocBlock], svg: &mut String, mut y: f64, content_area: f64, page_width: f64) -> f64 {
+    for block in blocks {
         match block {
             DocBlock::Heading { level, text } => {
                 let fs = heading_font_size(*level);
@@ -725,7 +781,7 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
                 if *level <= 2 {
                     svg.push_str(&format!(
                         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>",
-                        PAGE_PAD, y, fixed_width - PAGE_PAD, y
+                        PAGE_PAD, y, page_width - PAGE_PAD, y
                     ));
                     y += 8.0;
                 } else {
@@ -734,7 +790,7 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
             }
 
             DocBlock::Paragraph { spans } => {
-                y = render_spans_to_svg(&mut svg, spans, PAGE_PAD, y, content_area, BODY_FONT_SIZE, "#333");
+                y = render_spans_to_svg(svg, spans, PAGE_PAD, y, content_area, BODY_FONT_SIZE, "#333");
                 y += BLOCK_GAP;
             }
 
@@ -752,7 +808,7 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
                             PAGE_PAD + LIST_INDENT / 2.0, y + BODY_FONT_SIZE * 0.4, BULLET_RADIUS
                         ));
                     }
-                    render_spans_to_svg(&mut svg, item_spans, x, y, content_area - LIST_INDENT, BODY_FONT_SIZE, "#333");
+                    render_spans_to_svg(svg, item_spans, x, y, content_area - LIST_INDENT, BODY_FONT_SIZE, "#333");
                     y += DOC_LINE_HEIGHT;
                 }
                 y += BLOCK_GAP;
@@ -782,7 +838,7 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
                 let scale = if sw > content_area { content_area / sw } else { 1.0 };
                 let scaled_w = sw * scale;
                 let scaled_h = sh * scale;
-                let offset_x = (fixed_width - scaled_w) / 2.0;
+                let offset_x = (page_width - scaled_w) / 2.0;
 
                 if (scale - 1.0).abs() < 0.001 {
                     svg.push_str(&format!("<g transform=\"translate({},{})\">", offset_x, y));
@@ -801,7 +857,7 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
                 y += RULE_GAP;
                 svg.push_str(&format!(
                     "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ddd\" stroke-width=\"1\"/>",
-                    PAGE_PAD, y, fixed_width - PAGE_PAD, y
+                    PAGE_PAD, y, page_width - PAGE_PAD, y
                 ));
                 y += RULE_GAP + 1.0;
             }
@@ -810,43 +866,25 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
                 let num_cols = headers.len().max(1);
                 let col_w = content_area / num_cols as f64;
 
-                // Header row
+                // Header row background
+                let header_h = table_row_height(headers, col_w, TABLE_FONT_SIZE);
                 svg.push_str(&format!(
                     "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
-                    PAGE_PAD, y, content_area, TABLE_ROW_HEIGHT, TABLE_HEADER_BG
+                    PAGE_PAD, y, content_area, header_h, TABLE_HEADER_BG
                 ));
-                for (j, header) in headers.iter().enumerate() {
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#333\">{}</text>",
-                        PAGE_PAD + j as f64 * col_w + TABLE_CELL_PAD,
-                        y + TABLE_ROW_HEIGHT * 0.65,
-                        TABLE_FONT_SIZE,
-                        escape_xml(header)
-                    ));
-                }
-                // Header bottom border
+                let h = render_table_row_cells(svg, headers, y, col_w, content_area, TABLE_FONT_SIZE, true, "#333");
+                // Override header border to use darker color
+                // (render_table_row_cells already drew #eee border, overwrite with #ccc)
                 svg.push_str(&format!(
                     "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ccc\" stroke-width=\"1\"/>",
-                    PAGE_PAD, y + TABLE_ROW_HEIGHT, PAGE_PAD + content_area, y + TABLE_ROW_HEIGHT
+                    PAGE_PAD, y + h, PAGE_PAD + content_area, y + h
                 ));
-                y += TABLE_ROW_HEIGHT;
+                y += h;
 
                 // Data rows
                 for row in rows {
-                    for (j, cell) in row.iter().enumerate() {
-                        svg.push_str(&format!(
-                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"#333\">{}</text>",
-                            PAGE_PAD + j as f64 * col_w + TABLE_CELL_PAD,
-                            y + TABLE_ROW_HEIGHT * 0.65,
-                            TABLE_FONT_SIZE,
-                            escape_xml(cell)
-                        ));
-                    }
-                    svg.push_str(&format!(
-                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#eee\" stroke-width=\"1\"/>",
-                        PAGE_PAD, y + TABLE_ROW_HEIGHT, PAGE_PAD + content_area, y + TABLE_ROW_HEIGHT
-                    ));
-                    y += TABLE_ROW_HEIGHT;
+                    let row_h = render_table_row_cells(svg, row, y, col_w, content_area, TABLE_FONT_SIZE, false, "#333");
+                    y += row_h;
                 }
                 y += BLOCK_GAP;
             }
@@ -854,7 +892,7 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
             DocBlock::Blockquote { spans } => {
                 let text_x = PAGE_PAD + BLOCKQUOTE_BAR_WIDTH + BLOCKQUOTE_INDENT;
                 let start_y = y;
-                y = render_spans_to_svg(&mut svg, spans, text_x, y, content_area - BLOCKQUOTE_INDENT - BLOCKQUOTE_BAR_WIDTH, BODY_FONT_SIZE, "#666");
+                y = render_spans_to_svg(svg, spans, text_x, y, content_area - BLOCKQUOTE_INDENT - BLOCKQUOTE_BAR_WIDTH, BODY_FONT_SIZE, "#666");
                 // Draw left bar
                 svg.push_str(&format!(
                     "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#ddd\" rx=\"2\"/>",
@@ -864,6 +902,25 @@ fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String
             }
         }
     }
+    y
+}
+
+fn build_document_svg_from_markdown(processed: &str, fixed_width: f64) -> String {
+    let content_area = fixed_width - PAGE_PAD * 2.0;
+    let blocks = parse_markdown_blocks(processed);
+
+    // Compute total height
+    let total_h: f64 = PAGE_PAD * 2.0 + blocks.iter().map(|b| compute_block_height(b, content_area)).sum::<f64>();
+
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
+        fixed_width, total_h, fixed_width, total_h
+    );
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
+    svg.push_str("<style>text { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>");
+
+    let y = PAGE_PAD;
+    render_doc_blocks(&blocks, &mut svg, y, content_area, fixed_width);
 
     svg.push_str("</svg>");
     svg

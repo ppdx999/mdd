@@ -11,6 +11,9 @@ pub fn process(input: &str, source_path: &Path) -> Result<String, String> {
     let mut code_block_lang: Option<String> = None;
     let mut code_block_content = String::new();
     let mut in_code_block = false;
+    let mut list_ordered = false;
+    let mut list_index: u64 = 0;
+    let mut in_item = false;
 
     for event in parser {
         match event {
@@ -62,7 +65,11 @@ pub fn process(input: &str, source_path: &Path) -> Result<String, String> {
             }
             Event::Start(Tag::Paragraph) => {}
             Event::End(TagEnd::Paragraph) => {
-                output.push('\n');
+                if in_item {
+                    output.push('\n');
+                } else {
+                    output.push_str("\n\n");
+                }
             }
             Event::Text(text) => {
                 output.push_str(&text);
@@ -85,12 +92,22 @@ pub fn process(input: &str, source_path: &Path) -> Result<String, String> {
             Event::End(TagEnd::Emphasis) => {
                 output.push('*');
             }
-            Event::Start(Tag::List(None)) | Event::End(TagEnd::List(false)) => {}
-            Event::Start(Tag::List(Some(_))) | Event::End(TagEnd::List(true)) => {}
+            Event::Start(Tag::List(None)) => { list_ordered = false; }
+            Event::Start(Tag::List(Some(start))) => { list_ordered = true; list_index = start; }
+            Event::End(TagEnd::List(_)) => {
+                output.push('\n');
+            }
             Event::Start(Tag::Item) => {
-                output.push_str("- ");
+                in_item = true;
+                if list_ordered {
+                    output.push_str(&format!("{}. ", list_index));
+                    list_index += 1;
+                } else {
+                    output.push_str("- ");
+                }
             }
             Event::End(TagEnd::Item) => {
+                in_item = false;
                 output.push('\n');
             }
             Event::Code(text) => {
