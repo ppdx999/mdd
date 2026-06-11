@@ -93,7 +93,7 @@ fn split_pages(input: &str) -> Vec<Page> {
 // ---------------------------------------------------------------------------
 
 const PAGE_PAD: f64 = 40.0;
-const TITLE_FONT_SIZE: f64 = 28.0;
+const TITLE_FONT_SIZE: f64 = 36.0;
 const BODY_FONT_SIZE: f64 = 14.0;
 const BLOCK_GAP: f64 = 20.0;
 const FIXED_PAGE_W: f64 = 800.0;
@@ -347,8 +347,8 @@ pub fn generate_slide(path: &Path) {
 // Markdown → SVG document renderer (pulldown_cmark-based)
 // ---------------------------------------------------------------------------
 
-const H1_FONT_SIZE: f64 = 28.0;
-const H2_FONT_SIZE: f64 = 22.0;
+const H1_FONT_SIZE: f64 = 36.0;
+const H2_FONT_SIZE: f64 = 28.0;
 const H3_FONT_SIZE: f64 = 18.0;
 const H4_FONT_SIZE: f64 = 15.0;
 const DOC_LINE_HEIGHT: f64 = 22.0;
