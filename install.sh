@@ -56,6 +56,7 @@ tar xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
 mkdir -p "$INSTALL_DIR"
 for bin in "$TMPDIR/mdd-${MDD_VERSION}-${TARGET}"/mdd*; do
   if [ -f "$bin" ] && [ -x "$bin" ]; then
+    rm -f "$INSTALL_DIR/$(basename "$bin")"
     cp "$bin" "$INSTALL_DIR/"
     echo "  installed: $(basename "$bin")"
   fi

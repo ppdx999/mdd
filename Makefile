@@ -13,6 +13,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 install: build
 	@mkdir -p $(INSTALL_DIR)
 	@for crate in $(CRATES); do \
+		rm -f $(INSTALL_DIR)/$$crate; \
 		cp target/release/$$crate $(INSTALL_DIR)/; \
 		echo "  installed: $$crate"; \
 	done
