@@ -95,7 +95,7 @@ const LINE_HEIGHT: f64 = 18.0;
 const MIN_ROW_HEIGHT: f64 = 32.0;
 const HEADER_ROW_HEIGHT: f64 = 36.0;
 const MIN_COL_WIDTH: f64 = 80.0;
-const MAX_COL_WIDTH: f64 = 400.0;
+const MAX_COL_WIDTH: f64 = 600.0;
 const PADDING: f64 = 40.0;
 
 const HEADER_BG: &str = "#e8eaf6";
