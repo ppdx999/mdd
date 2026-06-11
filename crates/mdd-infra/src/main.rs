@@ -807,6 +807,16 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
                 };
                 node_x[*fi] = target_x.max(min_x).min(max_x);
             }
+
+            // Enforce minimum spacing: left-to-right sweep to fix any overlaps
+            for i in 1..bucket.len() {
+                let prev = bucket[i - 1];
+                let fi = bucket[i];
+                let min_x = node_x[prev] + node_w(prev) + spacing(prev, fi);
+                if node_x[fi] < min_x {
+                    node_x[fi] = min_x;
+                }
+            }
         }
     }
 
@@ -944,14 +954,19 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
     }
 
     // Phase 7: Post-overlap barycenter re-adjustment.
-    // After overlap correction shifts clusters, standalone nodes and virtual nodes
-    // may be misaligned with their connections. Re-run barycenter to fix.
+    // Only adjust standalone nodes (not in any cluster) and virtual nodes,
+    // since cluster members have been correctly positioned by Phase 6.
     for _pass in 0..4 {
         for r in 0..=max_rank {
             let bucket = &rank_buckets[r];
             if bucket.is_empty() { continue; }
 
             for (idx_in_bucket, &fi) in bucket.iter().enumerate() {
+                // Only adjust standalone nodes and virtual nodes
+                if fi < real_count && !flat_nodes[fi].1.is_empty() {
+                    continue; // skip cluster member nodes
+                }
+
                 let mut connected_xs: Vec<f64> = Vec::new();
                 for &s in &adj_succ[fi] {
                     connected_xs.push(node_x[s] + node_w(s) / 2.0);
@@ -977,6 +992,16 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
                     node_x[next] - node_w(fi) - spacing(fi, next)
                 };
                 node_x[fi] = target_x.max(min_x).min(max_x);
+            }
+
+            // Enforce minimum spacing: left-to-right sweep to fix any overlaps
+            for i in 1..bucket.len() {
+                let prev = bucket[i - 1];
+                let fi = bucket[i];
+                let min_x = node_x[prev] + node_w(prev) + spacing(prev, fi);
+                if node_x[fi] < min_x {
+                    node_x[fi] = min_x;
+                }
             }
         }
     }
@@ -1038,6 +1063,36 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
             &mut positions,
         );
     }
+
+    // Final pass: enforce minimum spacing across all ranks to fix any
+    // overlaps introduced by overlap correction shifts.
+    for r in 0..=max_rank {
+        let bucket = &rank_buckets[r];
+        for i in 1..bucket.len() {
+            let prev = bucket[i - 1];
+            let fi = bucket[i];
+            let min_x = node_x[prev] + node_w(prev) + spacing(prev, fi);
+            if node_x[fi] < min_x {
+                node_x[fi] = min_x;
+            }
+        }
+    }
+
+    // Recompute positions after final spacing enforcement
+    positions.clear();
+    for fi in 0..real_count {
+        let (ni, _) = flat_nodes[fi];
+        positions.insert(
+            diagram.nodes[ni].name.clone(),
+            (node_x[fi], node_y[fi], NODE_W, NODE_H),
+        );
+    }
+    compute_cluster_bounds(
+        &diagram.top_level,
+        &diagram.nodes,
+        &diagram.groups,
+        &mut positions,
+    );
 
     // Final waypoints
     for (edge_key, chain) in &virtual_chains {
@@ -1121,24 +1176,26 @@ fn find_cluster_shifts(
         ka.partial_cmp(&kb).unwrap()
     });
 
-    // For each consecutive pair in intended order, ensure no overlap.
-    // Push the right element further right if needed.
-    for idx in 0..sibling_bounds.len().saturating_sub(1) {
-        let (_, _, ax, ay, aw, ah) = sibling_bounds[idx];
-        let (ei, _, bx, by, _bw, bh) = sibling_bounds[idx + 1].clone();
+    // For each pair (not just consecutive), ensure no overlap.
+    // Check all pairs since non-adjacent elements can overlap when they span different Y ranges.
+    for i in 0..sibling_bounds.len() {
+        for j in (i + 1)..sibling_bounds.len() {
+            let (_, _, ax, ay, aw, ah) = sibling_bounds[i];
+            let (ej, _, bx, by, _bw, bh) = sibling_bounds[j].clone();
 
-        // Check if they overlap vertically (y ranges intersect)
-        let y_overlap = ay < by + bh && by < ay + ah;
-        if !y_overlap {
-            continue;
-        }
+            // Check if they overlap vertically (y ranges intersect)
+            let y_overlap = ay < by + bh && by < ay + ah;
+            if !y_overlap {
+                continue;
+            }
 
-        let needed_x = ax + aw + gap;
-        if bx < needed_x {
-            let dx = needed_x - bx;
-            collect_node_shifts(&elements[ei], nodes, groups, dx, &mut shifts);
-            // Update this entry's x for cascading checks
-            sibling_bounds[idx + 1].2 += dx;
+            let needed_x = ax + aw + gap;
+            if bx < needed_x {
+                let dx = needed_x - bx;
+                collect_node_shifts(&elements[ej], nodes, groups, dx, &mut shifts);
+                // Update this entry's x for cascading checks
+                sibling_bounds[j].2 += dx;
+            }
         }
     }
 
