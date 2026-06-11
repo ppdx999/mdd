@@ -318,12 +318,12 @@ fn assign_ranks(
 
 /// Median heuristic for ordering nodes within each rank.
 /// Iterates up/down sweeps to minimize crossings.
+/// `graph_edges` are (from_flat_idx, to_flat_idx) pairs.
 /// Returns ordered node indices per rank.
 fn order_ranks(
     flat_nodes: &[(usize, Vec<usize>)],
     ranks: &[usize],
-    edges: &[Edge],
-    nodes: &[Node],
+    graph_edges: &[(usize, usize)],
 ) -> Vec<Vec<usize>> {
     let max_rank = ranks.iter().copied().max().unwrap_or(0);
 
@@ -333,22 +333,14 @@ fn order_ranks(
         rank_buckets[ranks[fi]].push(fi);
     }
 
-    // Name → flat index
-    let mut name_to_flat: HashMap<&str, usize> = HashMap::new();
-    for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
-        name_to_flat.insert(&nodes[*ni].name, fi);
-    }
-
     // Build predecessor/successor lists
     let n = flat_nodes.len();
     let mut predecessors: Vec<Vec<usize>> = vec![vec![]; n];
     let mut successors: Vec<Vec<usize>> = vec![vec![]; n];
-    for edge in edges {
-        if let (Some(&from), Some(&to)) = (name_to_flat.get(edge.from.as_str()), name_to_flat.get(edge.to.as_str())) {
-            if from != to {
-                successors[from].push(to);
-                predecessors[to].push(from);
-            }
+    for &(from, to) in graph_edges {
+        if from != to && from < n && to < n {
+            successors[from].push(to);
+            predecessors[to].push(from);
         }
     }
 
@@ -365,11 +357,13 @@ fn order_ranks(
         if iter % 2 == 0 {
             // Down sweep: for each rank from 1..max, order by median of predecessors
             for r in 1..=max_rank {
-                let mut medians: Vec<(f64, usize)> = Vec::new();
+                let mut med_vals: Vec<(f64, usize)> = Vec::new();
+                let mut med_map: HashMap<usize, f64> = HashMap::new();
                 for &fi in &rank_buckets[r] {
                     let preds = &predecessors[fi];
                     if preds.is_empty() {
-                        medians.push((pos[fi] as f64, fi));
+                        med_vals.push((pos[fi] as f64, fi));
+                        med_map.insert(fi, pos[fi] as f64);
                     } else {
                         let mut positions: Vec<f64> = preds.iter().map(|&p| pos[p] as f64).collect();
                         positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -379,14 +373,13 @@ fn order_ranks(
                             let l = positions.len() / 2 - 1;
                             (positions[l] + positions[l + 1]) / 2.0
                         };
-                        medians.push((med, fi));
+                        med_vals.push((med, fi));
+                        med_map.insert(fi, med);
                     }
                 }
-                medians.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                rank_buckets[r] = medians.iter().map(|&(_, fi)| fi).collect();
-                // Enforce cluster contiguity
-                enforce_cluster_contiguity(&mut rank_buckets[r], flat_nodes);
-                // Update positions
+                med_vals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                rank_buckets[r] = med_vals.iter().map(|&(_, fi)| fi).collect();
+                enforce_cluster_contiguity(&mut rank_buckets[r], flat_nodes, &med_map);
                 for (p, &fi) in rank_buckets[r].iter().enumerate() {
                     pos[fi] = p;
                 }
@@ -394,11 +387,13 @@ fn order_ranks(
         } else {
             // Up sweep: for each rank from max-1..0, order by median of successors
             for r in (0..max_rank).rev() {
-                let mut medians: Vec<(f64, usize)> = Vec::new();
+                let mut med_vals: Vec<(f64, usize)> = Vec::new();
+                let mut med_map: HashMap<usize, f64> = HashMap::new();
                 for &fi in &rank_buckets[r] {
                     let succs = &successors[fi];
                     if succs.is_empty() {
-                        medians.push((pos[fi] as f64, fi));
+                        med_vals.push((pos[fi] as f64, fi));
+                        med_map.insert(fi, pos[fi] as f64);
                     } else {
                         let mut positions: Vec<f64> = succs.iter().map(|&s| pos[s] as f64).collect();
                         positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -408,20 +403,23 @@ fn order_ranks(
                             let l = positions.len() / 2 - 1;
                             (positions[l] + positions[l + 1]) / 2.0
                         };
-                        medians.push((med, fi));
+                        med_vals.push((med, fi));
+                        med_map.insert(fi, med);
                     }
                 }
-                medians.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                rank_buckets[r] = medians.iter().map(|&(_, fi)| fi).collect();
-                enforce_cluster_contiguity(&mut rank_buckets[r], flat_nodes);
+                med_vals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                rank_buckets[r] = med_vals.iter().map(|&(_, fi)| fi).collect();
+                enforce_cluster_contiguity(&mut rank_buckets[r], flat_nodes, &med_map);
                 for (p, &fi) in rank_buckets[r].iter().enumerate() {
                     pos[fi] = p;
                 }
             }
         }
 
-        // Transpose step: swap adjacent pairs if it reduces crossings
+        // Transpose step: swap adjacent nodes (within same cluster) or
+        // adjacent cluster blocks (between different clusters)
         for r in 0..=max_rank {
+            // Within-cluster swaps
             let bucket = &mut rank_buckets[r];
             let mut improved = true;
             while improved {
@@ -429,7 +427,6 @@ fn order_ranks(
                 for i in 0..bucket.len().saturating_sub(1) {
                     let v = bucket[i];
                     let w = bucket[i + 1];
-                    // Don't swap nodes from different clusters
                     if !same_cluster(v, w, flat_nodes) {
                         continue;
                     }
@@ -442,6 +439,62 @@ fn order_ranks(
                         improved = true;
                     }
                 }
+            }
+
+            // Between-cluster block swaps
+            // Identify contiguous cluster blocks
+            let mut blocks: Vec<(Option<usize>, usize, usize)> = Vec::new(); // (cluster, start, end)
+            if !bucket.is_empty() {
+                let mut block_start = 0;
+                let mut current_cluster = flat_nodes[bucket[0]].1.last().copied();
+                for i in 1..bucket.len() {
+                    let c = flat_nodes[bucket[i]].1.last().copied();
+                    if c != current_cluster {
+                        blocks.push((current_cluster, block_start, i));
+                        block_start = i;
+                        current_cluster = c;
+                    }
+                }
+                blocks.push((current_cluster, block_start, bucket.len()));
+            }
+
+            // Try swapping adjacent blocks
+            let mut block_improved = true;
+            while block_improved && blocks.len() > 1 {
+                block_improved = false;
+                for bi in 0..blocks.len() - 1 {
+                    let (_, a_start, a_end) = blocks[bi];
+                    let (_, b_start, b_end) = blocks[bi + 1];
+                    let block_a: Vec<usize> = bucket[a_start..a_end].to_vec();
+                    let block_b: Vec<usize> = bucket[b_start..b_end].to_vec();
+
+                    let cross_ab = count_block_crossings(&block_a, &block_b, &successors, &predecessors, &pos);
+                    // Temporarily swap positions to count crossings in reverse
+                    let a_len = block_a.len();
+                    let b_len = block_b.len();
+                    for (j, &fi) in block_b.iter().enumerate() { pos[fi] = a_start + j; }
+                    for (j, &fi) in block_a.iter().enumerate() { pos[fi] = a_start + b_len + j; }
+                    let cross_ba = count_block_crossings(&block_b, &block_a, &successors, &predecessors, &pos);
+
+                    if cross_ba < cross_ab {
+                        // Apply swap: [B, A] in bucket
+                        let mut new_section = block_b.clone();
+                        new_section.extend(&block_a);
+                        bucket[a_start..b_end].copy_from_slice(&new_section);
+                        // Update blocks
+                        blocks[bi] = (blocks[bi + 1].0, a_start, a_start + b_len);
+                        blocks[bi + 1] = (blocks[bi].0, a_start + b_len, b_end);
+                        block_improved = true;
+                    } else {
+                        // Restore positions
+                        for (j, &fi) in block_a.iter().enumerate() { pos[fi] = a_start + j; }
+                        for (j, &fi) in block_b.iter().enumerate() { pos[fi] = a_start + a_len + j; }
+                    }
+                }
+            }
+            // Sync positions after block swaps
+            for (i, &fi) in bucket.iter().enumerate() {
+                pos[fi] = i;
             }
         }
     }
@@ -457,14 +510,18 @@ fn same_cluster(a: usize, b: usize, flat_nodes: &[(usize, Vec<usize>)]) -> bool 
 }
 
 /// Enforce cluster contiguity: group nodes by their innermost cluster,
-/// keeping cluster blocks together while preserving relative order.
-fn enforce_cluster_contiguity(bucket: &mut Vec<usize>, flat_nodes: &[(usize, Vec<usize>)]) {
+/// ordering cluster blocks by the median of their members' heuristic values.
+/// `medians` maps flat_index → median value computed from adjacent rank connections.
+fn enforce_cluster_contiguity(
+    bucket: &mut Vec<usize>,
+    flat_nodes: &[(usize, Vec<usize>)],
+    medians: &HashMap<usize, f64>,
+) {
     if bucket.len() <= 1 {
         return;
     }
 
-    // Determine innermost cluster for each node
-    // Group by cluster, preserving first-appearance order
+    // Group by innermost cluster
     let mut cluster_order: Vec<Option<usize>> = Vec::new();
     let mut cluster_groups: HashMap<Option<usize>, Vec<usize>> = HashMap::new();
     let mut seen_clusters: std::collections::HashSet<Option<usize>> = std::collections::HashSet::new();
@@ -477,9 +534,31 @@ fn enforce_cluster_contiguity(bucket: &mut Vec<usize>, flat_nodes: &[(usize, Vec
         cluster_groups.entry(cluster).or_default().push(fi);
     }
 
-    // Rebuild bucket: clusters in order of first appearance, nodes within cluster in original order
+    // Order cluster blocks by the median of their members' heuristic values
+    let mut block_medians: Vec<(f64, Option<usize>)> = Vec::new();
+    for &cluster in &cluster_order {
+        if let Some(members) = cluster_groups.get(&cluster) {
+            let mut vals: Vec<f64> = members
+                .iter()
+                .map(|&fi| *medians.get(&fi).unwrap_or(&(fi as f64)))
+                .collect();
+            vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let med = if vals.len() % 2 == 1 {
+                vals[vals.len() / 2]
+            } else if vals.len() >= 2 {
+                let l = vals.len() / 2 - 1;
+                (vals[l] + vals[l + 1]) / 2.0
+            } else {
+                vals.first().copied().unwrap_or(0.0)
+            };
+            block_medians.push((med, cluster));
+        }
+    }
+    block_medians.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // Rebuild bucket: cluster blocks in median order, nodes within cluster in sorted order
     bucket.clear();
-    for cluster in &cluster_order {
+    for (_, cluster) in &block_medians {
         if let Some(group) = cluster_groups.get(cluster) {
             bucket.extend(group);
         }
@@ -499,46 +578,137 @@ fn count_crossings_pair(v: usize, w: usize, successors: &[Vec<usize>], pos: &[us
     count
 }
 
+/// Count total crossings between two cluster blocks (all nodes in block_a vs all in block_b)
+fn count_block_crossings(
+    block_a: &[usize],
+    block_b: &[usize],
+    successors: &[Vec<usize>],
+    predecessors: &[Vec<usize>],
+    pos: &[usize],
+) -> usize {
+    let mut count = 0;
+    for &a in block_a {
+        for &b in block_b {
+            // Count successor crossings
+            for &sa in &successors[a] {
+                for &sb in &successors[b] {
+                    if pos[sa] > pos[sb] { count += 1; }
+                }
+            }
+            // Count predecessor crossings
+            for &pa in &predecessors[a] {
+                for &pb in &predecessors[b] {
+                    if pos[pa] > pos[pb] { count += 1; }
+                }
+            }
+        }
+    }
+    count
+}
+
 /// Assign coordinates and compute cluster boundaries.
-/// Returns positions HashMap with entries for both nodes and groups.
-fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
+/// Returns (positions, edge_waypoints) where edge_waypoints maps
+/// "from_name->to_name" to a list of (x,y) waypoints for routing.
+fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>, HashMap<String, Vec<(f64, f64)>>) {
     let mut positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
+    let mut edge_waypoints: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
 
     // Phase 1: Flatten
-    let flat_nodes = flatten_nodes(
+    let real_nodes = flatten_nodes(
         &diagram.top_level,
         &diagram.nodes,
         &diagram.groups,
         &[],
     );
 
-    if flat_nodes.is_empty() {
-        return positions;
+    if real_nodes.is_empty() {
+        return (positions, edge_waypoints);
     }
 
-    // Phase 2: Rank assignment
-    let ranks = assign_ranks(&flat_nodes, &diagram.edges, &diagram.nodes);
+    let real_count = real_nodes.len();
 
-    // Phase 3: Order within ranks
-    let rank_buckets = order_ranks(&flat_nodes, &ranks, &diagram.edges, &diagram.nodes);
+    // Phase 2: Rank assignment (real nodes only)
+    let real_ranks = assign_ranks(&real_nodes, &diagram.edges, &diagram.nodes);
+
+    // Phase 2.5: Insert virtual nodes for long edges
+    // flat_nodes = real_nodes + virtual_nodes
+    // Virtual nodes have node_index = usize::MAX and inherit the cluster chain
+    // of the edge's source (arbitrary but reasonable choice).
+    let mut flat_nodes: Vec<(usize, Vec<usize>)> = real_nodes.clone();
+    let mut ranks: Vec<usize> = real_ranks.clone();
+
+    // Build name→flat_index for real nodes
+    let mut name_to_flat: HashMap<&str, usize> = HashMap::new();
+    for (fi, (ni, _)) in real_nodes.iter().enumerate() {
+        name_to_flat.insert(&diagram.nodes[*ni].name, fi);
+    }
+
+    // Build graph edges (index-based), splitting long edges with virtual nodes
+    let mut graph_edges: Vec<(usize, usize)> = Vec::new();
+    // Track which virtual nodes belong to which original edge: edge_key → vec of virtual fi
+    let mut virtual_chains: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for edge in &diagram.edges {
+        let from_fi = name_to_flat.get(edge.from.as_str()).copied();
+        let to_fi = name_to_flat.get(edge.to.as_str()).copied();
+        if let (Some(from), Some(to)) = (from_fi, to_fi) {
+            if from == to {
+                continue;
+            }
+            let from_rank = ranks[from];
+            let to_rank = ranks[to];
+            if to_rank <= from_rank {
+                // Back edge or same rank — add direct edge
+                graph_edges.push((from, to));
+                continue;
+            }
+            let span = to_rank - from_rank;
+            if span <= 1 {
+                // Adjacent ranks — no virtual nodes needed
+                graph_edges.push((from, to));
+            } else {
+                // Long edge: insert virtual nodes at intermediate ranks
+                let edge_key = format!("{}→{}", edge.from, edge.to);
+                let mut chain = Vec::new();
+                let mut prev = from;
+                // Inherit cluster chain from the edge's source
+                let cluster_chain = flat_nodes[from].1.clone();
+                for r in (from_rank + 1)..to_rank {
+                    let vi = flat_nodes.len();
+                    flat_nodes.push((usize::MAX, cluster_chain.clone())); // usize::MAX = virtual
+                    ranks.push(r);
+                    graph_edges.push((prev, vi));
+                    chain.push(vi);
+                    prev = vi;
+                }
+                graph_edges.push((prev, to));
+                virtual_chains.insert(edge_key, chain);
+            }
+        }
+    }
+
+    // Phase 3: Order within ranks (including virtual nodes)
+    let rank_buckets = order_ranks(&flat_nodes, &ranks, &graph_edges);
 
     // Phase 4: Coordinate assignment
     let max_rank = ranks.iter().copied().max().unwrap_or(0);
     let rank_sep = 40.0;
     let node_sep = 20.0;
-    let cluster_sep = GROUP_H_PAD * 2.0 + 16.0; // extra spacing between different clusters
+    let cluster_sep = GROUP_H_PAD * 2.0 + 16.0;
+    let virtual_w = 2.0; // virtual nodes are thin
+
+    // Width of a flat node (real or virtual)
+    let node_w = |fi: usize| -> f64 {
+        if flat_nodes[fi].0 == usize::MAX { virtual_w } else { NODE_W }
+    };
 
     // Compute the minimum spacing between two adjacent nodes in a rank.
-    // If they belong to different clusters, add cluster separation.
     let spacing = |a: usize, b: usize| -> f64 {
         let ca = &flat_nodes[a].1;
         let cb = &flat_nodes[b].1;
         if ca == cb {
-            // Same cluster chain — just node_sep
             node_sep
         } else {
-            // Different clusters — add cluster boundary padding
-            // Count how many cluster boundaries are crossed
             let shared = ca.iter().zip(cb.iter()).take_while(|(x, y)| x == y).count();
             let boundaries = (ca.len() - shared) + (cb.len() - shared);
             node_sep + cluster_sep * (boundaries as f64).max(1.0)
@@ -546,25 +716,21 @@ fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
     };
 
     // Compute rank heights, accounting for cluster headers.
-    // If a rank contains the topmost node of a cluster, add header space.
     let rank_height: Vec<f64> = vec![NODE_H; max_rank + 1];
 
-    // Find the minimum rank for each cluster
     let mut cluster_min_rank: HashMap<usize, usize> = HashMap::new();
-    for (fi, (_, chain)) in flat_nodes.iter().enumerate() {
+    for (fi, (ni, chain)) in flat_nodes.iter().enumerate() {
+        if *ni == usize::MAX { continue; } // skip virtual for cluster rank computation
         for &gi in chain {
             let entry = cluster_min_rank.entry(gi).or_insert(ranks[fi]);
             *entry = (*entry).min(ranks[fi]);
         }
     }
 
-    // Add cluster header heights to the ranks that contain cluster tops
     let mut rank_extra_top: Vec<f64> = vec![0.0; max_rank + 1];
     for (_, &min_r) in &cluster_min_rank {
-        // Each cluster header adds GROUP_HEADER_H + GROUP_V_PAD to its top rank
         rank_extra_top[min_r] += GROUP_HEADER_H + GROUP_V_PAD;
     }
-    // Cap the extra to avoid excessive spacing when many clusters start at the same rank
     for extra in &mut rank_extra_top {
         *extra = extra.min(GROUP_HEADER_H * 2.0 + GROUP_V_PAD * 2.0);
     }
@@ -577,7 +743,6 @@ fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
     }
 
     // X coordinate: place nodes left to right within each rank
-    // Use cluster-aware spacing between nodes
     let mut node_x: Vec<f64> = vec![0.0; flat_nodes.len()];
     let mut node_y: Vec<f64> = vec![0.0; flat_nodes.len()];
 
@@ -590,79 +755,77 @@ fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
             }
             node_x[fi] = x_cursor;
             node_y[fi] = rank_y[r];
-            x_cursor += NODE_W;
+            x_cursor += node_w(fi);
         }
     }
 
-    // Center alignment: for each node, try to center it under/over its
-    // connected nodes in adjacent ranks (simple barycenter adjustment)
-    let name_to_flat: HashMap<&str, usize> = flat_nodes
-        .iter()
-        .enumerate()
-        .map(|(fi, (ni, _))| (diagram.nodes[*ni].name.as_str(), fi))
-        .collect();
+    // Center alignment using graph_edges (works for both real and virtual nodes)
+    // Build successor/predecessor from graph_edges for coordinate refinement
+    let total = flat_nodes.len();
+    let mut adj_succ: Vec<Vec<usize>> = vec![vec![]; total];
+    let mut adj_pred: Vec<Vec<usize>> = vec![vec![]; total];
+    for &(from, to) in &graph_edges {
+        if from < total && to < total {
+            adj_succ[from].push(to);
+            adj_pred[to].push(from);
+        }
+    }
 
-    for _pass in 0..4 {
+    for _pass in 0..6 {
         for r in 0..=max_rank {
             let bucket = &rank_buckets[r];
-            if bucket.is_empty() {
-                continue;
-            }
+            if bucket.is_empty() { continue; }
 
-            // Compute target x for each node based on connected nodes
             let mut targets: Vec<(usize, f64)> = Vec::new();
-
             for &fi in bucket {
-                let name = &diagram.nodes[flat_nodes[fi].0].name;
                 let mut connected_xs: Vec<f64> = Vec::new();
-                for edge in &diagram.edges {
-                    if edge.from == *name {
-                        if let Some(&to_fi) = name_to_flat.get(edge.to.as_str()) {
-                            if ranks[to_fi] != r {
-                                connected_xs.push(node_x[to_fi] + NODE_W / 2.0);
-                            }
-                        }
-                    }
-                    if edge.to == *name {
-                        if let Some(&from_fi) = name_to_flat.get(edge.from.as_str()) {
-                            if ranks[from_fi] != r {
-                                connected_xs.push(node_x[from_fi] + NODE_W / 2.0);
-                            }
-                        }
-                    }
+                for &s in &adj_succ[fi] {
+                    connected_xs.push(node_x[s] + node_w(s) / 2.0);
+                }
+                for &p in &adj_pred[fi] {
+                    connected_xs.push(node_x[p] + node_w(p) / 2.0);
                 }
                 if !connected_xs.is_empty() {
                     let avg = connected_xs.iter().sum::<f64>() / connected_xs.len() as f64;
-                    targets.push((fi, avg - NODE_W / 2.0));
+                    targets.push((fi, avg - node_w(fi) / 2.0));
                 }
             }
 
-            // Apply targets while maintaining order and minimum spacing
             for (fi, target_x) in &targets {
                 let idx = bucket.iter().position(|&f| f == *fi).unwrap();
                 let min_x = if idx == 0 {
                     PADDING
                 } else {
                     let prev = bucket[idx - 1];
-                    node_x[prev] + NODE_W + spacing(prev, *fi)
+                    node_x[prev] + node_w(prev) + spacing(prev, *fi)
                 };
                 let max_x = if idx == bucket.len() - 1 {
                     f64::MAX
                 } else {
                     let next = bucket[idx + 1];
-                    node_x[next] - NODE_W - spacing(*fi, next)
+                    node_x[next] - node_w(*fi) - spacing(*fi, next)
                 };
                 node_x[*fi] = target_x.max(min_x).min(max_x);
             }
         }
     }
 
-    // Store node positions
-    for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+    // Store real node positions only
+    for fi in 0..real_count {
+        let (ni, _) = flat_nodes[fi];
         positions.insert(
-            diagram.nodes[*ni].name.clone(),
+            diagram.nodes[ni].name.clone(),
             (node_x[fi], node_y[fi], NODE_W, NODE_H),
         );
+    }
+
+    // Build edge waypoints from virtual node positions
+    for (edge_key, chain) in &virtual_chains {
+        let waypoints: Vec<(f64, f64)> = chain
+            .iter()
+            .map(|&vi| (node_x[vi] + virtual_w / 2.0, node_y[vi] + NODE_H / 2.0))
+            .collect();
+        edge_waypoints.insert(edge_key.clone(), waypoints);
     }
 
     // Phase 5: Compute cluster boundaries from node positions
@@ -674,7 +837,6 @@ fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
     );
 
     // Phase 6: Fix cluster overlaps by shifting nodes
-    // Repeat until no overlaps remain (typically 1-3 iterations)
     for _ in 0..5 {
         let shifts = find_cluster_shifts(
             &diagram.top_level,
@@ -685,19 +847,38 @@ fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
         if shifts.is_empty() {
             break;
         }
-        // Apply shifts to node x-coordinates
-        for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
-            if let Some(&dx) = shifts.get(&diagram.nodes[*ni].name) {
+        for fi in 0..real_count {
+            let (ni, _) = flat_nodes[fi];
+            if let Some(&dx) = shifts.get(&diagram.nodes[ni].name) {
                 node_x[fi] += dx;
             }
         }
-        // Recompute all positions
+        // Also shift virtual nodes that belong to shifted edges
+        for (edge_key, chain) in &virtual_chains {
+            // Parse edge_key "from→to" to find if source was shifted
+            if let Some(from_name) = edge_key.split('→').next() {
+                if let Some(&dx) = shifts.get(from_name) {
+                    for &vi in chain {
+                        node_x[vi] += dx;
+                    }
+                }
+            }
+        }
         positions.clear();
-        for (fi, (ni, _)) in flat_nodes.iter().enumerate() {
+        for fi in 0..real_count {
+            let (ni, _) = flat_nodes[fi];
             positions.insert(
-                diagram.nodes[*ni].name.clone(),
+                diagram.nodes[ni].name.clone(),
                 (node_x[fi], node_y[fi], NODE_W, NODE_H),
             );
+        }
+        // Update waypoints
+        for (edge_key, chain) in &virtual_chains {
+            let waypoints: Vec<(f64, f64)> = chain
+                .iter()
+                .map(|&vi| (node_x[vi] + virtual_w / 2.0, node_y[vi] + NODE_H / 2.0))
+                .collect();
+            edge_waypoints.insert(edge_key.clone(), waypoints);
         }
         compute_cluster_bounds(
             &diagram.top_level,
@@ -707,7 +888,7 @@ fn compound_layout(diagram: &Diagram) -> HashMap<String, (f64, f64, f64, f64)> {
         );
     }
 
-    positions
+    (positions, edge_waypoints)
 }
 
 /// Recursively compute cluster (group) bounding boxes from the positions of their children.
@@ -763,32 +944,39 @@ fn find_cluster_shifts(
     let mut shifts: HashMap<String, f64> = HashMap::new();
     let gap = GROUP_H_PAD;
 
-    // Collect sibling element bounds sorted by x position
-    let mut sibling_bounds: Vec<(usize, String, f64, f64, f64, f64)> = Vec::new(); // (elem_idx, name, x, y, w, h)
+    // Collect sibling element bounds sorted by x center for stable ordering
+    let mut sibling_bounds: Vec<(usize, String, f64, f64, f64, f64)> = Vec::new();
     for (i, elem) in elements.iter().enumerate() {
         let name = element_name(elem, nodes, groups);
         if let Some(&(x, y, w, h)) = positions.get(&name) {
             sibling_bounds.push((i, name, x, y, w, h));
         }
     }
-    sibling_bounds.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+    // Sort by x center to determine intended order
+    sibling_bounds.sort_by(|a, b| {
+        let ca = a.2 + a.4 / 2.0;
+        let cb = b.2 + b.4 / 2.0;
+        ca.partial_cmp(&cb).unwrap()
+    });
 
-    // Check consecutive pairs for x-overlap
+    // For each consecutive pair in intended order, ensure no overlap.
+    // Push the right element further right if needed.
     for idx in 0..sibling_bounds.len().saturating_sub(1) {
-        let (_, _, ax, ay, aw, ah) = &sibling_bounds[idx];
-        let (ei, _, bx, by, _bw, bh) = &sibling_bounds[idx + 1];
+        let (_, _, ax, ay, aw, ah) = sibling_bounds[idx];
+        let (ei, _, bx, by, _bw, bh) = sibling_bounds[idx + 1].clone();
 
         // Check if they overlap vertically (y ranges intersect)
-        let y_overlap = *ay < by + bh && *by < ay + ah;
+        let y_overlap = ay < by + bh && by < ay + ah;
         if !y_overlap {
             continue;
         }
 
         let needed_x = ax + aw + gap;
-        if *bx < needed_x {
+        if bx < needed_x {
             let dx = needed_x - bx;
-            // Shift element and all its descendant nodes
-            collect_node_shifts(&elements[*ei], nodes, groups, dx, &mut shifts);
+            collect_node_shifts(&elements[ei], nodes, groups, dx, &mut shifts);
+            // Update this entry's x for cascading checks
+            sibling_bounds[idx + 1].2 += dx;
         }
     }
 
@@ -1021,7 +1209,7 @@ fn clip_to_rect(cx: f64, cy: f64, tx: f64, ty: f64, hw: f64, hh: f64) -> (f64, f
 // ---------------------------------------------------------------------------
 
 fn render_svg(diagram: &Diagram) -> String {
-    let positions = compound_layout(diagram);
+    let (positions, edge_waypoints) = compound_layout(diagram);
 
     // SVG dimensions
     let mut max_x: f64 = 0.0;
@@ -1089,7 +1277,17 @@ fn render_svg(diagram: &Diagram) -> String {
         let idx = { let seen = pair_seen.entry(pair_key).or_insert(0); let v = *seen; *seen += 1; v };
         let offset = if total > 1 { (idx as f64 - (total as f64 - 1.0) / 2.0) * 15.0 } else { 0.0 };
 
-        let route = route_around_nodes(cx1, cy1, cx2, cy2, &edge.from, &edge.to, &all_bounds, offset);
+        // Use virtual node waypoints if available, otherwise route around nodes
+        let edge_key = format!("{}→{}", edge.from, edge.to);
+        let route = if let Some(waypoints) = edge_waypoints.get(&edge_key) {
+            // Build route: start → waypoints → end
+            let mut r = vec![(cx1, cy1)];
+            r.extend(waypoints);
+            r.push((cx2, cy2));
+            r
+        } else {
+            route_around_nodes(cx1, cy1, cx2, cy2, &edge.from, &edge.to, &all_bounds, offset)
+        };
 
         let start_target = if route.len() > 1 { route[1] } else { (cx2, cy2) };
         let end_target = if route.len() > 1 { route[route.len() - 2] } else { (cx1, cy1) };
