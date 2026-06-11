@@ -981,7 +981,8 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
         }
     }
 
-    // Recompute final positions
+    // Phase 8: Re-run overlap correction after Phase 7's barycenter re-adjustment.
+    // Phase 7 may have pulled standalone nodes back into cluster bounding boxes.
     positions.clear();
     for fi in 0..real_count {
         let (ni, _) = flat_nodes[fi];
@@ -990,6 +991,55 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
             (node_x[fi], node_y[fi], NODE_W, NODE_H),
         );
     }
+    compute_cluster_bounds(
+        &diagram.top_level,
+        &diagram.nodes,
+        &diagram.groups,
+        &mut positions,
+    );
+    for _ in 0..3 {
+        let shifts = find_cluster_shifts(
+            &diagram.top_level,
+            &diagram.nodes,
+            &diagram.groups,
+            &positions,
+            &elem_sort_keys,
+        );
+        if shifts.is_empty() {
+            break;
+        }
+        for fi in 0..real_count {
+            let (ni, _) = flat_nodes[fi];
+            if let Some(&dx) = shifts.get(&diagram.nodes[ni].name) {
+                node_x[fi] += dx;
+            }
+        }
+        for (edge_key, chain) in &virtual_chains {
+            if let Some(from_name) = edge_key.split('→').next() {
+                if let Some(&dx) = shifts.get(from_name) {
+                    for &vi in chain {
+                        node_x[vi] += dx;
+                    }
+                }
+            }
+        }
+        positions.clear();
+        for fi in 0..real_count {
+            let (ni, _) = flat_nodes[fi];
+            positions.insert(
+                diagram.nodes[ni].name.clone(),
+                (node_x[fi], node_y[fi], NODE_W, NODE_H),
+            );
+        }
+        compute_cluster_bounds(
+            &diagram.top_level,
+            &diagram.nodes,
+            &diagram.groups,
+            &mut positions,
+        );
+    }
+
+    // Final waypoints
     for (edge_key, chain) in &virtual_chains {
         let waypoints: Vec<(f64, f64)> = chain
             .iter()
@@ -997,12 +1047,6 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
             .collect();
         edge_waypoints.insert(edge_key.clone(), waypoints);
     }
-    compute_cluster_bounds(
-        &diagram.top_level,
-        &diagram.nodes,
-        &diagram.groups,
-        &mut positions,
-    );
 
     (positions, edge_waypoints)
 }
