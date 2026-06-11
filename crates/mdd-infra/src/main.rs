@@ -73,6 +73,7 @@ struct Diagram {
     groups: Vec<Group>,
     top_level: Vec<Element>,
     edges: Vec<Edge>,
+    show_type: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -86,13 +87,19 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let mut edges: Vec<Edge> = Vec::new();
     let mut name_to_node: HashMap<String, usize> = HashMap::new();
     let mut name_to_group: HashMap<String, usize> = HashMap::new();
+    let mut show_type = true;
 
     // Stack for nested groups: (group_index, children_so_far)
     let mut group_stack: Vec<(usize, Vec<Element>)> = Vec::new();
 
     for line in input.lines() {
         let line = line.trim();
-        if line.is_empty() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if line == "hide type" {
+            show_type = false;
             continue;
         }
 
@@ -176,6 +183,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
         groups,
         top_level,
         edges,
+        show_type,
     })
 }
 
@@ -735,7 +743,7 @@ fn render_svg(diagram: &Diagram) -> String {
     ));
 
     // Render groups (back to front)
-    render_groups_recursive(&mut svg, &diagram.top_level, &diagram.nodes, &diagram.groups, &positions);
+    render_groups_recursive(&mut svg, &diagram.top_level, &diagram.nodes, &diagram.groups, &positions, diagram.show_type);
 
     // Build node bounds for edge routing (nodes only, not groups —
     // edges are allowed to cross group borders since they're dashed)
@@ -822,6 +830,7 @@ fn render_groups_recursive(
     nodes: &[Node],
     groups: &[Group],
     positions: &HashMap<String, (f64, f64, f64, f64)>,
+    show_type: bool,
 ) {
     for elem in elements {
         match elem {
@@ -840,19 +849,19 @@ fn render_groups_recursive(
                     ));
                 }
                 // Recurse into children
-                render_groups_recursive(svg, &g.children, nodes, groups, positions);
+                render_groups_recursive(svg, &g.children, nodes, groups, positions, show_type);
             }
             Element::NodeRef(ni) => {
                 let node = &nodes[*ni];
                 if let Some(&(x, y, w, h)) = positions.get(&node.name) {
-                    render_node(svg, x, y, w, h, node);
+                    render_node(svg, x, y, w, h, node, show_type);
                 }
             }
         }
     }
 }
 
-fn render_node(svg: &mut String, x: f64, y: f64, w: f64, h: f64, node: &Node) {
+fn render_node(svg: &mut String, x: f64, y: f64, w: f64, h: f64, node: &Node, show_type: bool) {
     let (fill, stroke) = node_colors(&node.node_type);
 
     svg.push_str(&format!(
@@ -874,14 +883,16 @@ fn render_node(svg: &mut String, x: f64, y: f64, w: f64, h: f64, node: &Node) {
     ));
 
     // Type badge
-    let type_label = format!("{:?}", node.node_type).to_lowercase();
-    svg.push_str(&format!(
-        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\" fill=\"{}\">{}</text>",
-        x + w / 2.0,
-        y + h - 20.0,
-        stroke,
-        type_label
-    ));
+    if show_type {
+        let type_label = format!("{:?}", node.node_type).to_lowercase();
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\" fill=\"{}\">{}</text>",
+            x + w / 2.0,
+            y + h - 20.0,
+            stroke,
+            type_label
+        ));
+    }
 }
 
 fn render_icon(svg: &mut String, cx: f64, cy: f64, nt: &NodeType, color: &str) {
