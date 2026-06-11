@@ -837,12 +837,67 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
     );
 
     // Phase 6: Fix cluster overlaps by shifting nodes
+    // Compute sort keys for top-level elements based on their highest-rank node positions.
+    // This ensures overlap correction respects the rank-based ordering rather than
+    // bounding box centers (which can be misleading for wide clusters).
+    let mut elem_sort_keys: HashMap<String, f64> = HashMap::new();
+    {
+        // For each top-level element, find the min rank among its nodes and compute
+        // the average x of nodes at that rank.
+        fn compute_sort_key(
+            elem: &Element, nodes_list: &[Node], groups: &[Group],
+            flat_nodes: &[(usize, Vec<usize>)], node_x: &[f64], ranks: &[usize],
+            real_count: usize,
+        ) -> f64 {
+            // Collect all real flat indices belonging to this element
+            let mut indices: Vec<usize> = Vec::new();
+            collect_flat_indices(elem, nodes_list, groups, flat_nodes, real_count, &mut indices);
+            if indices.is_empty() { return 0.0; }
+            // Find min rank
+            let min_rank = indices.iter().map(|&fi| ranks[fi]).min().unwrap();
+            // Average x of nodes at min rank
+            let at_min: Vec<f64> = indices.iter()
+                .filter(|&&fi| ranks[fi] == min_rank)
+                .map(|&fi| node_x[fi])
+                .collect();
+            at_min.iter().sum::<f64>() / at_min.len() as f64
+        }
+
+        fn collect_flat_indices(
+            elem: &Element, nodes_list: &[Node], groups: &[Group],
+            flat_nodes: &[(usize, Vec<usize>)], real_count: usize,
+            out: &mut Vec<usize>,
+        ) {
+            match elem {
+                Element::NodeRef(ni) => {
+                    for fi in 0..real_count {
+                        if flat_nodes[fi].0 == *ni {
+                            out.push(fi);
+                        }
+                    }
+                }
+                Element::GroupRef(gi) => {
+                    for child in &groups[*gi].children {
+                        collect_flat_indices(child, nodes_list, groups, flat_nodes, real_count, out);
+                    }
+                }
+            }
+        }
+
+        for elem in &diagram.top_level {
+            let name = element_name(elem, &diagram.nodes, &diagram.groups);
+            let key = compute_sort_key(elem, &diagram.nodes, &diagram.groups, &flat_nodes, &node_x, &ranks, real_count);
+            elem_sort_keys.insert(name, key);
+        }
+    }
+
     for _ in 0..5 {
         let shifts = find_cluster_shifts(
             &diagram.top_level,
             &diagram.nodes,
             &diagram.groups,
             &positions,
+            &elem_sort_keys,
         );
         if shifts.is_empty() {
             break;
@@ -934,17 +989,19 @@ fn compute_cluster_bounds(
 }
 
 /// Find x-shifts needed to eliminate overlaps between sibling elements (groups and standalone nodes).
+/// `elem_sort_keys` maps element name → sort key (e.g. avg x of highest-rank nodes).
 /// Returns a map of node_name → dx shift for all nodes that need to move.
 fn find_cluster_shifts(
     elements: &[Element],
     nodes: &[Node],
     groups: &[Group],
     positions: &HashMap<String, (f64, f64, f64, f64)>,
+    elem_sort_keys: &HashMap<String, f64>,
 ) -> HashMap<String, f64> {
     let mut shifts: HashMap<String, f64> = HashMap::new();
     let gap = GROUP_H_PAD;
 
-    // Collect sibling element bounds sorted by x center for stable ordering
+    // Collect sibling element bounds
     let mut sibling_bounds: Vec<(usize, String, f64, f64, f64, f64)> = Vec::new();
     for (i, elem) in elements.iter().enumerate() {
         let name = element_name(elem, nodes, groups);
@@ -952,11 +1009,11 @@ fn find_cluster_shifts(
             sibling_bounds.push((i, name, x, y, w, h));
         }
     }
-    // Sort by x center to determine intended order
+    // Sort by precomputed sort key (rank-based node positions), falling back to bbox center
     sibling_bounds.sort_by(|a, b| {
-        let ca = a.2 + a.4 / 2.0;
-        let cb = b.2 + b.4 / 2.0;
-        ca.partial_cmp(&cb).unwrap()
+        let ka = elem_sort_keys.get(&a.1).copied().unwrap_or(a.2 + a.4 / 2.0);
+        let kb = elem_sort_keys.get(&b.1).copied().unwrap_or(b.2 + b.4 / 2.0);
+        ka.partial_cmp(&kb).unwrap()
     });
 
     // For each consecutive pair in intended order, ensure no overlap.
@@ -983,7 +1040,7 @@ fn find_cluster_shifts(
     // Recurse into groups to fix overlaps among their children
     for elem in elements {
         if let Element::GroupRef(gi) = elem {
-            let child_shifts = find_cluster_shifts(&groups[*gi].children, nodes, groups, positions);
+            let child_shifts = find_cluster_shifts(&groups[*gi].children, nodes, groups, positions, elem_sort_keys);
             for (name, dx) in child_shifts {
                 *shifts.entry(name).or_insert(0.0) += dx;
             }
