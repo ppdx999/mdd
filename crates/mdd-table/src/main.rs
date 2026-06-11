@@ -143,22 +143,6 @@ fn wrap_text(s: &str, max_width: f64) -> Vec<String> {
     lines
 }
 
-/// Extract unit from header text. e.g. "金額(円)" → ("金額", Some("(円)"))
-fn split_header_unit(header: &str) -> (&str, Option<&str>) {
-    // Match full-width or half-width parentheses at the end
-    if let Some(start) = header.rfind('(') {
-        if header.ends_with(')') {
-            return (header[..start].trim(), Some(&header[start..]));
-        }
-    }
-    if let Some(start) = header.rfind('（') {
-        if header.ends_with('）') {
-            return (header[..start].trim(), Some(&header[start..]));
-        }
-    }
-    (header, None)
-}
-
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -166,25 +150,8 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-const UNIT_FONT_SIZE: f64 = 10.0;
-const UNIT_LINE_HEIGHT: f64 = 14.0;
-const UNIT_COLOR: &str = "#5c6bc0";
-
 fn render_svg(table: &Table) -> String {
     let num_cols = table.headers.len();
-
-    // Parse header units
-    let header_parts: Vec<(&str, Option<&str>)> = table
-        .headers
-        .iter()
-        .map(|h| split_header_unit(h))
-        .collect();
-    let has_any_unit = header_parts.iter().any(|(_, u)| u.is_some());
-    let header_row_h = if has_any_unit {
-        HEADER_ROW_HEIGHT + UNIT_LINE_HEIGHT
-    } else {
-        HEADER_ROW_HEIGHT
-    };
 
     // Compute column widths proportional to total text content.
     // Sum all text widths per column (header + all cells), then distribute
@@ -215,21 +182,6 @@ fn render_svg(table: &Table) -> String {
     } else {
         vec![MIN_COL_WIDTH; num_cols]
     };
-
-    // Ensure columns are wide enough for summary row text (subtotal/total),
-    // since summary rows don't wrap text.
-    for row in &table.rows {
-        if row.kind != RowKind::Normal {
-            for (i, cell) in row.cells.iter().enumerate() {
-                if i < num_cols {
-                    let min_w = text_width(cell) + CELL_H_PAD * 2.0;
-                    if col_widths[i] < min_w {
-                        col_widths[i] = min_w;
-                    }
-                }
-            }
-        }
-    }
 
     // Clamp columns to MAX_COL_WIDTH — text will wrap within this limit
     for w in col_widths.iter_mut() {
@@ -288,7 +240,7 @@ fn render_svg(table: &Table) -> String {
     for (bi, block) in blocks.iter().enumerate() {
         // Header row for first block only
         if bi == 0 {
-            total_content_h += header_row_h;
+            total_content_h += HEADER_ROW_HEIGHT;
         }
         // Normal rows
         for &ri in &block.normal_indices {
@@ -322,7 +274,7 @@ fn render_svg(table: &Table) -> String {
 
     // Helper: render a table block (header + normal rows) with border
     let render_table_block = |svg: &mut String, y: f64, show_header: bool, row_indices: &[usize]| -> f64 {
-        let mut block_h = if show_header { header_row_h } else { 0.0 };
+        let mut block_h = if show_header { HEADER_ROW_HEIGHT } else { 0.0 };
         for &ri in row_indices {
             block_h += row_heights[ri];
         }
@@ -331,46 +283,24 @@ fn render_svg(table: &Table) -> String {
             // Header background
             svg.push_str(&format!(
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
-                table_x, y, table_w, header_row_h, HEADER_BG
+                table_x, y, table_w, HEADER_ROW_HEIGHT, HEADER_BG
             ));
             let mut cx = table_x;
-            for (i, (name, unit)) in header_parts.iter().enumerate() {
+            for (i, header) in table.headers.iter().enumerate() {
                 let w = col_widths[i];
-                if has_any_unit {
-                    // Header name on top, unit below
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-                        cx + CELL_H_PAD,
-                        y + header_row_h / 2.0 - UNIT_LINE_HEIGHT / 2.0 + FONT_SIZE / 2.0 - 2.0,
-                        HEADER_TEXT,
-                        escape_xml(name)
-                    ));
-                    if let Some(u) = unit {
-                        svg.push_str(&format!(
-                            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-                            cx + CELL_H_PAD,
-                            y + header_row_h / 2.0 + UNIT_LINE_HEIGHT / 2.0 + UNIT_FONT_SIZE / 2.0 - 2.0,
-                            UNIT_FONT_SIZE,
-                            UNIT_COLOR,
-                            escape_xml(u)
-                        ));
-                    }
-                } else {
-                    // No units anywhere — single centered line
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-                        cx + CELL_H_PAD,
-                        y + header_row_h / 2.0 + FONT_SIZE / 2.0 - 2.0,
-                        HEADER_TEXT,
-                        escape_xml(name)
-                    ));
-                }
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                    cx + CELL_H_PAD,
+                    y + HEADER_ROW_HEIGHT / 2.0 + FONT_SIZE / 2.0 - 2.0,
+                    HEADER_TEXT,
+                    escape_xml(header)
+                ));
                 cx += w;
             }
         }
 
         // Data rows
-        let mut row_y = y + if show_header { header_row_h } else { 0.0 };
+        let mut row_y = y + if show_header { HEADER_ROW_HEIGHT } else { 0.0 };
         for (local_idx, &ri) in row_indices.iter().enumerate() {
             let rh = row_heights[ri];
             let bg = if local_idx % 2 == 1 { ALT_ROW_BG } else { "white" };
