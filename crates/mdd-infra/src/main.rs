@@ -943,6 +943,67 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
         );
     }
 
+    // Phase 7: Post-overlap barycenter re-adjustment.
+    // After overlap correction shifts clusters, standalone nodes and virtual nodes
+    // may be misaligned with their connections. Re-run barycenter to fix.
+    for _pass in 0..4 {
+        for r in 0..=max_rank {
+            let bucket = &rank_buckets[r];
+            if bucket.is_empty() { continue; }
+
+            for (idx_in_bucket, &fi) in bucket.iter().enumerate() {
+                let mut connected_xs: Vec<f64> = Vec::new();
+                for &s in &adj_succ[fi] {
+                    connected_xs.push(node_x[s] + node_w(s) / 2.0);
+                }
+                for &p in &adj_pred[fi] {
+                    connected_xs.push(node_x[p] + node_w(p) / 2.0);
+                }
+                if connected_xs.is_empty() { continue; }
+
+                let avg = connected_xs.iter().sum::<f64>() / connected_xs.len() as f64;
+                let target_x = avg - node_w(fi) / 2.0;
+
+                let min_x = if idx_in_bucket == 0 {
+                    PADDING
+                } else {
+                    let prev = bucket[idx_in_bucket - 1];
+                    node_x[prev] + node_w(prev) + spacing(prev, fi)
+                };
+                let max_x = if idx_in_bucket == bucket.len() - 1 {
+                    f64::MAX
+                } else {
+                    let next = bucket[idx_in_bucket + 1];
+                    node_x[next] - node_w(fi) - spacing(fi, next)
+                };
+                node_x[fi] = target_x.max(min_x).min(max_x);
+            }
+        }
+    }
+
+    // Recompute final positions
+    positions.clear();
+    for fi in 0..real_count {
+        let (ni, _) = flat_nodes[fi];
+        positions.insert(
+            diagram.nodes[ni].name.clone(),
+            (node_x[fi], node_y[fi], NODE_W, NODE_H),
+        );
+    }
+    for (edge_key, chain) in &virtual_chains {
+        let waypoints: Vec<(f64, f64)> = chain
+            .iter()
+            .map(|&vi| (node_x[vi] + virtual_w / 2.0, node_y[vi] + NODE_H / 2.0))
+            .collect();
+        edge_waypoints.insert(edge_key.clone(), waypoints);
+    }
+    compute_cluster_bounds(
+        &diagram.top_level,
+        &diagram.nodes,
+        &diagram.groups,
+        &mut positions,
+    );
+
     (positions, edge_waypoints)
 }
 
