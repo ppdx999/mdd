@@ -2,6 +2,7 @@ mod plugin;
 mod preview;
 pub(crate) mod process;
 mod slide;
+mod watch;
 
 use std::fs;
 use std::path::Path;
@@ -30,6 +31,7 @@ fn print_help() {
     eprintln!("       mdd preview <file.md>");
     eprintln!("       mdd slide <file.md> > output.pdf");
     eprintln!("       mdd slide-preview <file.md>");
+    eprintln!("       mdd watch <dir>");
     eprintln!();
 
     let plugins = find_plugins();
@@ -80,6 +82,10 @@ fn main() {
         3 if args[1] == "slide-preview" => {
             let path = Path::new(&args[2]);
             slide::preview_slide(path);
+        }
+        3 if args[1] == "watch" => {
+            let path = Path::new(&args[2]);
+            watch::watch(path);
         }
         _ => {
             print_help();

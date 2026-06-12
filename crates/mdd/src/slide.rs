@@ -343,6 +343,14 @@ pub fn generate_slide(path: &Path) {
         .expect("Failed to write PDF");
 }
 
+pub fn build_slide_pdf_from_processed(processed: &str) -> Vec<u8> {
+    let pages = split_pages(processed);
+    if pages.is_empty() {
+        return build_pdf(&[], 2.0);
+    }
+    build_pdf(&pages, 2.0)
+}
+
 // ---------------------------------------------------------------------------
 // Markdown → SVG document renderer (pulldown_cmark-based)
 // ---------------------------------------------------------------------------
