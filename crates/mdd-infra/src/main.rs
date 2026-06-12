@@ -692,8 +692,13 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
 
     // Phase 4: Coordinate assignment
     let max_rank = ranks.iter().copied().max().unwrap_or(0);
-    let rank_sep = 60.0;
-    let node_sep = 30.0;
+    // Compute spacing from edge label lengths so labels fit between nodes
+    let max_label_w = diagram.edges.iter()
+        .filter(|e| !e.label.is_empty())
+        .map(|e| text_width(&e.label))
+        .fold(0.0_f64, f64::max);
+    let rank_sep = (60.0_f64).max(max_label_w * 0.4 + 30.0);
+    let node_sep = (30.0_f64).max(max_label_w * 0.3 + 10.0);
     let cluster_sep = GROUP_H_PAD * 2.0 + 16.0;
     let virtual_w = 2.0; // virtual nodes are thin
 
