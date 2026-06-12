@@ -184,20 +184,36 @@ fn render_svg(concept: &Concept) -> String {
     // Find max node width for bounding box calculation
     let max_node_w = node_widths.iter().cloned().fold(0.0_f64, f64::max);
 
+    // Compute orbit radius dynamically based on node count and sizes.
+    // Nodes are placed on a circle; the radius must be large enough so
+    // adjacent nodes don't overlap. The chord between adjacent nodes
+    // should be at least max_node_w + gap.
+    let node_gap = 40.0;
+    let orbit_radius = if n <= 1 {
+        0.0
+    } else if n == 2 {
+        max_node_w + node_gap
+    } else {
+        // Minimum chord = max_node_w + gap. chord = 2*R*sin(pi/n)
+        let min_chord = max_node_w + node_gap;
+        let angle = std::f64::consts::PI / n as f64;
+        (min_chord / (2.0 * angle.sin())).max(ORBIT_RADIUS)
+    };
+
     // Center of the circular layout
-    let cx = PADDING + ORBIT_RADIUS + max_node_w / 2.0;
-    let cy = PADDING + ORBIT_RADIUS + NODE_H / 2.0;
+    let cx = PADDING + orbit_radius + max_node_w / 2.0;
+    let cy = PADDING + orbit_radius + NODE_H / 2.0;
 
     let total_w = cx * 2.0;
-    let total_h = cy + ORBIT_RADIUS + NODE_H / 2.0 + PADDING;
+    let total_h = cy + orbit_radius + NODE_H / 2.0 + PADDING;
 
     // Compute node positions (circular layout)
     let positions: Vec<(f64, f64)> = (0..n)
         .map(|i| {
             let angle = -std::f64::consts::FRAC_PI_2
                 + 2.0 * std::f64::consts::PI * i as f64 / n as f64;
-            let x = cx + ORBIT_RADIUS * angle.cos();
-            let y = cy + ORBIT_RADIUS * angle.sin();
+            let x = cx + orbit_radius * angle.cos();
+            let y = cy + orbit_radius * angle.sin();
             (x, y)
         })
         .collect();

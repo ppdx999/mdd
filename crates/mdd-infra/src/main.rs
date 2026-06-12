@@ -692,14 +692,26 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
 
     // Phase 4: Coordinate assignment
     let max_rank = ranks.iter().copied().max().unwrap_or(0);
-    let rank_sep = 40.0;
-    let node_sep = 20.0;
+    let rank_sep = 60.0;
+    let node_sep = 30.0;
     let cluster_sep = GROUP_H_PAD * 2.0 + 16.0;
     let virtual_w = 2.0; // virtual nodes are thin
 
+    // Precompute widths for real nodes based on their name length
+    let real_node_widths: Vec<f64> = (0..real_count)
+        .map(|fi| {
+            let name = &diagram.nodes[flat_nodes[fi].0].name;
+            (text_width(name) + 24.0).max(NODE_W) // 24px padding for text inside node
+        })
+        .collect();
+
     // Width of a flat node (real or virtual)
     let node_w = |fi: usize| -> f64 {
-        if flat_nodes[fi].0 == usize::MAX { virtual_w } else { NODE_W }
+        if fi < real_count && flat_nodes[fi].0 != usize::MAX {
+            real_node_widths[fi]
+        } else {
+            virtual_w
+        }
     };
 
     // Compute the minimum spacing between two adjacent nodes in a rank.
@@ -825,7 +837,7 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
         let (ni, _) = flat_nodes[fi];
         positions.insert(
             diagram.nodes[ni].name.clone(),
-            (node_x[fi], node_y[fi], NODE_W, NODE_H),
+            (node_x[fi], node_y[fi], node_w(fi), NODE_H),
         );
     }
 
@@ -934,7 +946,7 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
             let (ni, _) = flat_nodes[fi];
             positions.insert(
                 diagram.nodes[ni].name.clone(),
-                (node_x[fi], node_y[fi], NODE_W, NODE_H),
+                (node_x[fi], node_y[fi], node_w(fi), NODE_H),
             );
         }
         // Update waypoints
@@ -1013,7 +1025,7 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
         let (ni, _) = flat_nodes[fi];
         positions.insert(
             diagram.nodes[ni].name.clone(),
-            (node_x[fi], node_y[fi], NODE_W, NODE_H),
+            (node_x[fi], node_y[fi], node_w(fi), NODE_H),
         );
     }
     compute_cluster_bounds(
@@ -1053,7 +1065,7 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
             let (ni, _) = flat_nodes[fi];
             positions.insert(
                 diagram.nodes[ni].name.clone(),
-                (node_x[fi], node_y[fi], NODE_W, NODE_H),
+                (node_x[fi], node_y[fi], node_w(fi), NODE_H),
             );
         }
         compute_cluster_bounds(
@@ -1084,7 +1096,7 @@ fn compound_layout(diagram: &Diagram) -> (HashMap<String, (f64, f64, f64, f64)>,
         let (ni, _) = flat_nodes[fi];
         positions.insert(
             diagram.nodes[ni].name.clone(),
-            (node_x[fi], node_y[fi], NODE_W, NODE_H),
+            (node_x[fi], node_y[fi], node_w(fi), NODE_H),
         );
     }
     compute_cluster_bounds(
