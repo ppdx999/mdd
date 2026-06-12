@@ -14,6 +14,7 @@ enum Block {
 #[derive(Debug)]
 struct Page {
     title: String,
+    is_title_page: bool,
     blocks: Vec<Block>,
 }
 
@@ -24,9 +25,21 @@ struct Page {
 fn split_pages(input: &str) -> Vec<Page> {
     let mut pages: Vec<Page> = Vec::new();
     let mut current_title = String::new();
+    let mut current_is_title = false;
     let mut current_blocks: Vec<Block> = Vec::new();
     let mut in_svg = false;
     let mut svg_buf = String::new();
+
+    let flush_page = |pages: &mut Vec<Page>, title: &mut String, is_title: &mut bool, blocks: &mut Vec<Block>| {
+        if !title.is_empty() || !blocks.is_empty() {
+            pages.push(Page {
+                title: std::mem::take(title),
+                is_title_page: *is_title,
+                blocks: std::mem::take(blocks),
+            });
+            *is_title = false;
+        }
+    };
 
     for line in input.lines() {
         if !in_svg && line.trim_start().starts_with("<svg") {
@@ -52,12 +65,17 @@ fn split_pages(input: &str) -> Vec<Page> {
             continue;
         }
 
-        if line.starts_with("# ") {
-            if !current_title.is_empty() || !current_blocks.is_empty() {
-                pages.push(Page { title: current_title, blocks: current_blocks });
-            }
+        if line.starts_with("# ") && !line.starts_with("## ") {
+            flush_page(&mut pages, &mut current_title, &mut current_is_title, &mut current_blocks);
             current_title = line[2..].trim().to_string();
-            current_blocks = Vec::new();
+            current_is_title = true;
+            continue;
+        }
+
+        if line.starts_with("## ") && !line.starts_with("### ") {
+            flush_page(&mut pages, &mut current_title, &mut current_is_title, &mut current_blocks);
+            current_title = line[3..].trim().to_string();
+            current_is_title = false;
             continue;
         }
 
@@ -74,9 +92,7 @@ fn split_pages(input: &str) -> Vec<Page> {
         }
     }
 
-    if !current_title.is_empty() || !current_blocks.is_empty() {
-        pages.push(Page { title: current_title, blocks: current_blocks });
-    }
+    flush_page(&mut pages, &mut current_title, &mut current_is_title, &mut current_blocks);
 
     for page in &mut pages {
         page.blocks.retain(|b| match b {
@@ -128,7 +144,11 @@ fn build_page_svg(page: &Page, fixed_width: f64) -> String {
     // Compute content height
     let mut content_h: f64 = 0.0;
     if !page.title.is_empty() {
-        content_h += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
+        if page.is_title_page {
+            content_h += TITLE_FONT_SIZE;
+        } else {
+            content_h += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
+        }
     }
     for block in &page.blocks {
         match block {
@@ -165,16 +185,26 @@ fn build_page_svg(page: &Page, fixed_width: f64) -> String {
     let mut y = PAGE_PAD + y_offset;
 
     if !page.title.is_empty() {
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#1a1a1a\">{}</text>",
-            PAGE_PAD, y + TITLE_FONT_SIZE * 0.85, TITLE_FONT_SIZE, escape_xml(&page.title)
-        ));
-        y += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
-        svg.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>",
-            PAGE_PAD, y, page_w - PAGE_PAD, y
-        ));
-        y += BLOCK_GAP;
+        if page.is_title_page {
+            // H1: centered title page
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#1a1a1a\" text-anchor=\"middle\">{}</text>",
+                page_w / 2.0, y + TITLE_FONT_SIZE * 0.85, TITLE_FONT_SIZE, escape_xml(&page.title)
+            ));
+            y += TITLE_FONT_SIZE + BLOCK_GAP;
+        } else {
+            // H2: left-aligned slide header with underline
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"{}\" font-weight=\"bold\" fill=\"#1a1a1a\">{}</text>",
+                PAGE_PAD, y + TITLE_FONT_SIZE * 0.85, TITLE_FONT_SIZE, escape_xml(&page.title)
+            ));
+            y += TITLE_FONT_SIZE + TITLE_BOTTOM_PAD;
+            svg.push_str(&format!(
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#e0e0e0\" stroke-width=\"1\"/>",
+                PAGE_PAD, y, page_w - PAGE_PAD, y
+            ));
+            y += BLOCK_GAP;
+        }
     }
 
     for block in &page.blocks {
