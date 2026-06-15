@@ -113,6 +113,11 @@ const MAX_LINE_CHARS: usize = 14;
 const PKG_PADDING: f64 = 20.0;
 const PKG_HEADER_H: f64 = 24.0;
 
+const ACTOR_COL_WIDTH: f64 = 100.0;
+const COL_GAP: f64 = 60.0;
+const UC_GAP_Y: f64 = 20.0;
+const PKG_GAP_Y: f64 = 30.0;
+
 const COLOR_DARK: &str = "#333";
 const COLOR_MID: &str = "#666";
 const COLOR_FILL: &str = "#f0f8ff";
@@ -160,7 +165,6 @@ fn wrap_lines(label: &str) -> Vec<String> {
     lines
 }
 
-/// Calculate the usecase ellipse size based on the label
 fn usecase_size(label: &str) -> (f64, f64) {
     let lines = wrap_lines(label);
     let text_w = lines
@@ -173,87 +177,220 @@ fn usecase_size(label: &str) -> (f64, f64) {
     (w, h)
 }
 
-fn node_size(node: &Node) -> (f64, f64) {
-    match node.kind {
-        NodeKind::Actor => (ACTOR_WIDTH, ACTOR_HEIGHT),
-        NodeKind::Usecase => usecase_size(&node.label),
-    }
+// ---------------------------------------------------------------------------
+// Custom layout: actors on sides, usecases in center
+// ---------------------------------------------------------------------------
+
+struct Layout {
+    positions: HashMap<String, (f64, f64, f64, f64)>,
 }
 
-// ---------------------------------------------------------------------------
-// Build LayoutGraph from parsed Diagram
-// ---------------------------------------------------------------------------
+fn compute_layout(diagram: &Diagram) -> Layout {
+    let mut positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
 
-fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
-    let mut graph = mdd_layout::LayoutGraph::new();
+    // Separate actors and usecases
+    let actor_ids: Vec<usize> = diagram.nodes.iter().enumerate()
+        .filter(|(_, n)| matches!(n.kind, NodeKind::Actor))
+        .map(|(i, _)| i).collect();
+    let usecase_ids: Vec<usize> = diagram.nodes.iter().enumerate()
+        .filter(|(_, n)| matches!(n.kind, NodeKind::Usecase))
+        .map(|(i, _)| i).collect();
 
-    // Add all nodes
-    for node in &diagram.nodes {
-        let (w, h) = node_size(node);
-        graph.nodes.push(mdd_layout::LayoutNode {
-            name: node.label.clone(),
-            width: w,
-            height: h,
-        });
+    // --- Step 1: Layout usecases vertically by package (Sugiyama-like ordering) ---
+
+    // Build usecase-to-usecase edges for ordering within packages
+    let uc_set: std::collections::HashSet<usize> = usecase_ids.iter().copied().collect();
+    let mut uc_edges: Vec<(usize, usize)> = Vec::new();
+    for &(from, to) in &diagram.edges {
+        if uc_set.contains(&from) && uc_set.contains(&to) {
+            uc_edges.push((from, to));
+        }
     }
 
-    // Add edges
-    for (from, to) in &diagram.edges {
-        graph.edges.push(mdd_layout::LayoutEdge {
-            from: diagram.nodes[*from].label.clone(),
-            to: diagram.nodes[*to].label.clone(),
-            label: String::new(),
-        });
-    }
+    // Order usecases: group by package, topological sort within each group
+    // For simplicity: use declaration order + push targets of uc edges after sources
+    let mut uc_order: Vec<usize> = Vec::new();
+    let mut placed: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
-    // Build groups from packages and top_level elements
-    // Map package name → group index
-    let mut pkg_to_group: HashMap<String, usize> = HashMap::new();
-    for pkg_name in &diagram.packages {
-        let gi = graph.groups.len();
-        let mut children = Vec::new();
-        for (ni, node) in diagram.nodes.iter().enumerate() {
-            if node.package.as_deref() == Some(pkg_name) {
-                children.push(mdd_layout::LayoutElement::NodeRef(ni));
+    // First, place by package order
+    for pkg in &diagram.packages {
+        let pkg_ucs: Vec<usize> = usecase_ids.iter()
+            .filter(|&&i| diagram.nodes[i].package.as_deref() == Some(pkg))
+            .copied().collect();
+
+        // Simple topological sort within package
+        let mut sorted = topo_sort_subset(&pkg_ucs, &uc_edges);
+        // Fallback: if topo sort didn't include all, append remaining
+        for &id in &pkg_ucs {
+            if !sorted.contains(&id) {
+                sorted.push(id);
             }
         }
-        graph.groups.push(mdd_layout::LayoutGroup {
-            name: pkg_name.clone(),
-            children,
-        });
-        pkg_to_group.insert(pkg_name.clone(), gi);
-    }
 
-    // Build top_level: standalone nodes + group refs
-    let mut in_group: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    for group in &graph.groups {
-        for child in &group.children {
-            if let mdd_layout::LayoutElement::NodeRef(ni) = child {
-                in_group.insert(*ni);
+        for id in sorted {
+            if placed.insert(id) {
+                uc_order.push(id);
             }
         }
     }
-    for (ni, _) in diagram.nodes.iter().enumerate() {
-        if !in_group.contains(&ni) {
-            graph.top_level.push(mdd_layout::LayoutElement::NodeRef(ni));
+
+    // Unpackaged usecases
+    for &id in &usecase_ids {
+        if placed.insert(id) {
+            uc_order.push(id);
         }
     }
-    for (_, &gi) in &pkg_to_group {
-        graph.top_level.push(mdd_layout::LayoutElement::GroupRef(gi));
+
+    // --- Step 2: Position usecases in center column ---
+
+    // Compute max usecase width for center column sizing
+    let max_uc_w: f64 = uc_order.iter()
+        .map(|&i| usecase_size(&diagram.nodes[i].label).0)
+        .fold(0.0_f64, f64::max);
+
+    let center_x = PADDING + ACTOR_COL_WIDTH + COL_GAP;
+    let mut cur_y = PADDING;
+    let mut current_pkg: Option<&str> = None;
+    let mut pkg_start_y: HashMap<String, f64> = HashMap::new();
+
+    for &uc_id in &uc_order {
+        let node = &diagram.nodes[uc_id];
+        let pkg = node.package.as_deref();
+
+        // Check if entering a new package
+        if pkg != current_pkg.as_deref() {
+            if current_pkg.is_some() {
+                cur_y += PKG_GAP_Y; // gap between packages
+            }
+            if let Some(p) = pkg {
+                pkg_start_y.insert(p.to_string(), cur_y);
+                cur_y += PKG_HEADER_H + PKG_PADDING; // header + padding
+            }
+            current_pkg = pkg;
+        }
+
+        let (w, h) = usecase_size(&node.label);
+        let x = center_x + (max_uc_w - w) / 2.0; // center-align within column
+        positions.insert(node.label.clone(), (x, cur_y, w, h));
+        cur_y += h + UC_GAP_Y;
     }
 
-    graph
+    let center_bottom = cur_y;
+
+    // --- Step 3: Position actors on left and right sides ---
+
+    // Compute barycenter Y for each actor
+    let mut actor_bary: Vec<(usize, f64)> = Vec::new();
+    for &aid in &actor_ids {
+        let connected_ys: Vec<f64> = diagram.edges.iter()
+            .filter_map(|&(from, to)| {
+                let target = if from == aid { to } else if to == aid { from } else { return None };
+                positions.get(&diagram.nodes[target].label).map(|(_, y, _, h)| y + h / 2.0)
+            })
+            .collect();
+
+        let bary = if connected_ys.is_empty() {
+            center_bottom / 2.0 // default to middle
+        } else {
+            connected_ys.iter().sum::<f64>() / connected_ys.len() as f64
+        };
+        actor_bary.push((aid, bary));
+    }
+
+    // Sort by barycenter
+    actor_bary.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+    // Split: first half left, second half right
+    let half = (actor_bary.len() + 1) / 2;
+    let left_actors: Vec<(usize, f64)> = actor_bary[..half].to_vec();
+    let right_actors: Vec<(usize, f64)> = actor_bary[half..].to_vec();
+
+    let right_x = center_x + max_uc_w + COL_GAP;
+
+    // Position left actors
+    for &(aid, bary) in &left_actors {
+        let y = bary - ACTOR_HEIGHT / 2.0;
+        let x = PADDING + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0;
+        positions.insert(diagram.nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, ACTOR_HEIGHT));
+    }
+
+    // Position right actors
+    for &(aid, bary) in &right_actors {
+        let y = bary - ACTOR_HEIGHT / 2.0;
+        let x = right_x + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0;
+        positions.insert(diagram.nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, ACTOR_HEIGHT));
+    }
+
+    // --- Step 4: Ensure non-negative positions ---
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    for (_, (x, y, _, _)) in &positions {
+        min_x = min_x.min(*x);
+        min_y = min_y.min(*y);
+    }
+    if min_x < PADDING || min_y < PADDING {
+        let dx = if min_x < PADDING { PADDING - min_x } else { 0.0 };
+        let dy = if min_y < PADDING { PADDING - min_y } else { 0.0 };
+        for (_, pos) in positions.iter_mut() {
+            pos.0 += dx;
+            pos.1 += dy;
+        }
+    }
+
+    Layout { positions }
+}
+
+/// Simple topological sort for a subset of nodes
+fn topo_sort_subset(nodes: &[usize], edges: &[(usize, usize)]) -> Vec<usize> {
+    let node_set: std::collections::HashSet<usize> = nodes.iter().copied().collect();
+    let mut in_degree: HashMap<usize, usize> = HashMap::new();
+    let mut adj: HashMap<usize, Vec<usize>> = HashMap::new();
+
+    for &n in nodes {
+        in_degree.insert(n, 0);
+    }
+
+    for &(from, to) in edges {
+        if node_set.contains(&from) && node_set.contains(&to) {
+            adj.entry(from).or_default().push(to);
+            *in_degree.entry(to).or_insert(0) += 1;
+        }
+    }
+
+    let mut queue: Vec<usize> = nodes.iter()
+        .filter(|&&n| *in_degree.get(&n).unwrap_or(&0) == 0)
+        .copied().collect();
+    // Stable sort: process in declaration order
+    queue.sort_by_key(|n| nodes.iter().position(|&x| x == *n).unwrap_or(0));
+
+    let mut result = Vec::new();
+    while let Some(n) = queue.first().copied() {
+        queue.remove(0);
+        result.push(n);
+        if let Some(neighbors) = adj.get(&n) {
+            for &next in neighbors {
+                if let Some(deg) = in_degree.get_mut(&next) {
+                    *deg -= 1;
+                    if *deg == 0 {
+                        queue.push(next);
+                    }
+                }
+            }
+        }
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
-// Compute package bounding boxes from child node positions
+// Package bounds from positioned usecases
 // ---------------------------------------------------------------------------
 
 fn compute_package_bounds(
     diagram: &Diagram,
     positions: &HashMap<String, (f64, f64, f64, f64)>,
 ) -> Vec<(String, f64, f64, f64, f64)> {
-    let mut bounds: Vec<(String, f64, f64, f64, f64)> = Vec::new();
+    let mut bounds = Vec::new();
 
     for pkg_name in &diagram.packages {
         let mut min_x = f64::MAX;
@@ -275,7 +412,6 @@ fn compute_package_bounds(
         }
 
         if has_children {
-            // Add padding and header space
             let bx = min_x - PKG_PADDING;
             let by = min_y - PKG_PADDING - PKG_HEADER_H;
             let bw = (max_x - min_x) + PKG_PADDING * 2.0;
@@ -292,15 +428,9 @@ fn compute_package_bounds(
 // ---------------------------------------------------------------------------
 
 fn render_svg(diagram: &Diagram) -> String {
-    let graph = build_layout_graph(diagram);
-    let config = mdd_layout::ForceConfig {
-        padding: PADDING,
-        ..mdd_layout::ForceConfig::default()
-    };
-    let result = mdd_layout::force_layout(&graph, &config);
-    let positions = &result.positions;
+    let layout = compute_layout(diagram);
+    let positions = &layout.positions;
 
-    // Compute package bounding boxes from positioned child nodes
     let pkg_bounds = compute_package_bounds(diagram, positions);
 
     // SVG dimensions
@@ -334,22 +464,10 @@ fn render_svg(diagram: &Diagram) -> String {
         ));
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-weight=\"bold\">{}</text>",
-            bx + 5.0,
-            by + 15.0,
+            bx + 5.0, by + 15.0,
             mdd_layout::text::escape_xml(name)
         ));
     }
-
-    // Build node bounds for edge routing
-    let all_bounds: Vec<(String, f64, f64, f64, f64)> = diagram
-        .nodes
-        .iter()
-        .filter_map(|n| {
-            positions.get(&n.label).map(|(x, y, w, h)| {
-                (n.label.clone(), x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0)
-            })
-        })
-        .collect();
 
     // Render edges
     for (from, to) in &diagram.edges {
@@ -369,63 +487,14 @@ fn render_svg(diagram: &Diagram) -> String {
         let cx2 = tx + tw / 2.0;
         let cy2 = ty + th / 2.0;
 
-        // Route around nodes to avoid overlap
-        let route = mdd_layout::edge::route_around_nodes(
-            cx1,
-            cy1,
-            cx2,
-            cy2,
-            &from_node.label,
-            &to_node.label,
-            &all_bounds,
-            0.0,
-        );
+        // Clip to ellipse for usecases, rect for actors
+        let (ax1, ay1) = clip_to_node(cx1, cy1, cx2, cy2, fw, fh, &from_node.kind);
+        let (ax2, ay2) = clip_to_node(cx2, cy2, cx1, cy1, tw, th, &to_node.kind);
 
-        let start_target = if route.len() > 1 {
-            route[1]
-        } else {
-            (cx2, cy2)
-        };
-        let end_target = if route.len() > 1 {
-            route[route.len() - 2]
-        } else {
-            (cx1, cy1)
-        };
-        let (ax1, ay1) = mdd_layout::edge::clip_to_rect(
-            cx1,
-            cy1,
-            start_target.0,
-            start_target.1,
-            fw / 2.0,
-            fh / 2.0,
-        );
-        let (ax2, ay2) = mdd_layout::edge::clip_to_rect(
-            cx2,
-            cy2,
-            end_target.0,
-            end_target.1,
-            tw / 2.0,
-            th / 2.0,
-        );
-
-        let mut clipped = vec![(ax1, ay1)];
-        if route.len() > 2 {
-            clipped.extend_from_slice(&route[1..route.len() - 1]);
-        }
-        clipped.push((ax2, ay2));
-
-        if clipped.len() > 2 {
-            let path_d = mdd_layout::edge::build_smooth_path(&clipped);
-            svg.push_str(&format!(
-                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                path_d, COLOR_MID
-            ));
-        } else {
-            svg.push_str(&format!(
-                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                ax1, ay1, ax2, ay2, COLOR_MID
-            ));
-        }
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            ax1, ay1, ax2, ay2, COLOR_MID
+        ));
     }
 
     // Render nodes
@@ -442,58 +511,55 @@ fn render_svg(diagram: &Diagram) -> String {
     svg
 }
 
+fn clip_to_node(cx: f64, cy: f64, tx: f64, ty: f64, w: f64, h: f64, kind: &NodeKind) -> (f64, f64) {
+    match kind {
+        NodeKind::Actor => {
+            // Clip to rect
+            mdd_layout::edge::clip_to_rect(cx, cy, tx, ty, w / 2.0, h / 2.0)
+        }
+        NodeKind::Usecase => {
+            // Clip to ellipse
+            let dx = tx - cx;
+            let dy = ty - cy;
+            if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
+                return (cx, cy + h / 2.0);
+            }
+            let rx = w / 2.0;
+            let ry = h / 2.0;
+            let angle = dy.atan2(dx);
+            (cx + rx * angle.cos(), cy + ry * angle.sin())
+        }
+    }
+}
+
 fn render_actor(svg: &mut String, x: f64, y: f64, label: &str) {
     let cx = x + ACTOR_WIDTH / 2.0;
-    // Head
     svg.push_str(&format!(
         "<circle cx=\"{}\" cy=\"{}\" r=\"10\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"/>",
-        cx,
-        y + 12.0,
-        COLOR_DARK
-    ));
-    // Body
-    svg.push_str(&format!(
-        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
-        cx,
-        y + 22.0,
-        cx,
-        y + 45.0,
-        COLOR_DARK
-    ));
-    // Arms
-    svg.push_str(&format!(
-        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
-        cx - 15.0,
-        y + 32.0,
-        cx + 15.0,
-        y + 32.0,
-        COLOR_DARK
-    ));
-    // Legs
-    svg.push_str(&format!(
-        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
-        cx,
-        y + 45.0,
-        cx - 12.0,
-        y + 60.0,
-        COLOR_DARK
+        cx, y + 12.0, COLOR_DARK
     ));
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
-        cx,
-        y + 45.0,
-        cx + 12.0,
-        y + 60.0,
-        COLOR_DARK
+        cx, y + 22.0, cx, y + 45.0, COLOR_DARK
     ));
-    // Label
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
+        cx - 15.0, y + 32.0, cx + 15.0, y + 32.0, COLOR_DARK
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
+        cx, y + 45.0, cx - 12.0, y + 60.0, COLOR_DARK
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
+        cx, y + 45.0, cx + 12.0, y + 60.0, COLOR_DARK
+    ));
     let lines = wrap_lines(label);
     let start_y = y + 75.0;
     for (i, line) in lines.iter().enumerate() {
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
-            cx,
-            start_y + i as f64 * LINE_HEIGHT,
+            cx, start_y + i as f64 * LINE_HEIGHT,
             mdd_layout::text::escape_xml(line)
         ));
     }
@@ -505,12 +571,7 @@ fn render_usecase(svg: &mut String, x: f64, y: f64, label: &str) {
     let cy = y + h / 2.0;
     svg.push_str(&format!(
         "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-        cx,
-        cy,
-        w / 2.0,
-        h / 2.0,
-        COLOR_FILL,
-        COLOR_DARK
+        cx, cy, w / 2.0, h / 2.0, COLOR_FILL, COLOR_DARK
     ));
 
     let lines = wrap_lines(label);
@@ -519,8 +580,7 @@ fn render_usecase(svg: &mut String, x: f64, y: f64, label: &str) {
     for (i, line) in lines.iter().enumerate() {
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
-            cx,
-            text_start_y + i as f64 * LINE_HEIGHT,
+            cx, text_start_y + i as f64 * LINE_HEIGHT,
             mdd_layout::text::escape_xml(line)
         ));
     }
@@ -624,7 +684,22 @@ Admin -> Logout
     #[test]
     fn wrap_multiple_words() {
         let lines = wrap_lines("SubmitInsuranceClaim");
-        // "Submit Insurance" (16 chars) > MAX_LINE_CHARS, so splits into 3
         assert_eq!(lines, vec!["Submit", "Insurance", "Claim"]);
+    }
+
+    #[test]
+    fn actors_split_left_right() {
+        let input = "actor A\nactor B\nactor C\nactor D\nusecase U1\nusecase U2\nA -> U1\nB -> U1\nC -> U2\nD -> U2\n";
+        let diagram = parse(input).unwrap();
+        let layout = compute_layout(&diagram);
+        // All actors should have positions
+        assert!(layout.positions.contains_key("A"));
+        assert!(layout.positions.contains_key("D"));
+        // At least one actor should be on each side of usecases
+        let u1_x = layout.positions.get("U1").unwrap().0;
+        let has_left = ["A", "B", "C", "D"].iter().any(|&a| layout.positions.get(a).unwrap().0 < u1_x);
+        let has_right = ["A", "B", "C", "D"].iter().any(|&a| layout.positions.get(a).unwrap().0 > u1_x);
+        assert!(has_left);
+        assert!(has_right);
     }
 }
