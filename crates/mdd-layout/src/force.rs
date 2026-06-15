@@ -158,21 +158,145 @@ pub fn force_layout(graph: &LayoutGraph, config: &ForceConfig) -> LayoutResult {
         }
     }
 
-    // Run force-directed on super-nodes
+    // Hybrid layout for super-nodes:
+    // Step 1: Sugiyama rank assignment (determines Y layers)
+    // Step 2: Force-directed X positioning (pulls connected nodes together)
     let sn_count = super_nodes.len();
-    let sn_widths: Vec<f64> = super_nodes.iter().map(|s| s.width).collect();
-    let sn_heights: Vec<f64> = super_nodes.iter().map(|s| s.height).collect();
+    let gap = 40.0;
 
-    let sn_positions = run_force(
-        sn_count, &sn_widths, &sn_heights, &super_edges, config,
-    );
+    // Step 1: Rank assignment via longest path
+    let mut sn_successors: Vec<Vec<usize>> = vec![vec![]; sn_count];
+    let mut sn_in_degree: Vec<usize> = vec![0; sn_count];
+    for &(sf, st) in &super_edges {
+        sn_successors[sf].push(st);
+        sn_in_degree[st] += 1;
+    }
+
+    // Break cycles
+    {
+        let mut visited = vec![0u8; sn_count];
+        let mut back_edges = std::collections::HashSet::new();
+        fn dfs(u: usize, succ: &[Vec<usize>], vis: &mut [u8], back: &mut std::collections::HashSet<(usize,usize)>) {
+            vis[u] = 1;
+            for &v in &succ[u] {
+                if vis[v] == 1 { back.insert((u, v)); }
+                else if vis[v] == 0 { dfs(v, succ, vis, back); }
+            }
+            vis[u] = 2;
+        }
+        for i in 0..sn_count { if visited[i] == 0 { dfs(i, &sn_successors, &mut visited, &mut back_edges); } }
+        // Rebuild without back edges
+        let mut clean_succ = vec![vec![]; sn_count];
+        let mut clean_in = vec![0usize; sn_count];
+        for u in 0..sn_count {
+            for &v in &sn_successors[u] {
+                if !back_edges.contains(&(u, v)) {
+                    clean_succ[u].push(v);
+                    clean_in[v] += 1;
+                }
+            }
+        }
+        sn_successors = clean_succ;
+        sn_in_degree = clean_in;
+    }
+
+    let mut sn_rank = vec![0usize; sn_count];
+    let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+    for i in 0..sn_count {
+        if sn_in_degree[i] == 0 { queue.push_back(i); }
+    }
+    while let Some(u) = queue.pop_front() {
+        for &v in &sn_successors[u] {
+            sn_rank[v] = sn_rank[v].max(sn_rank[u] + 1);
+            sn_in_degree[v] -= 1;
+            if sn_in_degree[v] == 0 { queue.push_back(v); }
+        }
+    }
+
+    let max_sn_rank = sn_rank.iter().copied().max().unwrap_or(0);
+
+    // Y coordinates from ranks
+    let mut rank_max_h = vec![0.0_f64; max_sn_rank + 1];
+    for (si, sn) in super_nodes.iter().enumerate() {
+        rank_max_h[sn_rank[si]] = rank_max_h[sn_rank[si]].max(sn.height);
+    }
+    let rank_sep = gap;
+    let mut rank_y = vec![0.0_f64; max_sn_rank + 1];
+    for r in 1..=max_sn_rank {
+        rank_y[r] = rank_y[r - 1] + rank_max_h[r - 1] + rank_sep;
+    }
+
+    // Step 2: X positioning via 1D force-directed
+    // Initial X: spread evenly within each rank
+    let mut sn_x = vec![0.0_f64; sn_count];
+    {
+        let mut rank_buckets: Vec<Vec<usize>> = vec![vec![]; max_sn_rank + 1];
+        for si in 0..sn_count { rank_buckets[sn_rank[si]].push(si); }
+        for bucket in &rank_buckets {
+            let mut cx = 0.0;
+            for &si in bucket {
+                sn_x[si] = cx + super_nodes[si].width / 2.0;
+                cx += super_nodes[si].width + gap;
+            }
+        }
+    }
+
+    // 1D force simulation (X only, Y fixed)
+    for _ in 0..100 {
+        let mut dx = vec![0.0_f64; sn_count];
+
+        // Repulsion between same-rank nodes
+        for r in 0..=max_sn_rank {
+            let bucket: Vec<usize> = (0..sn_count).filter(|&i| sn_rank[i] == r).collect();
+            for i in 0..bucket.len() {
+                for j in (i+1)..bucket.len() {
+                    let si = bucket[i];
+                    let sj = bucket[j];
+                    let min_sep = (super_nodes[si].width + super_nodes[sj].width) / 2.0 + gap;
+                    let delta = sn_x[si] - sn_x[sj];
+                    let dist = delta.abs().max(1.0);
+                    if dist < min_sep * 1.5 {
+                        let force = (min_sep - dist).max(0.0) * 0.3 + min_sep / dist * 5.0;
+                        let dir = if delta >= 0.0 { 1.0 } else { -1.0 };
+                        dx[si] += dir * force;
+                        dx[sj] -= dir * force;
+                    }
+                }
+            }
+        }
+
+        // Attraction along edges (X component only)
+        for &(u, v) in &super_edges {
+            let delta = sn_x[u] - sn_x[v];
+            let force = delta * 0.1; // gentle spring
+            dx[u] -= force;
+            dx[v] += force;
+        }
+
+        // Apply with damping
+        for i in 0..sn_count {
+            sn_x[i] += dx[i].max(-30.0).min(30.0);
+        }
+    }
+
+    // Enforce minimum separation within each rank
+    for r in 0..=max_sn_rank {
+        let mut bucket: Vec<usize> = (0..sn_count).filter(|&i| sn_rank[i] == r).collect();
+        bucket.sort_by(|&a, &b| sn_x[a].partial_cmp(&sn_x[b]).unwrap());
+        for i in 1..bucket.len() {
+            let prev = bucket[i - 1];
+            let cur = bucket[i];
+            let min_x = sn_x[prev] + (super_nodes[prev].width + super_nodes[cur].width) / 2.0 + gap;
+            if sn_x[cur] < min_x {
+                sn_x[cur] = min_x;
+            }
+        }
+    }
 
     // Place final positions
     for (si, sn) in super_nodes.iter().enumerate() {
-        let (sx, sy) = sn_positions[si];
-        // Convert from center to top-left
-        let top_left_x = sx - sn.width / 2.0;
-        let top_left_y = sy - sn.height / 2.0;
+        let top_left_x = sn_x[si] - sn.width / 2.0;
+        let top_left_y = rank_y[sn_rank[si]] + (rank_max_h[sn_rank[si]] - sn.height) / 2.0;
 
         if sn.is_group {
             // Place group bounding box
