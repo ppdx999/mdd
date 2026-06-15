@@ -1,17 +1,20 @@
-//! mdd-layout: Shared compound graph layout engine for mdd plugins.
+//! mdd-layout: Shared graph layout engine for mdd plugins.
 //!
-//! Provides a Sugiyama-style hierarchical layout with cluster (group) support.
+//! Two layout algorithms:
+//! - **Sugiyama** (`layout()`): Hierarchical layout with cluster (group) support.
+//!   Best for flow diagrams (infra, ER, DFD).
+//! - **Force-directed** (`force_layout()`): Physics-based layout where connected
+//!   nodes attract and all nodes repel. Best for network/concept diagrams.
 //!
 //! # Usage
 //!
 //! ```rust
-//! use mdd_layout::{LayoutGraph, LayoutNode, LayoutEdge, LayoutGroup, LayoutElement, LayoutConfig, layout};
+//! use mdd_layout::{LayoutGraph, LayoutNode, LayoutEdge, LayoutConfig, layout};
 //!
 //! let mut graph = LayoutGraph::new();
 //! // ... add nodes, edges, groups ...
 //! let result = layout(&graph, &LayoutConfig::default());
 //! // result.positions: HashMap<String, (x, y, w, h)>
-//! // result.edge_waypoints: HashMap<String, Vec<(x, y)>>
 //! ```
 
 mod types;
@@ -21,11 +24,13 @@ mod position;
 
 pub mod text;
 pub mod edge;
+pub mod force;
 
 pub use types::{
     Direction, LayoutConfig, LayoutEdge, LayoutElement, LayoutGraph, LayoutGroup, LayoutNode,
     LayoutResult,
 };
+pub use force::ForceConfig;
 
 /// Run the compound layout algorithm on the given graph.
 ///
@@ -38,6 +43,12 @@ pub use types::{
 /// 6. Cluster boundary computation
 /// 7. Overlap correction
 /// 8. Post-overlap barycenter re-adjustment
+/// Run the Sugiyama compound layout algorithm on the given graph.
 pub fn layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResult {
     position::compound_layout(graph, config)
+}
+
+/// Run the force-directed layout algorithm on the given graph.
+pub fn force_layout(graph: &LayoutGraph, config: &ForceConfig) -> LayoutResult {
+    force::force_layout(graph, config)
 }

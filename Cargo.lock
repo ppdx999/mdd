@@ -361,6 +361,9 @@ version = "0.1.0"
 [[package]]
 name = "mdd-concept"
 version = "0.1.0"
+dependencies = [
+ "mdd-layout",
+]
 
 [[package]]
 name = "mdd-cycle"

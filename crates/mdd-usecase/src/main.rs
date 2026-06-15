@@ -110,6 +110,8 @@ const PADDING: f64 = 40.0;
 const ACTOR_WIDTH: f64 = 60.0;
 const ACTOR_HEIGHT: f64 = 80.0;
 const MAX_LINE_CHARS: usize = 14;
+const PKG_PADDING: f64 = 20.0;
+const PKG_HEADER_H: f64 = 24.0;
 
 const COLOR_DARK: &str = "#333";
 const COLOR_MID: &str = "#666";
@@ -185,7 +187,7 @@ fn node_size(node: &Node) -> (f64, f64) {
 fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
     let mut graph = mdd_layout::LayoutGraph::new();
 
-    // Add all nodes
+    // Add all nodes (force layout ignores groups, so we just add nodes + edges)
     for node in &diagram.nodes {
         let (w, h) = node_size(node);
         graph.nodes.push(mdd_layout::LayoutNode {
@@ -193,40 +195,6 @@ fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
             width: w,
             height: h,
         });
-    }
-
-    // Build package name -> group index mapping
-    // Each package becomes a LayoutGroup
-    let mut pkg_to_group: HashMap<String, usize> = HashMap::new();
-    for pkg_name in &diagram.packages {
-        let gidx = graph.groups.len();
-        pkg_to_group.insert(pkg_name.clone(), gidx);
-        graph.groups.push(mdd_layout::LayoutGroup {
-            name: pkg_name.clone(),
-            children: Vec::new(),
-        });
-    }
-
-    // Assign nodes to groups or top_level
-    for (i, node) in diagram.nodes.iter().enumerate() {
-        if let Some(ref pkg) = node.package {
-            if let Some(&gidx) = pkg_to_group.get(pkg) {
-                graph.groups[gidx]
-                    .children
-                    .push(mdd_layout::LayoutElement::NodeRef(i));
-            }
-        } else {
-            graph.top_level.push(mdd_layout::LayoutElement::NodeRef(i));
-        }
-    }
-
-    // Add groups to top_level
-    for pkg_name in &diagram.packages {
-        if let Some(&gidx) = pkg_to_group.get(pkg_name) {
-            graph
-                .top_level
-                .push(mdd_layout::LayoutElement::GroupRef(gidx));
-        }
     }
 
     // Add edges (using node labels as names)
@@ -242,22 +210,63 @@ fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
 }
 
 // ---------------------------------------------------------------------------
+// Compute package bounding boxes from child node positions
+// ---------------------------------------------------------------------------
+
+fn compute_package_bounds(
+    diagram: &Diagram,
+    positions: &HashMap<String, (f64, f64, f64, f64)>,
+) -> Vec<(String, f64, f64, f64, f64)> {
+    let mut bounds: Vec<(String, f64, f64, f64, f64)> = Vec::new();
+
+    for pkg_name in &diagram.packages {
+        let mut min_x = f64::MAX;
+        let mut min_y = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut max_y = f64::MIN;
+        let mut has_children = false;
+
+        for node in &diagram.nodes {
+            if node.package.as_deref() == Some(pkg_name) {
+                if let Some(&(x, y, w, h)) = positions.get(&node.label) {
+                    has_children = true;
+                    min_x = min_x.min(x);
+                    min_y = min_y.min(y);
+                    max_x = max_x.max(x + w);
+                    max_y = max_y.max(y + h);
+                }
+            }
+        }
+
+        if has_children {
+            // Add padding and header space
+            let bx = min_x - PKG_PADDING;
+            let by = min_y - PKG_PADDING - PKG_HEADER_H;
+            let bw = (max_x - min_x) + PKG_PADDING * 2.0;
+            let bh = (max_y - min_y) + PKG_PADDING * 2.0 + PKG_HEADER_H;
+            bounds.push((pkg_name.clone(), bx, by, bw, bh));
+        }
+    }
+
+    bounds
+}
+
+// ---------------------------------------------------------------------------
 // SVG rendering
 // ---------------------------------------------------------------------------
 
 fn render_svg(diagram: &Diagram) -> String {
     let graph = build_layout_graph(diagram);
-    let config = mdd_layout::LayoutConfig {
+    let config = mdd_layout::ForceConfig {
         padding: PADDING,
-        group_h_pad: 20.0,
-        group_v_pad: 16.0,
-        group_header_h: 24.0,
-        default_node_w: MIN_NODE_WIDTH,
-        default_node_h: MIN_NODE_HEIGHT,
-        ..mdd_layout::LayoutConfig::default()
+        ideal_distance: 150.0,
+        ..mdd_layout::ForceConfig::default()
     };
-    let result = mdd_layout::layout(&graph, &config);
+    let result = mdd_layout::force_layout(&graph, &config);
     let positions = &result.positions;
+
+    // Compute package bounding boxes from positioned child nodes
+    let pkg_bounds = compute_package_bounds(diagram, positions);
 
     // SVG dimensions
     let mut max_x: f64 = 0.0;
@@ -265,6 +274,10 @@ fn render_svg(diagram: &Diagram) -> String {
     for (_, (x, y, w, h)) in positions {
         max_x = max_x.max(x + w);
         max_y = max_y.max(y + h);
+    }
+    for (_, bx, by, bw, bh) in &pkg_bounds {
+        max_x = max_x.max(bx + bw);
+        max_y = max_y.max(by + bh);
     }
     let svg_width = max_x + PADDING;
     let svg_height = max_y + PADDING;
@@ -278,20 +291,18 @@ fn render_svg(diagram: &Diagram) -> String {
         COLOR_DARK
     ));
 
-    // Render package rectangles (groups)
-    for pkg_name in &diagram.packages {
-        if let Some(&(x, y, w, h)) = positions.get(pkg_name) {
-            svg.push_str(&format!(
-                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{}\" stroke-dasharray=\"5,5\" rx=\"5\"/>",
-                x, y, w, h, COLOR_MID
-            ));
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-weight=\"bold\">{}</text>",
-                x + 5.0,
-                y + 15.0,
-                mdd_layout::text::escape_xml(pkg_name)
-            ));
-        }
+    // Render package rectangles
+    for (name, bx, by, bw, bh) in &pkg_bounds {
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{}\" stroke-dasharray=\"5,5\" rx=\"5\"/>",
+            bx, by, bw, bh, COLOR_MID
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-weight=\"bold\">{}</text>",
+            bx + 5.0,
+            by + 15.0,
+            mdd_layout::text::escape_xml(name)
+        ));
     }
 
     // Build node bounds for edge routing
@@ -323,25 +334,17 @@ fn render_svg(diagram: &Diagram) -> String {
         let cx2 = tx + tw / 2.0;
         let cy2 = ty + th / 2.0;
 
-        // Use edge waypoints if available, else route around nodes
-        let edge_key = format!("{}→{}", from_node.label, to_node.label);
-        let route = if let Some(waypoints) = result.edge_waypoints.get(&edge_key) {
-            let mut r = vec![(cx1, cy1)];
-            r.extend(waypoints);
-            r.push((cx2, cy2));
-            r
-        } else {
-            mdd_layout::edge::route_around_nodes(
-                cx1,
-                cy1,
-                cx2,
-                cy2,
-                &from_node.label,
-                &to_node.label,
-                &all_bounds,
-                0.0,
-            )
-        };
+        // Route around nodes to avoid overlap
+        let route = mdd_layout::edge::route_around_nodes(
+            cx1,
+            cy1,
+            cx2,
+            cy2,
+            &from_node.label,
+            &to_node.label,
+            &all_bounds,
+            0.0,
+        );
 
         let start_target = if route.len() > 1 {
             route[1]
@@ -376,38 +379,27 @@ fn render_svg(diagram: &Diagram) -> String {
         }
         clipped.push((ax2, ay2));
 
-        let path_d = if clipped.len() == 2 {
-            format!(
-                "M{},{} L{},{}",
-                clipped[0].0, clipped[0].1, clipped[1].0, clipped[1].1
-            )
-        } else {
-            mdd_layout::edge::build_smooth_path(&clipped)
-        };
-
-        svg.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-            ax1, ay1, ax2, ay2, COLOR_MID
-        ));
-        // Also render smooth path for multi-segment edges
         if clipped.len() > 2 {
+            let path_d = mdd_layout::edge::build_smooth_path(&clipped);
             svg.push_str(&format!(
                 "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"/>",
                 path_d, COLOR_MID
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+                ax1, ay1, ax2, ay2, COLOR_MID
             ));
         }
     }
 
     // Render nodes
-    for (i, node) in diagram.nodes.iter().enumerate() {
+    for node in &diagram.nodes {
         if let Some(&(x, y, _w, _h)) = positions.get(&node.label) {
             match node.kind {
                 NodeKind::Actor => render_actor(&mut svg, x, y, &node.label),
                 NodeKind::Usecase => render_usecase(&mut svg, x, y, &node.label),
             }
-        } else {
-            // fallback: should not happen with layout
-            let _ = i;
         }
     }
 

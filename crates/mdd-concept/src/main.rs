@@ -1,5 +1,9 @@
 use std::io::{self, Read};
 
+use mdd_layout::edge::{build_smooth_path, clip_to_rect, midpoint_on_path, route_around_nodes};
+use mdd_layout::text::{escape_xml, text_width};
+use mdd_layout::{ForceConfig, LayoutEdge, LayoutGraph, LayoutNode};
+
 // ---------------------------------------------------------------------------
 // Data structures
 // ---------------------------------------------------------------------------
@@ -79,10 +83,7 @@ fn parse(input: &str) -> Result<Concept, String> {
         }
     }
 
-    Ok(Concept {
-        nodes,
-        links,
-    })
+    Ok(Concept { nodes, links })
 }
 
 fn parse_link(rest: &str) -> Result<Link, String> {
@@ -134,12 +135,9 @@ fn strip_quotes(s: &str) -> &str {
 // SVG rendering
 // ---------------------------------------------------------------------------
 
-const CHAR_WIDTH: f64 = 8.0;
-const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
 const COLOR_DARK: &str = "#333";
 
-const ORBIT_RADIUS: f64 = 150.0;
 const NODE_H: f64 = 40.0;
 const NODE_H_PAD: f64 = 16.0;
 const MIN_NODE_W: f64 = 80.0;
@@ -158,19 +156,6 @@ const COLORS: &[(&str, &str)] = &[
     ("#fff3e0", "#e65100"),
 ];
 
-fn text_width(s: &str) -> f64 {
-    s.chars()
-        .map(|c| if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH })
-        .sum()
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
 fn render_svg(concept: &Concept) -> String {
     let n = concept.nodes.len();
 
@@ -181,42 +166,50 @@ fn render_svg(concept: &Concept) -> String {
         .map(|node| (text_width(&node.name) + NODE_H_PAD * 2.0).max(MIN_NODE_W))
         .collect();
 
-    // Find max node width for bounding box calculation
-    let max_node_w = node_widths.iter().cloned().fold(0.0_f64, f64::max);
+    // Build a LayoutGraph for force-directed layout
+    let mut graph = LayoutGraph::new();
+    for (i, node) in concept.nodes.iter().enumerate() {
+        graph.nodes.push(LayoutNode {
+            name: node.name.clone(),
+            width: node_widths[i],
+            height: NODE_H,
+        });
+    }
+    for link in &concept.links {
+        graph.edges.push(LayoutEdge {
+            from: link.from.clone(),
+            to: link.to.clone(),
+            label: link.label.clone(),
+        });
+    }
 
-    // Compute orbit radius dynamically based on node count and sizes.
-    // Nodes are placed on a circle; the radius must be large enough so
-    // adjacent nodes don't overlap. The chord between adjacent nodes
-    // should be at least max_node_w + gap.
-    let node_gap = 40.0;
-    let orbit_radius = if n <= 1 {
-        0.0
-    } else if n == 2 {
-        max_node_w + node_gap
-    } else {
-        // Minimum chord = max_node_w + gap. chord = 2*R*sin(pi/n)
-        let min_chord = max_node_w + node_gap;
-        let angle = std::f64::consts::PI / n as f64;
-        (min_chord / (2.0 * angle.sin())).max(ORBIT_RADIUS)
+    // Run force-directed layout
+    let config = ForceConfig {
+        padding: PADDING,
+        ..ForceConfig::default()
     };
+    let result = mdd_layout::force_layout(&graph, &config);
 
-    // Center of the circular layout
-    let cx = PADDING + orbit_radius + max_node_w / 2.0;
-    let cy = PADDING + orbit_radius + NODE_H / 2.0;
-
-    let total_w = cx * 2.0;
-    let total_h = cy + orbit_radius + NODE_H / 2.0 + PADDING;
-
-    // Compute node positions (circular layout)
+    // Extract node positions as centers: (cx, cy, w, h)
+    // LayoutResult positions are (x_topleft, y_topleft, w, h)
     let positions: Vec<(f64, f64)> = (0..n)
         .map(|i| {
-            let angle = -std::f64::consts::FRAC_PI_2
-                + 2.0 * std::f64::consts::PI * i as f64 / n as f64;
-            let x = cx + orbit_radius * angle.cos();
-            let y = cy + orbit_radius * angle.sin();
-            (x, y)
+            let name = &concept.nodes[i].name;
+            let (x, y, w, h) = result.positions[name];
+            (x + w / 2.0, y + h / 2.0)
         })
         .collect();
+
+    // Compute canvas size
+    let mut max_x: f64 = 0.0;
+    let mut max_y: f64 = 0.0;
+    for (i, (cx, cy)) in positions.iter().enumerate() {
+        let w = node_widths[i];
+        max_x = max_x.max(cx + w / 2.0);
+        max_y = max_y.max(cy + NODE_H / 2.0);
+    }
+    let total_w = max_x + PADDING;
+    let total_h = max_y + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -243,6 +236,16 @@ fn render_svg(concept: &Concept) -> String {
         concept.nodes.iter().position(|n| n.name == name)
     };
 
+    // Build obstacle bounds for edge routing: (name, cx, cy, hw, hh)
+    let all_bounds: Vec<(String, f64, f64, f64, f64)> = (0..n)
+        .map(|i| {
+            let (cx, cy) = positions[i];
+            let hw = node_widths[i] / 2.0;
+            let hh = NODE_H / 2.0;
+            (concept.nodes[i].name.clone(), cx, cy, hw, hh)
+        })
+        .collect();
+
     // Draw edges (before nodes so nodes appear on top)
     for link in &concept.links {
         let from_idx = match node_index(&link.from) {
@@ -254,8 +257,41 @@ fn render_svg(concept: &Concept) -> String {
             None => continue,
         };
 
-        let (x1, y1) = positions[from_idx];
-        let (x2, y2) = positions[to_idx];
+        let (from_cx, from_cy) = positions[from_idx];
+        let (to_cx, to_cy) = positions[to_idx];
+        let from_hw = node_widths[from_idx] / 2.0;
+        let to_hw = node_widths[to_idx] / 2.0;
+        let hh = NODE_H / 2.0;
+
+        // Route around obstacles
+        let waypoints = route_around_nodes(
+            from_cx, from_cy, to_cx, to_cy, &link.from, &link.to, &all_bounds, 0.0,
+        );
+
+        // Clip start and end to rectangle borders
+        let start_target = if waypoints.len() > 2 {
+            waypoints[1]
+        } else {
+            (to_cx, to_cy)
+        };
+        let end_target = if waypoints.len() > 2 {
+            waypoints[waypoints.len() - 2]
+        } else {
+            (from_cx, from_cy)
+        };
+        let clipped_start = clip_to_rect(from_cx, from_cy, start_target.0, start_target.1, from_hw, hh);
+        let clipped_end = clip_to_rect(to_cx, to_cy, end_target.0, end_target.1, to_hw, hh);
+
+        // Build final waypoints with clipped endpoints
+        let mut final_waypoints = vec![clipped_start];
+        if waypoints.len() > 2 {
+            for wp in &waypoints[1..waypoints.len() - 1] {
+                final_waypoints.push(*wp);
+            }
+        }
+        final_waypoints.push(clipped_end);
+
+        let path_d = build_smooth_path(&final_waypoints);
 
         let marker = match link.kind {
             LinkKind::Directed => " marker-end=\"url(#arrow)\"",
@@ -263,14 +299,13 @@ fn render_svg(concept: &Concept) -> String {
         };
 
         svg.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"{}/>",
-            x1, y1, x2, y2, EDGE_COLOR, marker
+            "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\"{}/>",
+            path_d, EDGE_COLOR, marker
         ));
 
         // Edge label at midpoint
         if !link.label.is_empty() {
-            let mx = (x1 + x2) / 2.0;
-            let my = (y1 + y2) / 2.0;
+            let (mx, my) = midpoint_on_path(&final_waypoints);
             let lw = text_width(&link.label) + 8.0;
             let lh = EDGE_LABEL_FONT + 8.0;
 
@@ -295,14 +330,14 @@ fn render_svg(concept: &Concept) -> String {
 
     // Draw nodes (on top of edges)
     for (i, node) in concept.nodes.iter().enumerate() {
-        let (x, y) = positions[i];
+        let (cx, cy) = positions[i];
         let w = node_widths[i];
         let (bg, border) = COLORS[i % COLORS.len()];
 
         svg.push_str(&format!(
             "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-            x - w / 2.0,
-            y - NODE_H / 2.0,
+            cx - w / 2.0,
+            cy - NODE_H / 2.0,
             w,
             NODE_H,
             bg,
@@ -310,8 +345,8 @@ fn render_svg(concept: &Concept) -> String {
         ));
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
-            x,
-            y + 5.0,
+            cx,
+            cy + 5.0,
             escape_xml(&node.name)
         ));
     }
@@ -329,9 +364,9 @@ mdd-concept - Render a concept map as SVG
 
 Usage: mdd-concept < input.concept
 
-Define nodes and links between them. Nodes are laid out in a
-circle. Links can be directed (->) or undirected (--) with
-an optional label.
+Define nodes and links between them. Nodes are laid out using
+a force-directed algorithm. Links can be directed (->) or
+undirected (--) with an optional label.
 
 Example:
   node Design
