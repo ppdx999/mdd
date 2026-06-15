@@ -426,6 +426,9 @@ version = "0.1.0"
 [[package]]
 name = "mdd-infra"
 version = "0.1.0"
+dependencies = [
+ "mdd-layout",
+]
 
 [[package]]
 name = "mdd-journey"
@@ -441,6 +444,10 @@ version = "0.1.0"
 
 [[package]]
 name = "mdd-layer"
+version = "0.1.0"
+
+[[package]]
+name = "mdd-layout"
 version = "0.1.0"
 
 [[package]]
