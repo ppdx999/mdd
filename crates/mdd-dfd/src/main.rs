@@ -631,10 +631,14 @@ fn render_svg(diagram: &Diagram) -> String {
                     }
                 }
             }
+            // Clamp label position to stay within canvas
+            let label_y = (ly - 12.0).max(2.0);
+            let label_x = (lx - lw / 2.0 - 3.0).max(2.0);
+            let ly = label_y + 12.0; // adjust text y to match
             svg.push_str(&format!(
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.85\"/>",
-                lx - lw / 2.0 - 3.0,
-                ly - 12.0,
+                label_x,
+                label_y,
                 lw + 6.0
             ));
             svg.push_str(&format!(

@@ -280,7 +280,7 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         &mut positions,
     );
 
-    // Phase 6: Fix cluster overlaps by shifting nodes
+    // Phase 6: Fix cluster overlaps by shifting nodes (iteration 1)
     // Compute sort keys for top-level elements based on their highest-rank node positions.
     // This ensures overlap correction respects the rank-based ordering rather than
     // bounding box centers (which can be misleading for wide clusters).
@@ -459,7 +459,7 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         config,
         &mut positions,
     );
-    for _ in 0..3 {
+    for _ in 0..5 {
         let shifts = find_cluster_shifts(
             &graph.top_level,
             &graph.nodes,
@@ -543,6 +543,28 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         edge_waypoints.insert(edge_key.clone(), waypoints);
     }
 
+    // Ensure all positions are non-negative (shift everything if needed)
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    for (_, (x, y, _, _)) in &positions {
+        min_x = min_x.min(*x);
+        min_y = min_y.min(*y);
+    }
+    if min_x < config.padding || min_y < config.padding {
+        let dx = if min_x < config.padding { config.padding - min_x } else { 0.0 };
+        let dy = if min_y < config.padding { config.padding - min_y } else { 0.0 };
+        for (_, pos) in positions.iter_mut() {
+            pos.0 += dx;
+            pos.1 += dy;
+        }
+        for (_, wps) in edge_waypoints.iter_mut() {
+            for wp in wps.iter_mut() {
+                wp.0 += dx;
+                wp.1 += dy;
+            }
+        }
+    }
+
     LayoutResult { positions, edge_waypoints }
 }
 
@@ -618,25 +640,53 @@ fn find_cluster_shifts(
         ka.partial_cmp(&kb).unwrap()
     });
 
-    // For each pair (not just consecutive), ensure no overlap.
+    // For each pair, ensure no overlap.
     // Check all pairs since non-adjacent elements can overlap when they span different Y ranges.
     for i in 0..sibling_bounds.len() {
         for j in (i + 1)..sibling_bounds.len() {
-            let (_, _, ax, ay, aw, ah) = sibling_bounds[i];
-            let (ej, _, bx, by, _bw, bh) = sibling_bounds[j].clone();
+            let (ei, _, ax, ay, aw, ah) = sibling_bounds[i].clone();
+            let (ej, _, bx, by, bw, bh) = sibling_bounds[j].clone();
 
-            // Check if they overlap vertically (y ranges intersect)
+            // Check if they overlap vertically
             let y_overlap = ay < by + bh && by < ay + ah;
             if !y_overlap {
                 continue;
             }
 
-            let needed_x = ax + aw + gap;
-            if bx < needed_x {
-                let dx = needed_x - bx;
+            // Check x overlap
+            let x_overlap = ax < bx + bw && bx < ax + aw;
+            if !x_overlap {
+                continue;
+            }
+
+            // Determine which element to move and in which direction.
+            // If b is inside a (b is smaller and contained), move b to a's left.
+            // Otherwise push b to the right of a.
+            let b_center = bx + bw / 2.0;
+            let a_center = ax + aw / 2.0;
+            let b_inside_a = bx >= ax && bx + bw <= ax + aw;
+            let a_inside_b = ax >= bx && ax + aw <= bx + bw;
+
+            if b_inside_a {
+                // Move b to the left of a
+                let target_x = ax - bw - gap;
+                let dx = target_x - bx;
                 collect_node_shifts(&elements[ej], nodes, groups, dx, &mut shifts);
-                // Update this entry's x for cascading checks
                 sibling_bounds[j].2 += dx;
+            } else if a_inside_b {
+                // Move a to the left of b
+                let target_x = bx - aw - gap;
+                let dx = target_x - ax;
+                collect_node_shifts(&elements[ei], nodes, groups, dx, &mut shifts);
+                sibling_bounds[i].2 += dx;
+            } else {
+                // Standard overlap: push b to the right of a
+                let needed_x = ax + aw + gap;
+                if bx < needed_x {
+                    let dx = needed_x - bx;
+                    collect_node_shifts(&elements[ej], nodes, groups, dx, &mut shifts);
+                    sibling_bounds[j].2 += dx;
+                }
             }
         }
     }
