@@ -182,6 +182,10 @@ fn render_svg(concept: &Concept) -> String {
             label: link.label.clone(),
         });
     }
+    // All nodes are top-level (concept has no groups)
+    for i in 0..concept.nodes.len() {
+        graph.top_level.push(mdd_layout::LayoutElement::NodeRef(i));
+    }
 
     // Run force-directed layout
     let config = ForceConfig {

@@ -187,7 +187,7 @@ fn node_size(node: &Node) -> (f64, f64) {
 fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
     let mut graph = mdd_layout::LayoutGraph::new();
 
-    // Add all nodes (force layout ignores groups, so we just add nodes + edges)
+    // Add all nodes
     for node in &diagram.nodes {
         let (w, h) = node_size(node);
         graph.nodes.push(mdd_layout::LayoutNode {
@@ -197,13 +197,49 @@ fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
         });
     }
 
-    // Add edges (using node labels as names)
+    // Add edges
     for (from, to) in &diagram.edges {
         graph.edges.push(mdd_layout::LayoutEdge {
             from: diagram.nodes[*from].label.clone(),
             to: diagram.nodes[*to].label.clone(),
             label: String::new(),
         });
+    }
+
+    // Build groups from packages and top_level elements
+    // Map package name → group index
+    let mut pkg_to_group: HashMap<String, usize> = HashMap::new();
+    for pkg_name in &diagram.packages {
+        let gi = graph.groups.len();
+        let mut children = Vec::new();
+        for (ni, node) in diagram.nodes.iter().enumerate() {
+            if node.package.as_deref() == Some(pkg_name) {
+                children.push(mdd_layout::LayoutElement::NodeRef(ni));
+            }
+        }
+        graph.groups.push(mdd_layout::LayoutGroup {
+            name: pkg_name.clone(),
+            children,
+        });
+        pkg_to_group.insert(pkg_name.clone(), gi);
+    }
+
+    // Build top_level: standalone nodes + group refs
+    let mut in_group: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for group in &graph.groups {
+        for child in &group.children {
+            if let mdd_layout::LayoutElement::NodeRef(ni) = child {
+                in_group.insert(*ni);
+            }
+        }
+    }
+    for (ni, _) in diagram.nodes.iter().enumerate() {
+        if !in_group.contains(&ni) {
+            graph.top_level.push(mdd_layout::LayoutElement::NodeRef(ni));
+        }
+    }
+    for (_, &gi) in &pkg_to_group {
+        graph.top_level.push(mdd_layout::LayoutElement::GroupRef(gi));
     }
 
     graph
@@ -259,7 +295,6 @@ fn render_svg(diagram: &Diagram) -> String {
     let graph = build_layout_graph(diagram);
     let config = mdd_layout::ForceConfig {
         padding: PADDING,
-        ideal_distance: 150.0,
         ..mdd_layout::ForceConfig::default()
     };
     let result = mdd_layout::force_layout(&graph, &config);
