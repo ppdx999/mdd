@@ -116,6 +116,12 @@ make uninstall
 
 ![state](crates/mdd-state/examples/order.svg)
 
+### 画面遷移図 ([mdd-screen-flow](crates/mdd-screen-flow/))
+
+画面（スクリーン）間の遷移をブラウザウィンドウ風のカードと矢印で可視化する。画面内のUI要素一覧、グループによるセクション分けに対応。
+
+![screen-flow](crates/mdd-screen-flow/examples/app.svg)
+
 ### インフラ構成図 ([mdd-infra](crates/mdd-infra/))
 
 ネストしたグループ（AWS > VPC > サブネット）と種別付きコンポーネント（server, db, lb, cache, queue, storage, cdn 等）で構成されるインフラ構成図。
@@ -548,6 +554,27 @@ state 完了
 
 待機中 -> 処理中 : "開始"
 処理中 -> 完了 : "成功"
+```
+
+#### 画面遷移図
+
+```screen-flow
+screen ログイン {
+  メールアドレス入力
+  パスワード入力
+  ログインボタン
+}
+
+screen ホーム {
+  ダッシュボード
+  メニュー
+}
+
+screen 設定
+
+ログイン -> ホーム : "ログイン成功"
+ホーム -> 設定 : "設定アイコンタップ"
+ログイン -> ログイン : "バリデーションエラー"
 ```
 
 #### インフラ構成図

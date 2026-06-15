@@ -534,6 +534,13 @@ name = "mdd-scale"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-screen-flow"
+version = "0.1.0"
+dependencies = [
+ "mdd-layout",
+]
+
+[[package]]
 name = "mdd-sequence"
 version = "0.1.0"
 
