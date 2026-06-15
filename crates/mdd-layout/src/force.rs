@@ -279,10 +279,18 @@ pub fn force_layout(graph: &LayoutGraph, config: &ForceConfig) -> LayoutResult {
         }
     }
 
-    // Enforce minimum separation within each rank
+    // Enforce minimum separation within each rank.
+    // Sort by force-derived X, but use parse order as tiebreaker for stability.
+    // Then re-assign X based on this order to ensure deterministic output.
     for r in 0..=max_sn_rank {
         let mut bucket: Vec<usize> = (0..sn_count).filter(|&i| sn_rank[i] == r).collect();
-        bucket.sort_by(|&a, &b| sn_x[a].partial_cmp(&sn_x[b]).unwrap());
+        // Sort by X from force sim, tiebreak by original order
+        bucket.sort_by(|&a, &b| sn_x[a].partial_cmp(&sn_x[b]).unwrap().then(a.cmp(&b)));
+        // Re-assign X positions sequentially to guarantee no overlap and determinism
+        if !bucket.is_empty() {
+            let first = bucket[0];
+            sn_x[first] = sn_x[first]; // keep first as-is
+        }
         for i in 1..bucket.len() {
             let prev = bucket[i - 1];
             let cur = bucket[i];
