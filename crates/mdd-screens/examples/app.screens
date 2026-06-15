@@ -1,0 +1,32 @@
+group "認証" {
+  /login ログイン : "メール・パスワード認証"
+}
+
+group "メイン" {
+  /dashboard ダッシュボード : "各機能への遷移カード"
+  /purchase-limit 購入上限管理 : "設定取込・一覧出力・購入状況確認"
+  /nutrition-fee 栄養指導料率 : "料率設定・検索・計算結果"
+  /product-price 企業商品価格 : "企業別商品価格の取込・検索"
+}
+
+group "入出力" {
+  /import ファイル取込 : "商品体系・在庫・営業日カレンダー"
+  /export データ書き出し : "注文データ・栄養指導料"
+}
+
+group "設定" {
+  /access-log アクセスログ : "日時範囲検索・CSV出力"
+  /process-log 処理状況ログ : "ログ区分検索・CSV出力"
+}
+
+group "QRコード管理" {
+  /qr/upload 資料アップロード : "PDF・QR設定・公開期間"
+  /qr/list アップロード資料一覧 : "資料テーブル・公開管理"
+  /qr/stats QRアクセス集計 : "営業所別・病院別集計"
+}
+
+group "Public" {
+  /qr/scan QRスキャン : "遷移先URLへリダイレクト"
+  /qr/download QRダウンロード : "QR付きPDFダウンロード"
+  /404 NotFound
+}
