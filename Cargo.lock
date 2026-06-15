@@ -493,6 +493,10 @@ name = "mdd-org"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-outline"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-persona"
 version = "0.1.0"
 

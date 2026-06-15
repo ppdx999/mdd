@@ -1,0 +1,25 @@
+ダッシュボード : "トップページ"
+  売上サマリー表示
+    GET /api/sales/summary : "日次・月次集計"
+    GET /api/sales/monthly : "月別推移"
+  お知らせ一覧
+    GET /api/notifications : "通知一覧取得"
+    PUT /api/notifications/:id/read : "既読更新"
+
+ユーザー管理
+  ユーザー検索
+    GET /api/users : "一覧取得"
+  ユーザー編集
+    GET /api/users/:id : "詳細取得"
+    PUT /api/users/:id : "更新"
+    DELETE /api/users/:id : "削除"
+  ユーザー登録
+    POST /api/users : "新規作成"
+
+商品管理
+  商品検索
+    GET /api/products : "一覧取得"
+    GET /api/products/:id : "詳細取得"
+  商品価格更新
+    PATCH /api/products/:id/price : "価格変更"
+    POST /api/products/import : "CSV一括取込"
