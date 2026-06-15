@@ -1,0 +1,23 @@
+group "データ連携" {
+  0 2 * * *    import-orders     : "受注データ取込"
+  0 3 * * *    import-inventory  : "在庫データ取込"
+  0 5 * * *    export-shipments  : "出荷データ連携"
+  0 0 1 * *    import-prices     : "価格マスタ更新"
+}
+
+group "集計・レポート" {
+  0 6 * * *    calc-sales        : "売上日次集計"
+  0 9 * * 1    weekly-report     : "週次レポート生成"
+  0 0 1 * *    calc-commission   : "手数料月次計算"
+}
+
+group "メンテナンス" {
+  */10 * * * *  health-check     : "死活監視"
+  0 4 * * *    cleanup-logs      : "ログローテーション"
+  0 3 * * *    backup-db         : "DBバックアップ"
+}
+
+group "通知" {
+  */5 * * * *  alert-errors      : "エラー検知"
+  0 8 * * *   daily-digest       : "日次サマリーメール"
+}
