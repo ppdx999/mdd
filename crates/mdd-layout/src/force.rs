@@ -529,12 +529,31 @@ fn run_force(
             dy[v] += fy;
         }
 
+        // Gravity: pull all nodes toward the origin (initial center).
+        // Prevents isolated nodes from flying away due to repulsion only.
+        let gravity = 0.3;
+        for i in 0..n {
+            dx[i] -= x[i] * gravity;
+            dy[i] -= y[i] * gravity;
+        }
+
         // Apply displacements
         for i in 0..n {
             let disp = (dx[i] * dx[i] + dy[i] * dy[i]).sqrt().max(1e-6);
             let scale = temperature.min(disp) / disp;
             x[i] += dx[i] * scale;
             y[i] += dy[i] * scale;
+        }
+
+        // Clamp: prevent nodes from exceeding a reasonable radius from origin.
+        // Max radius scales with sqrt(n) and ideal distance k.
+        let max_radius = k * (n as f64).sqrt() * 0.7;
+        for i in 0..n {
+            let dist = (x[i] * x[i] + y[i] * y[i]).sqrt();
+            if dist > max_radius {
+                x[i] *= max_radius / dist;
+                y[i] *= max_radius / dist;
+            }
         }
 
         temperature -= cooling;
