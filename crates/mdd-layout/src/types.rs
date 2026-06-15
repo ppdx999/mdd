@@ -53,7 +53,17 @@ impl LayoutGraph {
 // Layout configuration
 // ---------------------------------------------------------------------------
 
+/// Layout direction: ranks flow top-to-bottom or left-to-right.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Direction {
+    /// Ranks are rows (y-axis), nodes spread horizontally within each rank.
+    TopToBottom,
+    /// Ranks are columns (x-axis), nodes spread vertically within each rank.
+    LeftToRight,
+}
+
 pub struct LayoutConfig {
+    pub direction: Direction,
     pub padding: f64,
     pub node_sep: f64,       // 0.0 = auto-compute from edge labels
     pub rank_sep: f64,       // 0.0 = auto-compute
@@ -67,6 +77,7 @@ pub struct LayoutConfig {
 impl Default for LayoutConfig {
     fn default() -> Self {
         Self {
+            direction: Direction::TopToBottom,
             padding: 40.0,
             node_sep: 0.0,
             rank_sep: 0.0,

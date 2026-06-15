@@ -98,15 +98,29 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         .filter(|e| !e.label.is_empty())
         .map(|e| text_width(&e.label))
         .fold(0.0_f64, f64::max);
+    // Compute average node dimensions for spacing heuristic
+    let avg_node_w = if real_count > 0 {
+        graph.nodes.iter().take(real_count).map(|n| n.width).sum::<f64>() / real_count as f64
+    } else {
+        config.default_node_w
+    };
+    let avg_node_h = if real_count > 0 {
+        graph.nodes.iter().take(real_count).map(|n| n.height).sum::<f64>() / real_count as f64
+    } else {
+        config.default_node_h
+    };
+
     let rank_sep = if config.rank_sep > 0.0 {
         config.rank_sep
     } else {
-        (60.0_f64).max(max_label_w * 0.4 + 30.0)
+        // Enough room for edge labels + proportional to node height
+        (60.0_f64).max(max_label_w * 0.5 + 20.0).max(avg_node_h * 0.5 + 30.0)
     };
     let node_sep = if config.node_sep > 0.0 {
         config.node_sep
     } else {
-        (30.0_f64).max(max_label_w * 0.3 + 10.0)
+        // Enough room for labels + proportional to node width
+        (30.0_f64).max(max_label_w * 0.4 + 10.0).max(avg_node_w * 0.3 + 10.0)
     };
     let cluster_sep = config.group_h_pad * 2.0 + 16.0;
     let virtual_w = 2.0; // virtual nodes are thin

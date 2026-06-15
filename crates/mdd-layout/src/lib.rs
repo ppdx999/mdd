@@ -23,7 +23,8 @@ pub mod text;
 pub mod edge;
 
 pub use types::{
-    LayoutConfig, LayoutEdge, LayoutElement, LayoutGraph, LayoutGroup, LayoutNode, LayoutResult,
+    Direction, LayoutConfig, LayoutEdge, LayoutElement, LayoutGraph, LayoutGroup, LayoutNode,
+    LayoutResult,
 };
 
 /// Run the compound layout algorithm on the given graph.

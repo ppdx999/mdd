@@ -370,7 +370,7 @@ version = "0.1.0"
 name = "mdd-dfd"
 version = "0.1.0"
 dependencies = [
- "rust-sugiyama",
+ "mdd-layout",
 ]
 
 [[package]]
@@ -381,7 +381,7 @@ version = "0.1.0"
 name = "mdd-er"
 version = "0.1.0"
 dependencies = [
- "rust-sugiyama",
+ "mdd-layout",
 ]
 
 [[package]]
@@ -592,7 +592,7 @@ version = "0.1.0"
 name = "mdd-usecase"
 version = "0.1.0"
 dependencies = [
- "rust-sugiyama",
+ "mdd-layout",
 ]
 
 [[package]]

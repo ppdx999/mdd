@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-use rust_sugiyama::{configure::Config, from_vertices_and_edges};
+use mdd_layout::edge::{build_smooth_path, clip_to_rect, midpoint_on_path, route_around_nodes};
+use mdd_layout::text::{escape_xml, text_width};
+use mdd_layout::{LayoutConfig, LayoutEdge, LayoutElement, LayoutGraph, LayoutGroup, LayoutNode};
 
 // ---------------------------------------------------------------------------
 // Data structures
@@ -21,15 +23,29 @@ struct Node {
 }
 
 #[derive(Debug)]
+struct Boundary {
+    label: String,
+    children: Vec<Element>,
+}
+
+#[derive(Debug)]
+enum Element {
+    NodeRef(usize),
+    BoundaryRef(usize),
+}
+
+#[derive(Debug)]
 struct Edge {
-    from: usize,
-    to: usize,
+    from: String,
+    to: String,
     label: String,
 }
 
 #[derive(Debug)]
 struct Diagram {
     nodes: Vec<Node>,
+    boundaries: Vec<Boundary>,
+    top_level: Vec<Element>,
     edges: Vec<Edge>,
 }
 
@@ -39,12 +55,17 @@ struct Diagram {
 
 fn parse(input: &str) -> Result<Diagram, String> {
     let mut nodes: Vec<Node> = Vec::new();
+    let mut boundaries: Vec<Boundary> = Vec::new();
+    let mut top_level: Vec<Element> = Vec::new();
     let mut name_to_id: HashMap<String, usize> = HashMap::new();
     let mut edges: Vec<Edge> = Vec::new();
 
     let mut in_datastore = false;
     let mut ds_name = String::new();
     let mut ds_columns: Vec<String> = Vec::new();
+
+    // Stack for nested boundaries: (boundary_index, children_so_far)
+    let mut boundary_stack: Vec<(usize, Vec<Element>)> = Vec::new();
 
     for line in input.lines() {
         let line = line.trim();
@@ -63,6 +84,12 @@ fn parse(input: &str) -> Result<Diagram, String> {
                         columns: ds_columns.clone(),
                     },
                 });
+                let elem = Element::NodeRef(id);
+                if let Some(parent) = boundary_stack.last_mut() {
+                    parent.1.push(elem);
+                } else {
+                    top_level.push(elem);
+                }
                 in_datastore = false;
                 ds_name.clear();
                 ds_columns.clear();
@@ -70,6 +97,38 @@ fn parse(input: &str) -> Result<Diagram, String> {
             }
             ds_columns.push(line.to_string());
             continue;
+        }
+
+        // Close boundary block
+        if line == "}" {
+            if let Some((bidx, children)) = boundary_stack.pop() {
+                boundaries[bidx].children = children;
+                let elem = Element::BoundaryRef(bidx);
+                if let Some(parent) = boundary_stack.last_mut() {
+                    parent.1.push(elem);
+                } else {
+                    top_level.push(elem);
+                }
+            } else {
+                return Err("Unexpected }".to_string());
+            }
+            continue;
+        }
+
+        // boundary "Name" {
+        if line.starts_with("boundary ") {
+            let rest = line.strip_prefix("boundary ").unwrap();
+            if let Some(name) = rest.strip_suffix(" {") {
+                let name = name.trim().trim_matches('"').to_string();
+                let bidx = boundaries.len();
+                boundaries.push(Boundary {
+                    label: name,
+                    children: Vec::new(),
+                });
+                boundary_stack.push((bidx, Vec::new()));
+                continue;
+            }
+            return Err(format!("Invalid boundary syntax: {}", line));
         }
 
         if line.starts_with("entity ") {
@@ -80,6 +139,12 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 label,
                 kind: NodeKind::Entity,
             });
+            let elem = Element::NodeRef(id);
+            if let Some(parent) = boundary_stack.last_mut() {
+                parent.1.push(elem);
+            } else {
+                top_level.push(elem);
+            }
             continue;
         }
 
@@ -91,6 +156,12 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 label,
                 kind: NodeKind::Process,
             });
+            let elem = Element::NodeRef(id);
+            if let Some(parent) = boundary_stack.last_mut() {
+                parent.1.push(elem);
+            } else {
+                top_level.push(elem);
+            }
             continue;
         }
 
@@ -112,35 +183,47 @@ fn parse(input: &str) -> Result<Diagram, String> {
                     columns: Vec::new(),
                 },
             });
+            let elem = Element::NodeRef(id);
+            if let Some(parent) = boundary_stack.last_mut() {
+                parent.1.push(elem);
+            } else {
+                top_level.push(elem);
+            }
             continue;
         }
 
-        if line.contains(" -> ") {
+        if line.starts_with("flow ") || line.contains(" -> ") {
+            let line = if let Some(rest) = line.strip_prefix("flow ") {
+                rest
+            } else {
+                line
+            };
             // Parse: From -> To : "label"  or  From -> To
             let parts: Vec<&str> = line.splitn(2, " -> ").collect();
-            let from = parts[0].trim();
+            if parts.len() < 2 {
+                return Err(format!("Invalid flow syntax: {}", line));
+            }
+            let from = parts[0].trim().to_string();
             let rest = parts[1];
 
             let (to, label) = if let Some((to_part, label_part)) = rest.split_once(" : ") {
                 (
-                    to_part.trim(),
+                    to_part.trim().to_string(),
                     label_part.trim().trim_matches('"').to_string(),
                 )
             } else {
-                (rest.trim(), String::new())
+                (rest.trim().to_string(), String::new())
             };
 
-            let from_id = name_to_id
-                .get(from)
-                .ok_or_else(|| format!("Unknown node: {}", from))?;
-            let to_id = name_to_id
-                .get(to)
-                .ok_or_else(|| format!("Unknown node: {}", to))?;
-            edges.push(Edge {
-                from: *from_id,
-                to: *to_id,
-                label,
-            });
+            // Validate node names exist
+            if !name_to_id.contains_key(&from) {
+                return Err(format!("Unknown node: {}", from));
+            }
+            if !name_to_id.contains_key(&to) {
+                return Err(format!("Unknown node: {}", to));
+            }
+
+            edges.push(Edge { from, to, label });
             continue;
         }
 
@@ -151,14 +234,22 @@ fn parse(input: &str) -> Result<Diagram, String> {
         return Err(format!("Unclosed datastore block: {}", ds_name));
     }
 
-    Ok(Diagram { nodes, edges })
+    if !boundary_stack.is_empty() {
+        return Err("Unclosed boundary block".to_string());
+    }
+
+    Ok(Diagram {
+        nodes,
+        boundaries,
+        top_level,
+        edges,
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CHAR_WIDTH: f64 = 8.0;
 const LINE_HEIGHT: f64 = 18.0;
 const PADDING: f64 = 40.0;
 const MAX_LINE_CHARS: usize = 16;
@@ -189,41 +280,8 @@ const COLOR_PROCESS_FILL: &str = "#f0f8ff";
 const COLOR_PROCESS_STROKE: &str = "#336699";
 const COLOR_DS_FILL: &str = "#f0fff0";
 const COLOR_DS_STROKE: &str = "#339966";
-
-// ---------------------------------------------------------------------------
-// Spacing
-// ---------------------------------------------------------------------------
-
-struct SpacingConfig {
-    nodesep: f64,
-    ranksep: f64,
-    component_gap: f64,
-    vertex_spacing: f64,
-}
-
-fn compute_spacing(diagram: &Diagram) -> SpacingConfig {
-    let complexity = diagram.nodes.len() + diagram.edges.len();
-    // Three-tier scaling:
-    // <=10:  factor ~1.0-1.3  (compact)
-    // 10-30: factor ~1.3-2.5  (moderate)
-    // 30+:   factor ~2.5-6.0  (spacious, linear growth)
-    let factor = if complexity <= 10 {
-        1.0 + (complexity as f64 / 20.0).sqrt() * 0.4
-    } else if complexity <= 30 {
-        1.0 + (complexity as f64 / 10.0).sqrt() * 0.6
-    } else {
-        2.0 + (complexity - 30) as f64 * 0.06
-    }
-    .min(5.0);
-
-    let node_count = diagram.nodes.len() as f64;
-    SpacingConfig {
-        nodesep: 22.0 * factor,
-        ranksep: 35.0 * factor,
-        component_gap: 28.0 * factor,
-        vertex_spacing: 5.0 + node_count * 3.5,
-    }
-}
+const COLOR_BOUNDARY_STROKE: &str = "#cc3333";
+const COLOR_BOUNDARY_FILL: &str = "#fff8f8";
 
 // ---------------------------------------------------------------------------
 // Text utilities
@@ -270,19 +328,6 @@ fn wrap_lines(label: &str) -> Vec<String> {
     lines
 }
 
-fn text_width(s: &str) -> f64 {
-    // Approximate: ASCII ~8px, CJK ~14px per char
-    s.chars()
-        .map(|c| {
-            if c.is_ascii() {
-                CHAR_WIDTH
-            } else {
-                14.0
-            }
-        })
-        .sum()
-}
-
 // ---------------------------------------------------------------------------
 // Node sizing
 // ---------------------------------------------------------------------------
@@ -305,35 +350,26 @@ fn process_size(label: &str) -> (f64, f64) {
 }
 
 /// Compute multi-column grid layout for datastore columns.
-/// Returns (num_columns, col_widths, num_rows).
 fn ds_column_layout(columns: &[String]) -> (usize, Vec<f64>, usize) {
     if columns.is_empty() {
         return (1, vec![0.0], 0);
     }
-
-    // Determine number of display columns: ceil(len / DS_MAX_ROWS)
     let num_cols = ((columns.len() + DS_MAX_ROWS - 1) / DS_MAX_ROWS).max(1);
     let num_rows = (columns.len() + num_cols - 1) / num_cols;
-
-    // Compute max width per display column
     let mut col_widths = vec![0.0_f64; num_cols];
     for (i, col) in columns.iter().enumerate() {
-        let c = i / num_rows; // fill column-first
+        let c = i / num_rows;
         col_widths[c] = col_widths[c].max(text_width(col));
     }
-
     (num_cols, col_widths, num_rows)
 }
 
 fn datastore_size(label: &str, columns: &[String]) -> (f64, f64) {
     let header_w = text_width(label) + DS_H_PAD * 2.0;
     let (num_cols, col_widths, num_rows) = ds_column_layout(columns);
-
-    let inner_w: f64 = col_widths.iter().sum::<f64>()
-        + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
-    let w = header_w
-        .max(inner_w + DS_H_PAD * 2.0)
-        .max(DS_MIN_W);
+    let inner_w: f64 =
+        col_widths.iter().sum::<f64>() + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
+    let w = header_w.max(inner_w + DS_H_PAD * 2.0).max(DS_MIN_W);
     let h = DS_HEADER_H + num_rows as f64 * LINE_HEIGHT + 8.0;
     (w, h)
 }
@@ -347,127 +383,88 @@ fn node_size(node: &Node) -> (f64, f64) {
 }
 
 // ---------------------------------------------------------------------------
-// Layout & SVG rendering
+// Build LayoutGraph from Diagram
+// ---------------------------------------------------------------------------
+
+fn build_layout_graph(diagram: &Diagram) -> LayoutGraph {
+    let mut graph = LayoutGraph::new();
+
+    // Add nodes with their computed sizes
+    for node in &diagram.nodes {
+        let (w, h) = node_size(node);
+        graph.nodes.push(LayoutNode {
+            name: node.label.clone(),
+            width: w,
+            height: h,
+        });
+    }
+
+    // Add edges
+    for edge in &diagram.edges {
+        graph.edges.push(LayoutEdge {
+            from: edge.from.clone(),
+            to: edge.to.clone(),
+            label: edge.label.clone(),
+        });
+    }
+
+    // Add boundaries as groups and build element tree
+    for boundary in &diagram.boundaries {
+        graph.groups.push(LayoutGroup {
+            name: boundary.label.clone(),
+            children: convert_elements(&boundary.children),
+        });
+    }
+
+    graph.top_level = convert_elements(&diagram.top_level);
+
+    graph
+}
+
+fn convert_elements(elements: &[Element]) -> Vec<LayoutElement> {
+    elements
+        .iter()
+        .map(|e| match e {
+            Element::NodeRef(i) => LayoutElement::NodeRef(*i),
+            Element::BoundaryRef(i) => LayoutElement::GroupRef(*i),
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// SVG rendering
 // ---------------------------------------------------------------------------
 
 fn render_svg(diagram: &Diagram) -> String {
-    let sp = compute_spacing(diagram);
+    let graph = build_layout_graph(diagram);
+    // Compute max process radius for group padding
+    let max_process_r = diagram.nodes.iter()
+        .filter(|n| matches!(n.kind, NodeKind::Process))
+        .map(|n| { let (w, _) = process_size(&n.label); w / 2.0 })
+        .fold(0.0_f64, f64::max);
+    let group_pad = (40.0_f64).max(max_process_r * 0.7 + 30.0);
 
-    let config = Config {
-        vertex_spacing: sp.vertex_spacing,
-        ..Config::default()
+    let config = LayoutConfig {
+        padding: PADDING,
+        group_h_pad: group_pad,
+        group_v_pad: group_pad,
+        group_header_h: 28.0,
+        ..LayoutConfig::default()
     };
-
-    // Build vertices with swapped dimensions for LTR layout
-    let vertices: Vec<(u32, (f64, f64))> = diagram
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(i, node)| {
-            let (w, h) = node_size(node);
-            (i as u32, (h, w)) // swap for LTR
-        })
-        .collect();
-
-    let edges: Vec<(u32, u32)> = diagram
-        .edges
-        .iter()
-        .map(|e| (e.from as u32, e.to as u32))
-        .collect();
-
-    let layouts = from_vertices_and_edges(&vertices, &edges, &config);
-
-    // Post-scale for asymmetric nodesep/ranksep
-    let base = sp.vertex_spacing.max(1.0);
-    let nodesep_ratio = sp.nodesep / base;
-    let ranksep_ratio = sp.ranksep / base;
-
-    let scaled_components: Vec<(HashMap<usize, (f64, f64)>, f64, f64)> = layouts
-        .iter()
-        .map(|(coords, _w, _h)| {
-            let n = coords.len() as f64;
-            let cx = coords.iter().map(|(_, (x, _))| x).sum::<f64>() / n;
-            let cy = coords.iter().map(|(_, (_, y))| y).sum::<f64>() / n;
-
-            let mut scaled: HashMap<usize, (f64, f64)> = HashMap::new();
-            let mut min_x = f64::MAX;
-            let mut min_y = f64::MAX;
-            let mut max_x = f64::MIN;
-            let mut max_y = f64::MIN;
-
-            for &(id, (sx, sy)) in coords {
-                let new_sx = cx + (sx - cx) * nodesep_ratio;
-                let new_sy = cy + (sy - cy) * ranksep_ratio;
-                let final_x = new_sy; // swap back for LTR
-                let final_y = new_sx;
-
-                let (w, h) = node_size(&diagram.nodes[id]);
-                min_x = min_x.min(final_x);
-                min_y = min_y.min(final_y);
-                max_x = max_x.max(final_x + w);
-                max_y = max_y.max(final_y + h);
-
-                scaled.insert(id, (final_x, final_y));
-            }
-
-            let comp_w = (max_x - min_x).max(0.0);
-            let comp_h = (max_y - min_y).max(0.0);
-            (scaled, comp_w, comp_h)
-        })
-        .collect();
-
-    // Row-based packing
-    let total_area: f64 = scaled_components
-        .iter()
-        .map(|(_, w, h)| (w + sp.component_gap) * (h + sp.component_gap))
-        .sum();
-    let target_width = total_area.sqrt() * 1.3;
-
-    let mut comp_indices: Vec<usize> = (0..scaled_components.len()).collect();
-    comp_indices.sort_by(|a, b| {
-        scaled_components[*b]
-            .2
-            .partial_cmp(&scaled_components[*a].2)
-            .unwrap()
-    });
-
-    let mut positions: HashMap<usize, (f64, f64)> = HashMap::new();
-    let mut row_x: f64 = 0.0;
-    let mut row_y: f64 = 0.0;
-    let mut row_max_height: f64 = 0.0;
-
-    for &ci in &comp_indices {
-        let (ref coords, comp_w, comp_h) = scaled_components[ci];
-
-        if row_x > 0.0 && row_x + comp_w > target_width {
-            row_y += row_max_height + sp.component_gap;
-            row_x = 0.0;
-            row_max_height = 0.0;
-        }
-
-        let cmin_x = coords.values().map(|(x, _)| *x).fold(f64::MAX, f64::min);
-        let cmin_y = coords.values().map(|(_, y)| *y).fold(f64::MAX, f64::min);
-
-        for (&id, &(x, y)) in coords {
-            positions.insert(id, (x - cmin_x + row_x, y - cmin_y + row_y));
-        }
-
-        row_x += comp_w + sp.component_gap;
-        row_max_height = row_max_height.max(comp_h);
-    }
+    let result = mdd_layout::layout(&graph, &config);
+    let positions = &result.positions;
+    let edge_waypoints = &result.edge_waypoints;
 
     // Compute SVG dimensions
     let mut max_x: f64 = 0.0;
     let mut max_y: f64 = 0.0;
-    for (i, node) in diagram.nodes.iter().enumerate() {
-        let (x, y) = positions.get(&i).copied().unwrap_or((0.0, 0.0));
-        let (w, h) = node_size(node);
+    for (_, (x, y, w, h)) in positions {
         max_x = max_x.max(x + w);
         max_y = max_y.max(y + h);
     }
 
-    let svg_width = max_x + PADDING * 2.0;
-    let svg_height = max_y + PADDING * 2.0;
+    let svg_width = max_x + PADDING;
+    let svg_height = max_y + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -484,56 +481,59 @@ fn render_svg(diagram: &Diagram) -> String {
         COLOR_EDGE
     ));
 
-    // Render nodes first (behind edges)
-    for (i, node) in diagram.nodes.iter().enumerate() {
-        let (x, y) = positions.get(&i).copied().unwrap_or((0.0, 0.0));
-        let px = PADDING + x;
-        let py = PADDING + y;
+    // Render boundaries and nodes (back to front)
+    render_elements_recursive(
+        &mut svg,
+        &diagram.top_level,
+        &diagram.nodes,
+        &diagram.boundaries,
+        positions,
+    );
 
-        match &node.kind {
-            NodeKind::Entity => render_entity(&mut svg, px, py, &node.label),
-            NodeKind::Process => render_process(&mut svg, px, py, &node.label),
-            NodeKind::DataStore { columns } => {
-                render_datastore(&mut svg, px, py, &node.label, columns)
-            }
-        }
-    }
-
-    // Build node bounding boxes (cx, cy, hw, hh, is_circle)
-    let node_bounds: Vec<(f64, f64, f64, f64, bool)> = diagram
+    // Build node bounds for edge routing
+    let all_bounds: Vec<(String, f64, f64, f64, f64)> = diagram
         .nodes
         .iter()
-        .enumerate()
-        .map(|(i, node)| {
-            let (x, y) = positions.get(&i).copied().unwrap_or((0.0, 0.0));
-            let (w, h) = node_size(node);
-            let is_circle = matches!(node.kind, NodeKind::Process);
-            (PADDING + x + w / 2.0, PADDING + y + h / 2.0, w / 2.0, h / 2.0, is_circle)
+        .filter_map(|n| {
+            positions.get(&n.label).map(|(x, y, w, h)| {
+                (n.label.clone(), x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0)
+            })
         })
         .collect();
 
-    // Count duplicate pairs for reciprocal edge offset
-    let mut pair_count: HashMap<(usize, usize), usize> = HashMap::new();
-    for edge in &diagram.edges {
-        let key = (edge.from.min(edge.to), edge.from.max(edge.to));
+    // Reciprocal edge counting
+    let mut pair_count: HashMap<(String, String), usize> = HashMap::new();
+    for e in &diagram.edges {
+        let key = if e.from <= e.to {
+            (e.from.clone(), e.to.clone())
+        } else {
+            (e.to.clone(), e.from.clone())
+        };
         *pair_count.entry(key).or_insert(0) += 1;
     }
-    let mut pair_seen: HashMap<(usize, usize), usize> = HashMap::new();
+    let mut pair_seen: HashMap<(String, String), usize> = HashMap::new();
 
-    // Render edges on top of nodes
+    // Render edges
     for edge in &diagram.edges {
-        let (fw, fh) = node_size(&diagram.nodes[edge.from]);
-        let (tw, th) = node_size(&diagram.nodes[edge.to]);
-        let (x1, y1) = positions.get(&edge.from).copied().unwrap_or((0.0, 0.0));
-        let (x2, y2) = positions.get(&edge.to).copied().unwrap_or((0.0, 0.0));
+        let from_pos = positions.get(&edge.from);
+        let to_pos = positions.get(&edge.to);
+        if from_pos.is_none() || to_pos.is_none() {
+            continue;
+        }
 
-        let cx1 = PADDING + x1 + fw / 2.0;
-        let cy1 = PADDING + y1 + fh / 2.0;
-        let cx2 = PADDING + x2 + tw / 2.0;
-        let cy2 = PADDING + y2 + th / 2.0;
+        let (fx, fy, fw, fh) = *from_pos.unwrap();
+        let (tx, ty, tw, th) = *to_pos.unwrap();
 
-        // Reciprocal edge offset
-        let pair_key = (edge.from.min(edge.to), edge.from.max(edge.to));
+        let cx1 = fx + fw / 2.0;
+        let cy1 = fy + fh / 2.0;
+        let cx2 = tx + tw / 2.0;
+        let cy2 = ty + th / 2.0;
+
+        let pair_key = if edge.from <= edge.to {
+            (edge.from.clone(), edge.to.clone())
+        } else {
+            (edge.to.clone(), edge.from.clone())
+        };
         let total = *pair_count.get(&pair_key).unwrap_or(&1);
         let idx = {
             let seen = pair_seen.entry(pair_key).or_insert(0);
@@ -541,38 +541,59 @@ fn render_svg(diagram: &Diagram) -> String {
             *seen += 1;
             v
         };
-
         let offset = if total > 1 {
-            let spread = 15.0;
-            (idx as f64 - (total as f64 - 1.0) / 2.0) * spread
+            (idx as f64 - (total as f64 - 1.0) / 2.0) * 15.0
         } else {
             0.0
         };
 
-        // Build route avoiding intermediate nodes
-        let route = route_around_nodes(
-            cx1, cy1, cx2, cy2, edge.from, edge.to, &node_bounds, offset,
+        // Use virtual node waypoints if available, otherwise route around nodes
+        let edge_key = format!("\u{2192}{}\u{2192}{}", edge.from, edge.to);
+        let layout_edge_key = format!("{}→{}", edge.from, edge.to);
+        let route = if let Some(waypoints) = edge_waypoints.get(&layout_edge_key) {
+            let mut r = vec![(cx1, cy1)];
+            r.extend(waypoints);
+            r.push((cx2, cy2));
+            r
+        } else {
+            route_around_nodes(cx1, cy1, cx2, cy2, &edge.from, &edge.to, &all_bounds, offset)
+        };
+
+        let start_target = if route.len() > 1 {
+            route[1]
+        } else {
+            (cx2, cy2)
+        };
+        let end_target = if route.len() > 1 {
+            route[route.len() - 2]
+        } else {
+            (cx1, cy1)
+        };
+
+        // Clip start/end to node boundaries (circle for process, rect for others)
+        let from_node = diagram.nodes.iter().find(|n| n.label == edge.from);
+        let to_node = diagram.nodes.iter().find(|n| n.label == edge.to);
+
+        let (ax1, ay1) = clip_to_node_boundary(
+            cx1, cy1, start_target.0, start_target.1, from_node, fw, fh,
+        );
+        let (ax2, ay2) = clip_to_node_boundary(
+            cx2, cy2, end_target.0, end_target.1, to_node, tw, th,
         );
 
-        // Clip start and end to node boundaries
-        let start_target = if route.len() > 1 { route[1] } else { (cx2, cy2) };
-        let end_target = if route.len() > 1 { route[route.len() - 2] } else { (cx1, cy1) };
-        let (ax1, ay1) = clip_to_boundary(cx1, cy1, start_target.0, start_target.1, &diagram.nodes[edge.from]);
-        let (ax2, ay2) = clip_to_boundary(cx2, cy2, end_target.0, end_target.1, &diagram.nodes[edge.to]);
-
-        // Build SVG path
-        let mut clipped_route = vec![(ax1, ay1)];
+        let mut clipped = vec![(ax1, ay1)];
         if route.len() > 2 {
-            clipped_route.extend_from_slice(&route[1..route.len() - 1]);
+            clipped.extend_from_slice(&route[1..route.len() - 1]);
         }
-        clipped_route.push((ax2, ay2));
+        clipped.push((ax2, ay2));
 
-        let path_d = if clipped_route.len() == 2 {
-            format!("M{},{} L{},{}", clipped_route[0].0, clipped_route[0].1,
-                    clipped_route[1].0, clipped_route[1].1)
+        let path_d = if clipped.len() == 2 {
+            format!(
+                "M{},{} L{},{}",
+                clipped[0].0, clipped[0].1, clipped[1].0, clipped[1].1
+            )
         } else {
-            // Quadratic Bézier through waypoints for smooth curves
-            build_smooth_path(&clipped_route)
+            build_smooth_path(&clipped)
         };
 
         svg.push_str(&format!(
@@ -581,336 +602,135 @@ fn render_svg(diagram: &Diagram) -> String {
         ));
 
         if !edge.label.is_empty() {
-            let (mx, my) = midpoint_on_path(&clipped_route);
-            let lx = mx;
-            let ly = my - 6.0;
+            let (mx, my) = midpoint_on_path(&clipped);
+            let lw = text_width(&edge.label);
+            // Offset label perpendicular to the edge direction to avoid overlapping nodes
+            let dx = clipped.last().unwrap().0 - clipped[0].0;
+            let dy = clipped.last().unwrap().1 - clipped[0].1;
+            let len = (dx * dx + dy * dy).sqrt().max(1.0);
+            let offset_x = -dy / len * 28.0;
+            let offset_y = dx / len * 28.0;
+            let mut lx = mx + offset_x;
+            let mut ly = my + offset_y;
+
+            // Push label away from any overlapping circle
+            for node in &diagram.nodes {
+                if !matches!(node.kind, NodeKind::Process) { continue; }
+                if let Some(&(nx, ny, nw, _nh)) = positions.get(&node.label) {
+                    let ncx = nx + nw / 2.0;
+                    let ncy = ny + nw / 2.0; // circle: w == h
+                    let nr = nw / 2.0;
+                    let dist = ((lx - ncx).powi(2) + (ly - ncy).powi(2)).sqrt();
+                    if dist < nr + 20.0 {
+                        let push_dx = lx - ncx;
+                        let push_dy = ly - ncy;
+                        let push_dist = (push_dx * push_dx + push_dy * push_dy).sqrt().max(1.0);
+                        let push = nr + 24.0 - dist;
+                        lx += push_dx / push_dist * push;
+                        ly += push_dy / push_dist * push;
+                    }
+                }
+            }
             svg.push_str(&format!(
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.85\"/>",
-                lx - text_width(&edge.label) / 2.0 - 3.0,
+                lx - lw / 2.0 - 3.0,
                 ly - 12.0,
-                text_width(&edge.label) + 6.0
+                lw + 6.0
             ));
             svg.push_str(&format!(
                 "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" fill=\"{}\">{}</text>",
-                lx, ly, COLOR_EDGE, escape_xml(&edge.label)
+                lx,
+                ly,
+                COLOR_EDGE,
+                escape_xml(&edge.label)
             ));
         }
+
+        // Suppress unused variable warning
+        let _ = edge_key;
     }
 
     svg.push_str("</svg>");
     svg
 }
 
-// ---------------------------------------------------------------------------
-// Edge routing: avoid crossing intermediate nodes
-// ---------------------------------------------------------------------------
+/// Clip from center to target, handling circular process nodes vs rectangular nodes.
+fn clip_to_node_boundary(
+    cx: f64,
+    cy: f64,
+    tx: f64,
+    ty: f64,
+    node: Option<&Node>,
+    w: f64,
+    h: f64,
+) -> (f64, f64) {
+    let is_circle = node
+        .map(|n| matches!(n.kind, NodeKind::Process))
+        .unwrap_or(false);
 
-/// Check if a line segment (p1 -> p2) intersects a rectangle (cx, cy, hw, hh).
-/// Returns true if the segment crosses the rectangle's interior.
-fn segment_intersects_rect(
-    p1x: f64, p1y: f64, p2x: f64, p2y: f64,
-    cx: f64, cy: f64, hw: f64, hh: f64,
-) -> bool {
-    let margin = 4.0;
-    let left = cx - hw - margin;
-    let right = cx + hw + margin;
-    let top = cy - hh - margin;
-    let bottom = cy + hh + margin;
-
-    // Check if both endpoints are on the same side (no intersection)
-    if (p1x < left && p2x < left) || (p1x > right && p2x > right) {
-        return false;
-    }
-    if (p1y < top && p2y < top) || (p1y > bottom && p2y > bottom) {
-        return false;
-    }
-
-    // Check each edge of the rectangle
-    let dx = p2x - p1x;
-    let dy = p2y - p1y;
-
-    let edges: [(f64, f64, f64, f64); 4] = [
-        (left, top, right, top),       // top
-        (left, bottom, right, bottom), // bottom
-        (left, top, left, bottom),     // left
-        (right, top, right, bottom),   // right
-    ];
-
-    for (ex1, ey1, ex2, ey2) in &edges {
-        let edx = ex2 - ex1;
-        let edy = ey2 - ey1;
-        let denom = dx * edy - dy * edx;
-        if denom.abs() < 1e-10 {
-            continue;
+    if is_circle {
+        let r = w / 2.0;
+        let dx = tx - cx;
+        let dy = ty - cy;
+        let dist = (dx * dx + dy * dy).sqrt();
+        if dist < 1.0 {
+            // Target is at center; push straight down
+            (cx, cy + r)
+        } else {
+            (cx + dx / dist * r, cy + dy / dist * r)
         }
-        let t = ((ex1 - p1x) * edy - (ey1 - p1y) * edx) / denom;
-        let u = ((ex1 - p1x) * dy - (ey1 - p1y) * dx) / denom;
-        if (0.01..=0.99).contains(&t) && (0.0..=1.0).contains(&u) {
-            return true;
-        }
-    }
-    false
-}
-
-/// Route an edge from (sx, sy) to (ex, ey) avoiding intermediate nodes.
-/// Returns a list of waypoints including start and end.
-fn route_around_nodes(
-    sx: f64, sy: f64, ex: f64, ey: f64,
-    from_id: usize, to_id: usize,
-    bounds: &[(f64, f64, f64, f64, bool)], // cx, cy, hw, hh, is_circle
-    offset: f64,
-) -> Vec<(f64, f64)> {
-    // Apply perpendicular offset for reciprocal edges
-    let (sx, sy, ex, ey) = if offset.abs() > 0.1 {
-        let dx = ex - sx;
-        let dy = ey - sy;
-        let len = (dx * dx + dy * dy).sqrt().max(1.0);
-        let nx = -dy / len * offset;
-        let ny = dx / len * offset;
-        (sx + nx, sy + ny, ex + nx, ey + ny)
     } else {
-        (sx, sy, ex, ey)
-    };
-
-    // Find all nodes that the direct line crosses
-    let mut blockers: Vec<usize> = Vec::new();
-    for (i, &(cx, cy, hw, hh, _is_circle)) in bounds.iter().enumerate() {
-        if i == from_id || i == to_id {
-            continue;
-        }
-        if segment_intersects_rect(sx, sy, ex, ey, cx, cy, hw, hh) {
-            blockers.push(i);
-        }
+        clip_to_rect(cx, cy, tx, ty, w / 2.0, h / 2.0)
     }
+}
 
-    if blockers.is_empty() {
-        return vec![(sx, sy), (ex, ey)];
-    }
-
-    // Generate waypoints around blocking nodes
-    let margin = 20.0;
-    let mut waypoints: Vec<(f64, f64)> = vec![(sx, sy)];
-
-    // Sort blockers by distance from start
-    blockers.sort_by(|a, b| {
-        let (acx, acy, _, _, _) = bounds[*a];
-        let (bcx, bcy, _, _, _) = bounds[*b];
-        let da = (acx - sx).powi(2) + (acy - sy).powi(2);
-        let db = (bcx - sx).powi(2) + (bcy - sy).powi(2);
-        da.partial_cmp(&db).unwrap()
-    });
-
-    for &bi in &blockers {
-        let (cx, cy, hw, hh, _) = bounds[bi];
-        // Choose to go around the side that's closer to the direct line
-        let dx = ex - sx;
-        let dy = ey - sy;
-        let len = (dx * dx + dy * dy).sqrt().max(1.0);
-
-        // Cross product to determine which side
-        let last = waypoints.last().unwrap();
-        let cross = (cx - last.0) * dy - (cy - last.1) * dx;
-
-        if cross.abs() / len < hw + hh {
-            // Route around the node: pick the side with less deviation
-            let top_y = cy - hh - margin;
-            let bot_y = cy + hh + margin;
-            let left_x = cx - hw - margin;
-            let right_x = cx + hw + margin;
-
-            // Prefer vertical detour (go above or below)
-            if dy.abs() > dx.abs() {
-                // Line is more vertical, detour horizontally
-                if cross > 0.0 {
-                    waypoints.push((right_x, cy));
-                } else {
-                    waypoints.push((left_x, cy));
+fn render_elements_recursive(
+    svg: &mut String,
+    elements: &[Element],
+    nodes: &[Node],
+    boundaries: &[Boundary],
+    positions: &HashMap<String, (f64, f64, f64, f64)>,
+) {
+    for elem in elements {
+        match elem {
+            Element::BoundaryRef(bi) => {
+                let boundary = &boundaries[*bi];
+                if let Some(&(x, y, w, h)) = positions.get(&boundary.label) {
+                    // Boundary background (dashed red border for trust boundaries)
+                    svg.push_str(&format!(
+                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" stroke-dasharray=\"8,4\"/>",
+                        x, y, w, h, COLOR_BOUNDARY_FILL, COLOR_BOUNDARY_STROKE
+                    ));
+                    // Boundary label
+                    svg.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" font-weight=\"bold\" font-size=\"13\" fill=\"{}\">{}</text>",
+                        x + 8.0,
+                        y + 20.0,
+                        COLOR_BOUNDARY_STROKE,
+                        escape_xml(&boundary.label)
+                    ));
                 }
-            } else {
-                // Line is more horizontal, detour vertically
-                if cross > 0.0 {
-                    waypoints.push((cx, top_y));
-                } else {
-                    waypoints.push((cx, bot_y));
+                // Recurse into children
+                render_elements_recursive(
+                    svg,
+                    &boundary.children,
+                    nodes,
+                    boundaries,
+                    positions,
+                );
+            }
+            Element::NodeRef(ni) => {
+                let node = &nodes[*ni];
+                if let Some(&(x, y, _w, _h)) = positions.get(&node.label) {
+                    match &node.kind {
+                        NodeKind::Entity => render_entity(svg, x, y, &node.label),
+                        NodeKind::Process => render_process(svg, x, y, &node.label),
+                        NodeKind::DataStore { columns } => {
+                            render_datastore(svg, x, y, &node.label, columns)
+                        }
+                    }
                 }
             }
-        }
-    }
-
-    waypoints.push((ex, ey));
-    waypoints
-}
-
-/// Build a smooth SVG path through waypoints using quadratic Bézier curves.
-fn build_smooth_path(points: &[(f64, f64)]) -> String {
-    if points.len() < 2 {
-        return String::new();
-    }
-    if points.len() == 2 {
-        return format!("M{},{} L{},{}", points[0].0, points[0].1, points[1].0, points[1].1);
-    }
-
-    let mut d = format!("M{},{}", points[0].0, points[0].1);
-
-    for i in 1..points.len() - 1 {
-        let prev = points[i - 1];
-        let curr = points[i];
-        let next = points[i + 1];
-
-        // Midpoints
-        let mid_prev = ((prev.0 + curr.0) / 2.0, (prev.1 + curr.1) / 2.0);
-        let mid_next = ((curr.0 + next.0) / 2.0, (curr.1 + next.1) / 2.0);
-
-        if i == 1 {
-            d.push_str(&format!(" L{},{}", mid_prev.0, mid_prev.1));
-        }
-        d.push_str(&format!(
-            " Q{},{} {},{}",
-            curr.0, curr.1, mid_next.0, mid_next.1
-        ));
-    }
-
-    let last = points[points.len() - 1];
-    d.push_str(&format!(" L{},{}", last.0, last.1));
-    d
-}
-
-/// Sample a point at arc-length midpoint of a polyline/curve defined by waypoints.
-/// Uses the same Bézier construction as build_smooth_path for consistency.
-fn midpoint_on_path(points: &[(f64, f64)]) -> (f64, f64) {
-    if points.len() <= 1 {
-        return points.first().copied().unwrap_or((0.0, 0.0));
-    }
-    if points.len() == 2 {
-        return (
-            (points[0].0 + points[1].0) / 2.0,
-            (points[0].1 + points[1].1) / 2.0,
-        );
-    }
-
-    // Sample the smooth path at many points, then find arc-length midpoint
-    let samples = sample_smooth_path(points, 64);
-    if samples.is_empty() {
-        return points[points.len() / 2];
-    }
-
-    // Compute cumulative arc lengths
-    let mut lengths = vec![0.0_f64];
-    for i in 1..samples.len() {
-        let dx = samples[i].0 - samples[i - 1].0;
-        let dy = samples[i].1 - samples[i - 1].1;
-        lengths.push(lengths[i - 1] + (dx * dx + dy * dy).sqrt());
-    }
-
-    let total = *lengths.last().unwrap();
-    let half = total / 2.0;
-
-    // Find the segment containing the midpoint
-    for i in 1..lengths.len() {
-        if lengths[i] >= half {
-            let t = (half - lengths[i - 1]) / (lengths[i] - lengths[i - 1]).max(1e-10);
-            return (
-                samples[i - 1].0 + (samples[i].0 - samples[i - 1].0) * t,
-                samples[i - 1].1 + (samples[i].1 - samples[i - 1].1) * t,
-            );
-        }
-    }
-    *samples.last().unwrap()
-}
-
-/// Sample points along the smooth Bézier path at n intervals.
-fn sample_smooth_path(points: &[(f64, f64)], n: usize) -> Vec<(f64, f64)> {
-    if points.len() < 2 {
-        return points.to_vec();
-    }
-    if points.len() == 2 {
-        return (0..=n)
-            .map(|i| {
-                let t = i as f64 / n as f64;
-                (
-                    points[0].0 + (points[1].0 - points[0].0) * t,
-                    points[0].1 + (points[1].1 - points[0].1) * t,
-                )
-            })
-            .collect();
-    }
-
-    // Rebuild the same Bézier segments as build_smooth_path
-    let mut segments: Vec<((f64, f64), (f64, f64), (f64, f64))> = Vec::new(); // (start, control, end)
-    let mut cursor = points[0];
-
-    for i in 1..points.len() - 1 {
-        let prev = points[i - 1];
-        let curr = points[i];
-        let next = points[i + 1];
-        let mid_prev = ((prev.0 + curr.0) / 2.0, (prev.1 + curr.1) / 2.0);
-        let mid_next = ((curr.0 + next.0) / 2.0, (curr.1 + next.1) / 2.0);
-
-        if i == 1 {
-            // Line from cursor to mid_prev
-            segments.push((cursor, cursor, mid_prev)); // degenerate: straight line as Q with control=start
-            cursor = mid_prev;
-        }
-        // Quadratic Bézier from cursor to mid_next with control at curr
-        segments.push((cursor, curr, mid_next));
-        cursor = mid_next;
-    }
-    // Final line to last point
-    let last = *points.last().unwrap();
-    segments.push((cursor, cursor, last));
-
-    // Sample each segment
-    let per_seg = (n / segments.len()).max(2);
-    let mut result = Vec::new();
-    for (start, ctrl, end) in &segments {
-        for j in 0..per_seg {
-            let t = j as f64 / per_seg as f64;
-            // Quadratic Bézier: B(t) = (1-t)^2*P0 + 2*(1-t)*t*P1 + t^2*P2
-            let mt = 1.0 - t;
-            let x = mt * mt * start.0 + 2.0 * mt * t * ctrl.0 + t * t * end.0;
-            let y = mt * mt * start.1 + 2.0 * mt * t * ctrl.1 + t * t * end.1;
-            result.push((x, y));
-        }
-    }
-    result.push(last);
-    result
-}
-
-/// Clip a line from (cx, cy) toward (tx, ty) to the boundary of the node shape.
-fn clip_to_boundary(cx: f64, cy: f64, tx: f64, ty: f64, node: &Node) -> (f64, f64) {
-    let dx = tx - cx;
-    let dy = ty - cy;
-
-    match &node.kind {
-        NodeKind::Process => {
-            let (w, _) = process_size(&node.label);
-            let r = w / 2.0;
-            let dist = (dx * dx + dy * dy).sqrt();
-            if dist == 0.0 {
-                (cx, cy)
-            } else {
-                (cx + dx / dist * r, cy + dy / dist * r)
-            }
-        }
-        _ => {
-            // Rectangle clipping for Entity and DataStore
-            let (w, h) = node_size(node);
-            let hw = w / 2.0;
-            let hh = h / 2.0;
-            if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
-                return (cx, cy);
-            }
-            // Find intersection with rectangle edges
-            let mut t = f64::MAX;
-            if dx.abs() > 1e-9 {
-                let t_right = hw / dx.abs();
-                t = t.min(t_right);
-            }
-            if dy.abs() > 1e-9 {
-                let t_bottom = hh / dy.abs();
-                t = t.min(t_bottom);
-            }
-            (cx + dx * t, cy + dy * t)
         }
     }
 }
@@ -1006,16 +826,16 @@ fn render_datastore(svg: &mut String, x: f64, y: f64, label: &str, columns: &[St
 
     // Column names in multi-column grid
     let (num_cols, col_widths, num_rows) = ds_column_layout(columns);
-    let inner_w: f64 = col_widths.iter().sum::<f64>()
-        + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
+    let inner_w: f64 =
+        col_widths.iter().sum::<f64>() + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
     let grid_start_x = x + (w - inner_w) / 2.0;
 
     for (i, col) in columns.iter().enumerate() {
-        let display_col = i / num_rows; // fill column-first
+        let display_col = i / num_rows;
         let display_row = i % num_rows;
 
-        let col_x: f64 = col_widths[..display_col].iter().sum::<f64>()
-            + display_col as f64 * DS_COL_GAP;
+        let col_x: f64 =
+            col_widths[..display_col].iter().sum::<f64>() + display_col as f64 * DS_COL_GAP;
 
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-size=\"11\" fill=\"{}\">{}</text>",
@@ -1025,13 +845,6 @@ fn render_datastore(svg: &mut String, x: f64, y: f64, label: &str, columns: &[St
             escape_xml(col)
         ));
     }
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 // ---------------------------------------------------------------------------
@@ -1046,16 +859,18 @@ Usage: mdd-dfd < input.dfd
 Define entities (rectangles), processes (circles), and datastores
 (open-ended rectangles with optional columns). Connect them with
 \"->\" edges, optionally labelled with \" : <label>\".
+Use \"boundary\" blocks to group nodes into trust boundaries.
 
 Example:
-  entity Customer
-  process HandleOrder
-  datastore Orders {
-    order_id
-    total
+  boundary \"Trust Boundary\" {
+    process HandleRequest
+    datastore UserDB {
+      id
+      name
+    }
   }
-  Customer -> HandleOrder : \"order\"
-  HandleOrder -> Orders : \"save\"
+  entity ExternalUser
+  flow ExternalUser -> HandleRequest : \"HTTP Request\"
 ";
 
 fn main() {
@@ -1135,6 +950,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_boundary() {
+        let input = "boundary \"Trust Boundary\" {\n  process HandleRequest\n  entity InternalService\n}\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.boundaries.len(), 1);
+        assert_eq!(d.boundaries[0].label, "Trust Boundary");
+        assert_eq!(d.boundaries[0].children.len(), 2);
+        assert_eq!(d.top_level.len(), 1);
+        assert!(matches!(d.top_level[0], Element::BoundaryRef(0)));
+    }
+
+    #[test]
+    fn parse_boundary_with_datastore() {
+        let input = "boundary \"Internal\" {\n  process Handler\n  datastore UserDB {\n    id\n    name\n  }\n}\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.boundaries.len(), 1);
+        assert_eq!(d.boundaries[0].children.len(), 2);
+        assert_eq!(d.nodes.len(), 2);
+    }
+
+    #[test]
+    fn parse_flow_keyword() {
+        let input = "entity A\nprocess B\nflow A -> B : \"request\"\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.edges.len(), 1);
+        assert_eq!(d.edges[0].label, "request");
+    }
+
+    #[test]
     fn render_produces_svg() {
         let input = "entity A\nprocess B\nA -> B : \"test\"\n";
         let d = parse(input).unwrap();
@@ -1145,16 +988,13 @@ mod tests {
     }
 
     #[test]
-    fn spacing_scales_with_complexity() {
-        let small = parse("entity A\nprocess B\nA -> B\n").unwrap();
-        let small_sp = compute_spacing(&small);
-
-        let big_input = "entity A\nentity B\nprocess C\nprocess D\nprocess E\n\
-                         A -> C\nA -> D\nB -> E\nC -> D\nD -> E\n";
-        let big = parse(big_input).unwrap();
-        let big_sp = compute_spacing(&big);
-
-        assert!(big_sp.nodesep > small_sp.nodesep);
-        assert!(big_sp.ranksep > small_sp.ranksep);
+    fn render_with_boundary() {
+        let input = "boundary \"Trust Boundary\" {\n  process HandleRequest\n}\nentity ExternalUser\nExternalUser -> HandleRequest : \"HTTP\"\n";
+        let d = parse(input).unwrap();
+        let svg = render_svg(&d);
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("</svg>"));
+        assert!(svg.contains("Trust Boundary"));
+        assert!(svg.contains("stroke-dasharray"));
     }
 }
