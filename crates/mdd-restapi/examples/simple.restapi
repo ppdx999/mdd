@@ -1,0 +1,2 @@
+GET    /api/health       : "ヘルスチェック"
+GET    /api/version      : "バージョン情報"

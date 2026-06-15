@@ -1,0 +1,21 @@
+group "ユーザー管理" {
+  GET    /api/users          : "ユーザー一覧取得"
+  GET    /api/users/:id      : "ユーザー詳細取得"
+  POST   /api/users          : "ユーザー作成"
+  PUT    /api/users/:id      : "ユーザー更新"
+  DELETE /api/users/:id      : "ユーザー削除"
+}
+
+group "認証" {
+  POST   /api/auth/login     : "ログイン"
+  POST   /api/auth/logout    : "ログアウト"
+  GET    /api/auth/me        : "現在のユーザー取得"
+}
+
+group "商品" {
+  GET    /api/products       : "商品一覧"
+  GET    /api/products/:id   : "商品詳細"
+  POST   /api/products       : "商品登録"
+  PATCH  /api/products/:id   : "商品部分更新"
+  DELETE /api/products/:id   : "商品削除"
+}
