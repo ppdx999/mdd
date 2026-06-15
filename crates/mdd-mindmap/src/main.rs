@@ -1,24 +1,22 @@
 use std::io::{self, Read};
 
+use mdd_layout::text::{escape_xml, text_width};
+use mdd_layout::{ForceConfig, LayoutEdge, LayoutElement, LayoutGraph, LayoutNode};
+
 // ---------------------------------------------------------------------------
 // Data structures
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
-struct SubItem {
-    text: String,
-}
-
-#[derive(Debug)]
-struct Branch {
-    text: String,
-    children: Vec<SubItem>,
-}
-
-#[derive(Debug)]
 struct MindMap {
-    center: String,
-    branches: Vec<Branch>,
+    nodes: Vec<MmNode>,
+    edges: Vec<(usize, usize)>, // parent -> child
+}
+
+#[derive(Debug)]
+struct MmNode {
+    text: String,
+    depth: usize, // 0 = center, 1 = branch, 2+ = sub-item
 }
 
 // ---------------------------------------------------------------------------
@@ -26,8 +24,11 @@ struct MindMap {
 // ---------------------------------------------------------------------------
 
 fn parse(input: &str) -> Result<MindMap, String> {
-    let mut center: Option<String> = None;
-    let mut branches: Vec<Branch> = Vec::new();
+    let mut nodes: Vec<MmNode> = Vec::new();
+    let mut edges: Vec<(usize, usize)> = Vec::new();
+
+    // Stack of (depth, node_index) to track parent at each level
+    let mut stack: Vec<(usize, usize)> = Vec::new();
 
     for line in input.lines() {
         let trimmed = line.trim();
@@ -38,44 +39,49 @@ fn parse(input: &str) -> Result<MindMap, String> {
         // center "..."
         if trimmed.starts_with("center ") {
             let rest = trimmed.strip_prefix("center ").unwrap().trim();
-            center = Some(strip_quotes(rest).to_string());
+            let text = strip_quotes(rest).to_string();
+            let idx = nodes.len();
+            nodes.push(MmNode { text, depth: 0 });
+            stack.clear();
+            stack.push((0, idx));
             continue;
         }
 
-        // Determine indentation level
+        // Indented nodes
         let indent = line.len() - line.trim_start().len();
-        let level = indent / 2;
+        let depth = indent / 2;
 
-        if level == 1 {
-            // Main branch
-            branches.push(Branch {
-                text: trimmed.to_string(),
-                children: Vec::new(),
-            });
-        } else if level >= 2 {
-            // Sub-item of the last branch
-            if let Some(branch) = branches.last_mut() {
-                branch.children.push(SubItem {
-                    text: trimmed.to_string(),
-                });
-            } else {
-                return Err(format!("Sub-item without a branch: {}", trimmed));
-            }
-        } else {
+        if depth == 0 {
             return Err(format!("Unknown syntax: {}", trimmed));
         }
+
+        if nodes.is_empty() {
+            return Err("Missing 'center' definition".to_string());
+        }
+
+        // Pop stack to find parent at depth-1
+        while stack.len() > 1 && stack.last().unwrap().0 >= depth {
+            stack.pop();
+        }
+
+        let parent_idx = stack.last().unwrap().1;
+        let idx = nodes.len();
+        nodes.push(MmNode {
+            text: trimmed.to_string(),
+            depth,
+        });
+        edges.push((parent_idx, idx));
+        stack.push((depth, idx));
     }
 
-    let center = center.ok_or("Missing 'center' definition")?;
-
-    if branches.is_empty() {
+    if nodes.is_empty() {
+        return Err("Missing 'center' definition".to_string());
+    }
+    if nodes.len() < 2 {
         return Err("At least 1 branch is required".to_string());
     }
 
-    Ok(MindMap {
-        center,
-        branches,
-    })
+    Ok(MindMap { nodes, edges })
 }
 
 fn strip_quotes(s: &str) -> &str {
@@ -85,27 +91,18 @@ fn strip_quotes(s: &str) -> &str {
         s
     }
 }
+
 // ---------------------------------------------------------------------------
-// SVG rendering
+// Constants
 // ---------------------------------------------------------------------------
 
-const CHAR_WIDTH: f64 = 8.0;
-const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
 const COLOR_DARK: &str = "#333";
-
-const CENTER_W: f64 = 140.0;
-const CENTER_H: f64 = 48.0;
-const BRANCH_H: f64 = 32.0;
-const BRANCH_H_PAD: f64 = 12.0;
-const MIN_BRANCH_W: f64 = 80.0;
-const SUB_ITEM_H: f64 = 24.0;
-const SUB_ITEM_H_PAD: f64 = 8.0;
-const BRANCH_GAP_Y: f64 = 12.0;
-const BRANCH_OFFSET_X: f64 = 60.0;
+const NODE_H_PAD: f64 = 14.0;
+const NODE_V_PAD: f64 = 8.0;
+const MIN_NODE_W: f64 = 60.0;
 const PADDING: f64 = 40.0;
 const CENTER_FONT_SIZE: f64 = 15.0;
-const SUB_FONT_SIZE: f64 = 12.0;
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -118,103 +115,89 @@ const COLORS: &[(&str, &str)] = &[
     ("#fff3e0", "#e65100"),
 ];
 
-fn text_width(s: &str) -> f64 {
-    s.chars()
-        .map(|c| if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH })
-        .sum()
+// ---------------------------------------------------------------------------
+// Sizing
+// ---------------------------------------------------------------------------
+
+fn node_size(node: &MmNode) -> (f64, f64) {
+    let font = if node.depth == 0 { CENTER_FONT_SIZE } else { FONT_SIZE };
+    let char_scale = font / FONT_SIZE;
+    let tw = text_width(&node.text) * char_scale + NODE_H_PAD * 2.0;
+    let w = tw.max(MIN_NODE_W);
+    let h = font + NODE_V_PAD * 2.0;
+    (w, h)
 }
 
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-/// Compute the width needed for a branch node.
-fn branch_width(branch: &Branch) -> f64 {
-    let tw = text_width(&branch.text) + BRANCH_H_PAD * 2.0;
-    tw.max(MIN_BRANCH_W)
-}
-
-/// Compute the width needed for a sub-item node.
-fn sub_item_width(item: &SubItem) -> f64 {
-    let tw = text_width(&item.text) + SUB_ITEM_H_PAD * 2.0;
-    tw.max(MIN_BRANCH_W)
-}
-
-/// Total height of a branch including its sub-items.
-fn branch_total_height(branch: &Branch) -> f64 {
-    let mut h = BRANCH_H;
-    if !branch.children.is_empty() {
-        h += BRANCH_GAP_Y;
-        h += branch.children.len() as f64 * SUB_ITEM_H
-            + (branch.children.len().saturating_sub(1)) as f64 * 4.0;
+/// Determine which color branch a node belongs to (by its top-level ancestor).
+fn branch_color_index(node_idx: usize, edges: &[(usize, usize)]) -> usize {
+    let mut current = node_idx;
+    loop {
+        // Find parent
+        if let Some(edge) = edges.iter().find(|(_, child)| *child == current) {
+            if edge.0 == 0 {
+                // Parent is center; this node (or its ancestor) is a top-level branch
+                // Count which branch index this is
+                return edges
+                    .iter()
+                    .filter(|(p, _)| *p == 0)
+                    .position(|(_, c)| *c == current)
+                    .unwrap_or(0);
+            }
+            current = edge.0;
+        } else {
+            return 0; // root
+        }
     }
-    h
 }
 
-/// Max width of a branch and all its sub-items (including sub-item offset).
-fn branch_max_width(branch: &Branch) -> f64 {
-    let bw = branch_width(branch);
-    let sw: f64 = branch
-        .children
-        .iter()
-        .map(|c| sub_item_width(c) + 16.0)
-        .fold(0.0_f64, f64::max);
-    bw.max(sw)
-}
+// ---------------------------------------------------------------------------
+// SVG rendering
+// ---------------------------------------------------------------------------
 
 fn render_svg(map: &MindMap) -> String {
-    // Split branches: even-indexed (0,2,4..) go right, odd-indexed (1,3,5..) go left
-    let mut right_branches: Vec<(usize, &Branch)> = Vec::new();
-    let mut left_branches: Vec<(usize, &Branch)> = Vec::new();
-    for (i, branch) in map.branches.iter().enumerate() {
-        if i % 2 == 0 {
-            right_branches.push((i, branch));
-        } else {
-            left_branches.push((i, branch));
-        }
+    // Build force-directed layout graph
+    let mut graph = LayoutGraph::new();
+
+    for (i, node) in map.nodes.iter().enumerate() {
+        let (w, h) = node_size(node);
+        graph.nodes.push(LayoutNode {
+            name: format!("n{}", i),
+            width: w,
+            height: h,
+        });
+        graph.top_level.push(LayoutElement::NodeRef(i));
     }
 
-    // Compute side heights and widths
-    let side_height = |branches: &[(usize, &Branch)]| -> f64 {
-        if branches.is_empty() {
-            return 0.0;
-        }
-        let total: f64 = branches
-            .iter()
-            .map(|(_, b)| branch_total_height(b))
-            .sum();
-        total + (branches.len().saturating_sub(1)) as f64 * BRANCH_GAP_Y
+    for (parent, child) in &map.edges {
+        graph.edges.push(LayoutEdge {
+            from: format!("n{}", parent),
+            to: format!("n{}", child),
+            label: String::new(),
+        });
+    }
+
+    let config = ForceConfig {
+        padding: PADDING,
+        iterations: 600,
+        repulsion_strength: 2.0,
+        ..ForceConfig::default()
     };
+    let result = mdd_layout::force_layout(&graph, &config);
+    let positions = &result.positions;
 
-    let side_max_width = |branches: &[(usize, &Branch)]| -> f64 {
-        branches
-            .iter()
-            .map(|(_, b)| branch_max_width(b))
-            .fold(0.0_f64, f64::max)
-    };
-
-    let right_h = side_height(&right_branches);
-    let left_h = side_height(&left_branches);
-    let right_w = side_max_width(&right_branches);
-    let left_w = side_max_width(&left_branches);
-
-    let max_side_h = right_h.max(left_h);
-    let content_h = max_side_h.max(CENTER_H);
-
-    let center_w = {
-        let tw = text_width(&map.center) + BRANCH_H_PAD * 2.0;
-        tw.max(CENTER_W)
-    };
-
-    let total_w = PADDING + left_w + BRANCH_OFFSET_X + center_w + BRANCH_OFFSET_X + right_w + PADDING;
-    let total_h = PADDING + content_h + PADDING;
+    // Compute SVG dimensions
+    let mut max_x: f64 = 0.0;
+    let mut max_y: f64 = 0.0;
+    for (_, (x, y, w, h)) in positions {
+        max_x = max_x.max(x + w);
+        max_y = max_y.max(y + h);
+    }
+    let svg_width = max_x + PADDING;
+    let svg_height = max_y + PADDING;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
-        total_w, total_h, total_w, total_h
+        svg_width, svg_height, svg_width, svg_height
     );
     svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
     svg.push_str(&format!(
@@ -222,185 +205,112 @@ fn render_svg(map: &MindMap) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    let content_y = PADDING;
+    // Draw edges (curves behind nodes)
+    for &(parent, child) in &map.edges {
+        let pkey = format!("n{}", parent);
+        let ckey = format!("n{}", child);
+        if let (Some(&(px, py, pw, ph)), Some(&(cx, cy, cw, ch))) =
+            (positions.get(&pkey), positions.get(&ckey))
+        {
+            let color_idx = branch_color_index(child, &map.edges);
+            let (_, accent) = COLORS[color_idx % COLORS.len()];
 
-    // Center node position
-    let center_x = PADDING + left_w + BRANCH_OFFSET_X;
-    let center_y = content_y + (content_h - CENTER_H) / 2.0;
-    let center_cx = center_x + center_w / 2.0;
-    let center_cy = center_y + CENTER_H / 2.0;
+            let pcx = px + pw / 2.0;
+            let pcy = py + ph / 2.0;
+            let ccx = cx + cw / 2.0;
+            let ccy = cy + ch / 2.0;
 
-    // Draw center node
-    svg.push_str(&format!(
-        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"12\" fill=\"#e8eaf6\" stroke=\"#283593\" stroke-width=\"2\"/>",
-        center_x, center_y, center_w, CENTER_H
-    ));
-    svg.push_str(&format!(
-        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\">{}</text>",
-        center_cx,
-        center_cy + 5.0,
-        CENTER_FONT_SIZE,
-        escape_xml(&map.center)
-    ));
+            // Connection points on node edges
+            let (p_conn_x, p_conn_y) = nearest_rect_point(ccx, ccy, px, py, pw, ph);
+            let (c_conn_x, c_conn_y) = nearest_rect_point(pcx, pcy, cx, cy, cw, ch);
 
-    // Draw right branches
-    {
-        let start_y = content_y + (content_h - right_h) / 2.0;
-        let mut cur_y = start_y;
-        for &(idx, branch) in &right_branches {
-            let (bg, accent) = COLORS[idx % COLORS.len()];
-            let node_w = branch_width(branch);
-            let bx = center_x + center_w + BRANCH_OFFSET_X;
-            let by = cur_y;
+            // Cubic bezier
+            let dx = c_conn_x - p_conn_x;
+            let dy = c_conn_y - p_conn_y;
+            let len = (dx * dx + dy * dy).sqrt().max(1.0);
+            let ctrl_dist = len * 0.4;
 
-            // Connection line from center to branch
-            let branch_cy = by + BRANCH_H / 2.0;
+            let stroke_w = if map.nodes[parent].depth == 0 {
+                2.5
+            } else {
+                1.5
+            };
+
             svg.push_str(&format!(
-                "<path d=\"M {},{} C {},{} {},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"/>",
-                center_x + center_w, center_cy,
-                center_x + center_w + BRANCH_OFFSET_X / 2.0, center_cy,
-                bx - BRANCH_OFFSET_X / 2.0, branch_cy,
-                bx, branch_cy,
-                accent
+                "<path d=\"M {},{} C {},{} {},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                p_conn_x, p_conn_y,
+                p_conn_x + dx / len * ctrl_dist, p_conn_y + dy / len * ctrl_dist,
+                c_conn_x - dx / len * ctrl_dist, c_conn_y - dy / len * ctrl_dist,
+                c_conn_x, c_conn_y,
+                accent, stroke_w
             ));
-
-            // Branch node
-            svg.push_str(&format!(
-                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                bx, by, node_w, BRANCH_H, bg, accent
-            ));
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
-                bx + node_w / 2.0,
-                by + BRANCH_H / 2.0 + 5.0,
-                escape_xml(&branch.text)
-            ));
-
-            // Sub-items with vertical spine + horizontal connectors
-            if !branch.children.is_empty() {
-                let spine_x = bx + 8.0;
-                let mut sub_y = by + BRANCH_H + BRANCH_GAP_Y;
-
-                // Vertical spine from bottom of branch to last child
-                let last_child_y = sub_y + (branch.children.len() - 1) as f64 * (SUB_ITEM_H + 4.0);
-                svg.push_str(&format!(
-                    "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                    spine_x, by + BRANCH_H,
-                    spine_x, last_child_y + SUB_ITEM_H / 2.0,
-                    accent
-                ));
-
-                for child in &branch.children {
-                    let sw = sub_item_width(child);
-                    let sub_x = bx + 16.0;
-
-                    // Horizontal connector from spine to sub-item
-                    svg.push_str(&format!(
-                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                        spine_x, sub_y + SUB_ITEM_H / 2.0,
-                        sub_x, sub_y + SUB_ITEM_H / 2.0,
-                        accent
-                    ));
-
-                    svg.push_str(&format!(
-                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" opacity=\"0.7\"/>",
-                        sub_x, sub_y, sw, SUB_ITEM_H, bg, accent
-                    ));
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\">{}</text>",
-                        sub_x + sw / 2.0,
-                        sub_y + SUB_ITEM_H / 2.0 + 4.0,
-                        SUB_FONT_SIZE,
-                        escape_xml(&child.text)
-                    ));
-                    sub_y += SUB_ITEM_H + 4.0;
-                }
-            }
-
-            cur_y += branch_total_height(branch) + BRANCH_GAP_Y;
         }
     }
 
-    // Draw left branches
-    {
-        let start_y = content_y + (content_h - left_h) / 2.0;
-        let mut cur_y = start_y;
-        for &(idx, branch) in &left_branches {
-            let (bg, accent) = COLORS[idx % COLORS.len()];
-            let node_w = branch_width(branch);
-            let bx = PADDING + left_w - node_w;
-            let by = cur_y;
+    // Draw nodes (on top of edges)
+    for (i, node) in map.nodes.iter().enumerate() {
+        let key = format!("n{}", i);
+        if let Some(&(x, y, w, h)) = positions.get(&key) {
+            let (bg, accent) = if node.depth == 0 {
+                ("#e8eaf6", "#283593")
+            } else {
+                let color_idx = branch_color_index(i, &map.edges);
+                COLORS[color_idx % COLORS.len()]
+            };
 
-            // Connection line from center to branch
-            let branch_cy = by + BRANCH_H / 2.0;
+            let rx = if node.depth == 0 { 14.0 } else { 6.0 };
+            let stroke_w = if node.depth == 0 { 2.5 } else { 1.5 };
+            let font_size = if node.depth == 0 {
+                CENTER_FONT_SIZE
+            } else {
+                FONT_SIZE
+            };
+            let opacity = if node.depth >= 2 { " opacity=\"0.8\"" } else { "" };
+            let font_weight = if node.depth <= 1 {
+                " font-weight=\"bold\""
+            } else {
+                ""
+            };
+
             svg.push_str(&format!(
-                "<path d=\"M {},{} C {},{} {},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"/>",
-                center_x, center_cy,
-                center_x - BRANCH_OFFSET_X / 2.0, center_cy,
-                bx + node_w + BRANCH_OFFSET_X / 2.0, branch_cy,
-                bx + node_w, branch_cy,
-                accent
-            ));
-
-            // Branch node
-            svg.push_str(&format!(
-                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                bx, by, node_w, BRANCH_H, bg, accent
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{}/>\n",
+                x, y, w, h, rx, bg, accent, stroke_w, opacity
             ));
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
-                bx + node_w / 2.0,
-                by + BRANCH_H / 2.0 + 5.0,
-                escape_xml(&branch.text)
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\"{}>{}</text>\n",
+                x + w / 2.0,
+                y + h / 2.0 + font_size * 0.35,
+                font_size,
+                font_weight,
+                escape_xml(&node.text)
             ));
-
-            // Sub-items with vertical spine + horizontal connectors
-            if !branch.children.is_empty() {
-                let spine_x = bx + node_w - 8.0;
-                let mut sub_y = by + BRANCH_H + BRANCH_GAP_Y;
-
-                // Vertical spine from bottom of branch to last child
-                let last_child_y = sub_y + (branch.children.len() - 1) as f64 * (SUB_ITEM_H + 4.0);
-                svg.push_str(&format!(
-                    "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                    spine_x, by + BRANCH_H,
-                    spine_x, last_child_y + SUB_ITEM_H / 2.0,
-                    accent
-                ));
-
-                for child in &branch.children {
-                    let sw = sub_item_width(child);
-                    let sub_x = bx - 16.0;
-
-                    // Horizontal connector from spine to sub-item
-                    svg.push_str(&format!(
-                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-                        spine_x, sub_y + SUB_ITEM_H / 2.0,
-                        sub_x + sw, sub_y + SUB_ITEM_H / 2.0,
-                        accent
-                    ));
-
-                    svg.push_str(&format!(
-                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" opacity=\"0.7\"/>",
-                        sub_x, sub_y, sw, SUB_ITEM_H, bg, accent
-                    ));
-                    svg.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\">{}</text>",
-                        sub_x + sw / 2.0,
-                        sub_y + SUB_ITEM_H / 2.0 + 4.0,
-                        SUB_FONT_SIZE,
-                        escape_xml(&child.text)
-                    ));
-                    sub_y += SUB_ITEM_H + 4.0;
-                }
-            }
-
-            cur_y += branch_total_height(branch) + BRANCH_GAP_Y;
         }
     }
 
     svg.push_str("</svg>");
     svg
+}
+
+/// Find the nearest point on rectangle edge to a target point.
+fn nearest_rect_point(
+    target_x: f64, target_y: f64,
+    rx: f64, ry: f64, rw: f64, rh: f64,
+) -> (f64, f64) {
+    let cx = rx + rw / 2.0;
+    let cy = ry + rh / 2.0;
+    let dx = target_x - cx;
+    let dy = target_y - cy;
+    if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
+        return (cx, cy + rh / 2.0);
+    }
+    let mut t = f64::MAX;
+    if dx.abs() > 1e-9 {
+        t = t.min((rw / 2.0) / dx.abs());
+    }
+    if dy.abs() > 1e-9 {
+        t = t.min((rh / 2.0) / dy.abs());
+    }
+    (cx + dx * t, cy + dy * t)
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +323,7 @@ mdd-mindmap - Render a mind map as SVG
 Usage: mdd-mindmap < input.mindmap
 
 First line declares the center node with: center \"Topic\"
-Branches are indented 2 spaces, sub-items 4 spaces.
+Branches are indented 2 spaces. Deeper nesting uses more indentation.
 
 Example:
   center \"Project\"
@@ -422,6 +332,8 @@ Example:
       Layout
     Backend
       API
+        REST
+        GraphQL
       Database
 ";
 
@@ -463,10 +375,12 @@ center "Topic"
   Branch2
 "#;
         let m = parse(input).unwrap();
-        assert_eq!(m.center, "Topic");
-        assert_eq!(m.branches.len(), 2);
-        assert_eq!(m.branches[0].text, "Branch1");
-        assert_eq!(m.branches[1].text, "Branch2");
+        assert_eq!(m.nodes.len(), 3);
+        assert_eq!(m.nodes[0].text, "Topic");
+        assert_eq!(m.nodes[0].depth, 0);
+        assert_eq!(m.nodes[1].text, "Branch1");
+        assert_eq!(m.nodes[1].depth, 1);
+        assert_eq!(m.edges.len(), 2);
     }
 
     #[test]
@@ -480,15 +394,30 @@ center "Center"
     B1
 "#;
         let m = parse(input).unwrap();
-        assert_eq!(m.center, "Center");
-        assert_eq!(m.branches.len(), 2);
-        assert_eq!(m.branches[0].text, "A");
-        assert_eq!(m.branches[0].children.len(), 2);
-        assert_eq!(m.branches[0].children[0].text, "A1");
-        assert_eq!(m.branches[0].children[1].text, "A2");
-        assert_eq!(m.branches[1].text, "B");
-        assert_eq!(m.branches[1].children.len(), 1);
-        assert_eq!(m.branches[1].children[0].text, "B1");
+        assert_eq!(m.nodes.len(), 6);
+        assert_eq!(m.nodes[2].text, "A1");
+        assert_eq!(m.nodes[2].depth, 2);
+        // A -> A1
+        assert!(m.edges.contains(&(1, 2)));
+        // A -> A2
+        assert!(m.edges.contains(&(1, 3)));
+        // center -> B
+        assert!(m.edges.contains(&(0, 4)));
+    }
+
+    #[test]
+    fn parse_deep_nesting() {
+        let input = r#"
+center "Root"
+  L1
+    L2
+      L3
+        L4
+"#;
+        let m = parse(input).unwrap();
+        assert_eq!(m.nodes.len(), 5);
+        assert_eq!(m.nodes[4].depth, 4);
+        assert!(m.edges.contains(&(3, 4))); // L3 -> L4
     }
 
     #[test]
