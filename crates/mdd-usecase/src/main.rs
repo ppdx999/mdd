@@ -297,13 +297,41 @@ fn compute_layout(diagram: &Diagram) -> Layout {
         actor_bary.push((aid, bary));
     }
 
-    // Sort by barycenter
-    actor_bary.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    // Count edges per actor
+    let mut actor_edge_count: HashMap<usize, usize> = HashMap::new();
+    for &aid in &actor_ids {
+        let count = diagram.edges.iter()
+            .filter(|&&(from, to)| from == aid || to == aid)
+            .count();
+        actor_edge_count.insert(aid, count);
+    }
 
-    // Split: first half left, second half right
-    let half = (actor_bary.len() + 1) / 2;
-    let left_actors: Vec<(usize, f64)> = actor_bary[..half].to_vec();
-    let right_actors: Vec<(usize, f64)> = actor_bary[half..].to_vec();
+    // Sort actors by edge count descending, assign to side with fewer total edges
+    let mut sorted_actors: Vec<(usize, f64)> = actor_bary.clone();
+    sorted_actors.sort_by(|a, b| {
+        actor_edge_count.get(&b.0).unwrap_or(&0)
+            .cmp(actor_edge_count.get(&a.0).unwrap_or(&0))
+    });
+
+    let mut left_actors: Vec<(usize, f64)> = Vec::new();
+    let mut right_actors: Vec<(usize, f64)> = Vec::new();
+    let mut left_edges: usize = 0;
+    let mut right_edges: usize = 0;
+
+    for (aid, bary) in sorted_actors {
+        let count = *actor_edge_count.get(&aid).unwrap_or(&0);
+        if left_edges <= right_edges {
+            left_actors.push((aid, bary));
+            left_edges += count;
+        } else {
+            right_actors.push((aid, bary));
+            right_edges += count;
+        }
+    }
+
+    // Sort each side by barycenter Y for vertical positioning
+    left_actors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    right_actors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
     let right_x = center_x + max_uc_w + COL_GAP;
 
