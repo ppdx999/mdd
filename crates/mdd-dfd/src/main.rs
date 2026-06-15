@@ -613,19 +613,34 @@ fn render_svg(diagram: &Diagram) -> String {
             let mut lx = mx + offset_x;
             let mut ly = my + offset_y;
 
-            // Push label away from any overlapping circle
+            // Push label away from any overlapping node
+            let label_hw = lw / 2.0 + 3.0;
+            let label_hh = 8.0;
             for node in &diagram.nodes {
-                if !matches!(node.kind, NodeKind::Process) { continue; }
-                if let Some(&(nx, ny, nw, _nh)) = positions.get(&node.label) {
+                if let Some(&(nx, ny, nw, nh)) = positions.get(&node.label) {
                     let ncx = nx + nw / 2.0;
-                    let ncy = ny + nw / 2.0; // circle: w == h
-                    let nr = nw / 2.0;
-                    let dist = ((lx - ncx).powi(2) + (ly - ncy).powi(2)).sqrt();
-                    if dist < nr + 20.0 {
+                    let ncy = ny + nh / 2.0;
+                    // Check if label rect overlaps node rect (with margin)
+                    let margin = 6.0;
+                    let node_left = nx - margin;
+                    let node_right = nx + nw + margin;
+                    let node_top = ny - margin;
+                    let node_bottom = ny + nh + margin;
+                    let lab_left = lx - label_hw;
+                    let lab_right = lx + label_hw;
+                    let lab_top = ly - label_hh;
+                    let lab_bottom = ly + label_hh;
+                    if lab_right > node_left && lab_left < node_right
+                        && lab_bottom > node_top && lab_top < node_bottom
+                    {
+                        // Push away from node center
                         let push_dx = lx - ncx;
                         let push_dy = ly - ncy;
                         let push_dist = (push_dx * push_dx + push_dy * push_dy).sqrt().max(1.0);
-                        let push = nr + 24.0 - dist;
+                        // Push enough to clear the node
+                        let clear_x = if push_dx > 0.0 { node_right - lab_left } else { lab_right - node_left };
+                        let clear_y = if push_dy > 0.0 { node_bottom - lab_top } else { lab_bottom - node_top };
+                        let push = clear_x.min(clear_y) + 4.0;
                         lx += push_dx / push_dist * push;
                         ly += push_dy / push_dist * push;
                     }

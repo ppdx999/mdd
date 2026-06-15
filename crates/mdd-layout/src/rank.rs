@@ -40,8 +40,8 @@ pub(crate) fn assign_ranks(
         name_to_flat.insert(&graph.nodes[fnode.node_index].name, fi);
     }
 
+    // Build adjacency, then break cycles via DFS before ranking.
     let mut successors: Vec<Vec<usize>> = vec![vec![]; n];
-    let mut in_degree: Vec<usize> = vec![0; n];
     for edge in &graph.edges {
         if let (Some(&from), Some(&to)) = (
             name_to_flat.get(edge.from.as_str()),
@@ -49,11 +49,51 @@ pub(crate) fn assign_ranks(
         ) {
             if from != to {
                 successors[from].push(to);
-                in_degree[to] += 1;
             }
         }
     }
 
+    // Break cycles: DFS to find back edges and remove them
+    let mut visited = vec![0u8; n]; // 0=unvisited, 1=in-stack, 2=done
+    let mut back_edges: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+
+    fn dfs_cycle(
+        u: usize,
+        successors: &[Vec<usize>],
+        visited: &mut [u8],
+        back_edges: &mut std::collections::HashSet<(usize, usize)>,
+    ) {
+        visited[u] = 1; // in-stack
+        for &v in &successors[u] {
+            if visited[v] == 1 {
+                // Back edge — part of a cycle
+                back_edges.insert((u, v));
+            } else if visited[v] == 0 {
+                dfs_cycle(v, successors, visited, back_edges);
+            }
+        }
+        visited[u] = 2; // done
+    }
+
+    for i in 0..n {
+        if visited[i] == 0 {
+            dfs_cycle(i, &successors, &mut visited, &mut back_edges);
+        }
+    }
+
+    // Rebuild adjacency without back edges
+    let mut acyclic_successors: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut in_degree: Vec<usize> = vec![0; n];
+    for u in 0..n {
+        for &v in &successors[u] {
+            if !back_edges.contains(&(u, v)) {
+                acyclic_successors[u].push(v);
+                in_degree[v] += 1;
+            }
+        }
+    }
+
+    // Longest path on the acyclic graph
     let mut rank = vec![0usize; n];
     let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
     for i in 0..n {
@@ -63,7 +103,7 @@ pub(crate) fn assign_ranks(
     }
 
     while let Some(u) = queue.pop_front() {
-        for &v in &successors[u] {
+        for &v in &acyclic_successors[u] {
             rank[v] = rank[v].max(rank[u] + 1);
             in_degree[v] -= 1;
             if in_degree[v] == 0 {

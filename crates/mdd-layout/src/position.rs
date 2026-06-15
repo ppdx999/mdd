@@ -147,9 +147,15 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         }
     };
 
-    // Compute rank heights, accounting for cluster headers.
+    // Compute rank heights from the tallest node in each rank.
     let node_h = config.default_node_h;
-    let rank_height: Vec<f64> = vec![node_h; max_rank + 1];
+    let mut rank_height: Vec<f64> = vec![node_h; max_rank + 1];
+    for (fi, fnode) in flat_nodes.iter().enumerate() {
+        if !fnode.is_virtual() && fnode.node_index < graph.nodes.len() {
+            let h = graph.nodes[fnode.node_index].height;
+            rank_height[ranks[fi]] = rank_height[ranks[fi]].max(h);
+        }
+    }
 
     let mut cluster_min_rank: HashMap<usize, usize> = HashMap::new();
     for (fi, fnode) in flat_nodes.iter().enumerate() {
