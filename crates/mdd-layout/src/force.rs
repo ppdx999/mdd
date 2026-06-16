@@ -158,15 +158,44 @@ pub fn force_layout(graph: &LayoutGraph, config: &ForceConfig) -> LayoutResult {
         }
     }
 
-    // Hybrid layout for super-nodes:
-    // Step 1: Sugiyama rank assignment (determines Y layers)
-    // Step 2: Force-directed X positioning (pulls connected nodes together)
     let sn_count = super_nodes.len();
     let gap = if config.ideal_distance > 0.0 {
         config.ideal_distance.max(40.0)
     } else {
         40.0
     };
+
+    // If all super-nodes are standalone (no groups), use pure 2D force layout
+    let all_standalone = super_nodes.iter().all(|sn| !sn.is_group);
+    if all_standalone && sn_count > 1 {
+        let sn_widths: Vec<f64> = super_nodes.iter().map(|s| s.width).collect();
+        let sn_heights: Vec<f64> = super_nodes.iter().map(|s| s.height).collect();
+        let centers = run_force(sn_count, &sn_widths, &sn_heights, &super_edges, config);
+
+        let mut min_x = f64::MAX;
+        let mut min_y = f64::MAX;
+        for (si, sn) in super_nodes.iter().enumerate() {
+            let x = centers[si].0 - sn.width / 2.0;
+            let y = centers[si].1 - sn.height / 2.0;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            positions.insert(sn.name.clone(), (x, y, sn.width, sn.height));
+        }
+        // Shift to ensure padding
+        if min_x < config.padding || min_y < config.padding {
+            let dx = if min_x < config.padding { config.padding - min_x } else { 0.0 };
+            let dy = if min_y < config.padding { config.padding - min_y } else { 0.0 };
+            for (_, pos) in positions.iter_mut() {
+                pos.0 += dx;
+                pos.1 += dy;
+            }
+        }
+        return LayoutResult { positions, edge_waypoints };
+    }
+
+    // Hybrid layout for super-nodes (when groups exist):
+    // Step 1: Sugiyama rank assignment (determines Y layers)
+    // Step 2: Force-directed X positioning (pulls connected nodes together)
 
     // Step 1: Rank assignment via longest path
     let mut sn_successors: Vec<Vec<usize>> = vec![vec![]; sn_count];

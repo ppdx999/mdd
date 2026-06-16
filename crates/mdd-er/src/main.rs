@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::{self, Read};
 
 use mdd_layout::text::{text_width, escape_xml};
+use mdd_layout::edge::{build_smooth_path, clip_to_rect, route_around_nodes};
 
 // ---------------------------------------------------------------------------
 // Data structures
@@ -496,12 +497,17 @@ fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
         })
         .collect();
 
-    // Convert relations to layout edges (no labels, but the layout needs edge info)
+    // Convert relations to bidirectional layout edges for force layout
     for rel in &diagram.relations {
         if rel.from != rel.to {
             graph.edges.push(mdd_layout::LayoutEdge {
                 from: diagram.tables[rel.from].name.clone(),
                 to: diagram.tables[rel.to].name.clone(),
+                label: String::new(),
+            });
+            graph.edges.push(mdd_layout::LayoutEdge {
+                from: diagram.tables[rel.to].name.clone(),
+                to: diagram.tables[rel.from].name.clone(),
                 label: String::new(),
             });
         }
@@ -553,15 +559,59 @@ fn point_near_end(points: &[(f64, f64)], from_start: bool, dist: f64) -> (f64, f
 
 fn render_svg(diagram: &Diagram) -> String {
     let graph = build_layout_graph(diagram);
-    let config = mdd_layout::LayoutConfig {
-        padding: PADDING,
-        group_h_pad: GROUP_H_PAD,
-        group_v_pad: GROUP_V_PAD,
-        group_header_h: GROUP_HEADER_H,
-        ..mdd_layout::LayoutConfig::default()
+
+    // Adaptive spacing based on complexity and density
+    let n = diagram.tables.len() as f64;
+    let e = diagram.relations.len() as f64;
+    let complexity = n + e;
+    let max_degree = {
+        let mut degree = vec![0usize; diagram.tables.len()];
+        for rel in &diagram.relations {
+            degree[rel.from] += 1;
+            degree[rel.to] += 1;
+        }
+        *degree.iter().max().unwrap_or(&1) as f64
     };
-    let result = mdd_layout::layout(&graph, &config);
-    let positions = result.positions;
+    // Average node size affects spacing needs
+    let avg_node_size = {
+        let total: f64 = diagram.tables.iter().map(|t| {
+            let (w, h) = table_size(t);
+            (w + h) / 2.0
+        }).sum();
+        total / n.max(1.0)
+    };
+
+    let scale = 1.0 + (complexity / 10.0).sqrt() * 0.5;
+    let density_scale = 1.0 + (max_degree / 4.0).sqrt() * 0.3;
+    let size_factor = (avg_node_size / 80.0).max(0.5); // smaller nodes → tighter spacing
+    let ideal_dist = 60.0 * scale * density_scale * size_factor;
+    let repulsion = (1.2 + (complexity / 20.0).sqrt() * 0.4) * size_factor;
+
+    // Use force_layout for positioning (2D force-directed)
+    let config = mdd_layout::ForceConfig {
+        padding: PADDING,
+        ideal_distance: ideal_dist,
+        repulsion_strength: repulsion,
+        iterations: 600,
+        group_padding: GROUP_H_PAD,
+        group_header_h: GROUP_HEADER_H,
+    };
+    let result = mdd_layout::force_layout(&graph, &config);
+
+    // Use actual table sizes for positions (force layout may report different sizes)
+    let mut positions: HashMap<String, (f64, f64, f64, f64)> = HashMap::new();
+    for table in &diagram.tables {
+        if let Some(&(x, y, _w, _h)) = result.positions.get(&table.name) {
+            let (tw, th) = table_size(table);
+            positions.insert(table.name.clone(), (x, y, tw, th));
+        }
+    }
+    // Also copy group positions if any
+    for (name, pos) in &result.positions {
+        if !positions.contains_key(name) {
+            positions.insert(name.clone(), *pos);
+        }
+    }
     let edge_waypoints = result.edge_waypoints;
 
     // SVG dimensions: use actual table sizes (may differ from layout-reported sizes)
@@ -723,38 +773,82 @@ fn render_svg(diagram: &Diagram) -> String {
             path_d, COLOR_EDGE
         ));
 
-        // Cardinality labels near endpoints, offset perpendicular to the edge
-        let near_start = point_near_end(&clipped_route, true, 22.0);
-        let near_end = point_near_end(&clipped_route, false, 22.0);
-
-        // Perpendicular offset to avoid overlapping the line
-        let label_offset = 14.0;
-        let (s_off_x, s_off_y) = {
+        // Crow's foot notation at endpoints
+        // "from" end
+        {
+            let (px, py) = (ax1, ay1);
             let dx = clipped_route[1].0 - clipped_route[0].0;
             let dy = clipped_route[1].1 - clipped_route[0].1;
             let len = (dx * dx + dy * dy).sqrt().max(1.0);
-            (-dy / len * label_offset, dx / len * label_offset)
-        };
-        let last = clipped_route.len() - 1;
-        let (e_off_x, e_off_y) = {
-            let dx = clipped_route[last].0 - clipped_route[last - 1].0;
-            let dy = clipped_route[last].1 - clipped_route[last - 1].1;
+            let ux = dx / len; // unit vector along edge
+            let uy = dy / len;
+            let nx = -uy; // perpendicular
+            let ny = ux;
+            render_crow_foot(&mut svg, px, py, ux, uy, nx, ny, &rel.from_card);
+        }
+        // "to" end
+        {
+            let last = clipped_route.len() - 1;
+            let (px, py) = (ax2, ay2);
+            let dx = clipped_route[last - 1].0 - clipped_route[last].0;
+            let dy = clipped_route[last - 1].1 - clipped_route[last].1;
             let len = (dx * dx + dy * dy).sqrt().max(1.0);
-            (-dy / len * label_offset, dx / len * label_offset)
-        };
-
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            near_start.0 + s_off_x, near_start.1 + s_off_y + 4.0, COLOR_EDGE, escape_xml(&rel.from_card)
-        ));
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            near_end.0 + e_off_x, near_end.1 + e_off_y + 4.0, COLOR_EDGE, escape_xml(&rel.to_card)
-        ));
+            let ux = dx / len;
+            let uy = dy / len;
+            let nx = -uy;
+            let ny = ux;
+            render_crow_foot(&mut svg, px, py, ux, uy, nx, ny, &rel.to_card);
+        }
     }
 
     svg.push_str("</svg>");
     svg
+}
+
+/// Draw crow's foot cardinality marker at an endpoint.
+/// (px, py): endpoint on node boundary
+/// (ux, uy): unit vector pointing away from the node (into the edge)
+/// (nx, ny): perpendicular unit vector
+/// card: "1" or "*"
+fn render_crow_foot(svg: &mut String, px: f64, py: f64, ux: f64, uy: f64, nx: f64, ny: f64, card: &str) {
+    let size = 10.0; // length of crow foot marks
+
+    if card == "1" {
+        // Single perpendicular bar: --|
+        let bar_dist = 8.0;
+        let bx = px + ux * bar_dist;
+        let by = py + uy * bar_dist;
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
+            bx + nx * size, by + ny * size,
+            bx - nx * size, by - ny * size,
+            COLOR_EDGE
+        ));
+    } else if card == "*" {
+        // Crow's foot: three lines fanning out toward the node ----<
+        let base_dist = 14.0; // where the three lines converge (away from node)
+        let bx = px + ux * base_dist;
+        let by = py + uy * base_dist;
+        // Center line to node boundary
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            bx, by, px, py, COLOR_EDGE
+        ));
+        // Upper fork to node boundary
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            bx, by,
+            px + nx * size * 0.6, py + ny * size * 0.6,
+            COLOR_EDGE
+        ));
+        // Lower fork to node boundary
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            bx, by,
+            px - nx * size * 0.6, py - ny * size * 0.6,
+            COLOR_EDGE
+        ));
+    }
 }
 
 fn clip_to_ellipse(cx: f64, cy: f64, tx: f64, ty: f64, rx: f64, ry: f64) -> (f64, f64) {
