@@ -1,8 +1,7 @@
 actor ユーザー
-process WebApp
 datastore DB
 
-ユーザー -> WebApp : "リクエスト"
-WebApp -> DB : "クエリ"
-DB -> WebApp : "結果"
-WebApp -> ユーザー : "レスポンス"
+ユーザー : リクエスト送信
+  -> DB : "クエリ"
+
+ユーザー : レスポンス受信
