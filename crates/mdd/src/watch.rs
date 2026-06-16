@@ -202,15 +202,15 @@ fn render_tree_html(entries: &[TreeEntry], prefix: &str, html: &mut String, is_r
         match entry {
             TreeEntry::Dir { name, children } => {
                 html.push_str(&format!(
-                    "<span class=\"branch\">{}</span><span class=\"dir\">{}/</span>\n",
-                    connector, name
+                    "<span class=\"branch\">{}{}</span><span class=\"dir\">{}/</span>\n",
+                    prefix, connector, name
                 ));
                 render_tree_html(children, &child_prefix, html, false);
             }
             TreeEntry::File { name, path } => {
                 html.push_str(&format!(
-                    "<span class=\"branch\">{}</span><a href=\"{}\">{}.pdf</a>\n",
-                    connector, path, name
+                    "<span class=\"branch\">{}{}</span><a href=\"{}\">{}.pdf</a>\n",
+                    prefix, connector, path, name
                 ));
             }
         }
