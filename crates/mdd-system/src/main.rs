@@ -546,10 +546,39 @@ fn convert_elements(elements: &[Element]) -> Vec<LayoutElement> {
 fn render_svg(diagram: &Diagram) -> String {
     let graph = build_layout_graph(diagram);
 
+    // Adaptive spacing: scales with graph complexity and density
+    let n = diagram.nodes.len() as f64;
+    let e = diagram.edges.len() as f64;
+
+    // Estimate max nodes per rank: count incoming edges per node,
+    // nodes with same source set tend to land on the same rank
+    let mut in_degree = vec![0usize; diagram.nodes.len()];
+    let mut out_degree = vec![0usize; diagram.nodes.len()];
+    let name_to_idx: HashMap<&str, usize> = diagram.nodes.iter().enumerate()
+        .map(|(i, n)| (n.label.as_str(), i)).collect();
+    for edge in &diagram.edges {
+        if let Some(&to) = name_to_idx.get(edge.to.as_str()) {
+            in_degree[to] += 1;
+        }
+        if let Some(&from) = name_to_idx.get(edge.from.as_str()) {
+            out_degree[from] += 1;
+        }
+    }
+    // Max fan-out estimates how many nodes share a rank
+    let max_fan_out = out_degree.iter().copied().max().unwrap_or(1) as f64;
+    let max_fan_in = in_degree.iter().copied().max().unwrap_or(1) as f64;
+    let max_rank_width = max_fan_out.max(max_fan_in);
+
+    let complexity = n + e;
+    let scale = 1.0 + (complexity / 8.0).sqrt() * 0.7;
+    let density_scale = 1.0 + (max_rank_width / 3.0).sqrt() * 0.4;
+    let node_sep = (60.0 * scale * density_scale).min(250.0);
+    let rank_sep = (70.0 * scale).min(250.0);
+
     let config = LayoutConfig {
         padding: PADDING,
-        node_sep: 20.0,
-        rank_sep: 40.0,
+        node_sep,
+        rank_sep,
         group_h_pad: 40.0,
         group_v_pad: 40.0,
         group_header_h: 28.0,
@@ -559,8 +588,16 @@ fn render_svg(diagram: &Diagram) -> String {
     let positions = &result.positions;
     let edge_waypoints = &result.edge_waypoints;
 
+    // SVG dimensions: use actual node sizes (may differ from layout-reported sizes)
     let mut max_x: f64 = 0.0;
     let mut max_y: f64 = 0.0;
+    for node in &diagram.nodes {
+        if let Some(&(x, y, _w, _h)) = positions.get(&node.label) {
+            let (nw, nh) = node_size(node);
+            max_x = max_x.max(x + nw);
+            max_y = max_y.max(y + nh);
+        }
+    }
     for (_, (x, y, w, h)) in positions {
         max_x = max_x.max(x + w);
         max_y = max_y.max(y + h);
@@ -587,10 +624,11 @@ fn render_svg(diagram: &Diagram) -> String {
     // Render groups and nodes
     render_elements(&mut svg, &diagram.top_level, &diagram.nodes, &diagram.groups, positions);
 
-    // Build bounds for edge routing
+    // Build bounds for edge routing using actual node sizes
     let all_bounds: Vec<(String, f64, f64, f64, f64)> = diagram.nodes.iter()
-        .filter_map(|n| positions.get(&n.label).map(|(x, y, w, h)| {
-            (n.label.clone(), x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0)
+        .filter_map(|n| positions.get(&n.label).map(|(x, y, _w, _h)| {
+            let (nw, nh) = node_size(n);
+            (n.label.clone(), x + nw / 2.0, y + nh / 2.0, nw / 2.0, nh / 2.0)
         }))
         .collect();
 
@@ -608,8 +646,12 @@ fn render_svg(diagram: &Diagram) -> String {
         let to_pos = positions.get(&edge.to);
         if from_pos.is_none() || to_pos.is_none() { continue; }
 
-        let (fx, fy, fw, fh) = *from_pos.unwrap();
-        let (tx, ty, tw, th) = *to_pos.unwrap();
+        let (fx, fy, _fw, _fh) = *from_pos.unwrap();
+        let (tx, ty, _tw, _th) = *to_pos.unwrap();
+        let from_node = diagram.nodes.iter().find(|n| n.label == edge.from);
+        let to_node = diagram.nodes.iter().find(|n| n.label == edge.to);
+        let (fw, fh) = from_node.map(|n| node_size(n)).unwrap_or((_fw, _fh));
+        let (tw, th) = to_node.map(|n| node_size(n)).unwrap_or((_tw, _th));
         let cx1 = fx + fw / 2.0; let cy1 = fy + fh / 2.0;
         let cx2 = tx + tw / 2.0; let cy2 = ty + th / 2.0;
 
@@ -627,9 +669,6 @@ fn render_svg(diagram: &Diagram) -> String {
 
         let start_t = if route.len() > 1 { route[1] } else { (cx2, cy2) };
         let end_t = if route.len() > 1 { route[route.len() - 2] } else { (cx1, cy1) };
-
-        let from_node = diagram.nodes.iter().find(|n| n.label == edge.from);
-        let to_node = diagram.nodes.iter().find(|n| n.label == edge.to);
         let (ax1, ay1) = clip_node(cx1, cy1, start_t.0, start_t.1, fw, fh, from_node);
         let (ax2, ay2) = clip_node(cx2, cy2, end_t.0, end_t.1, tw, th, to_node);
 
