@@ -156,16 +156,16 @@ const FONT_SIZE: f64 = 12.0;
 const PAD: f64 = 30.0;
 
 const LANE_HEADER_H: f64 = 44.0;
-const LANE_MIN_W: f64 = 160.0;
-const LANE_H_PAD: f64 = 20.0;
-const LANE_GAP: f64 = 6.0;
+const LANE_MIN_W: f64 = 220.0;
+const LANE_H_PAD: f64 = 40.0;
+const LANE_GAP: f64 = 20.0;
 
-const PROCESS_RY: f64 = 22.0;  // vertical radius
-const PROCESS_H_PAD: f64 = 16.0; // horizontal padding for text
-const STEP_GAP: f64 = 40.0;
-const STEP_Y_START: f64 = 30.0;
+const PROCESS_RY: f64 = 24.0;  // vertical radius
+const PROCESS_H_PAD: f64 = 18.0; // horizontal padding for text
+const STEP_GAP: f64 = 56.0;
+const STEP_Y_START: f64 = 36.0;
 
-const EXT_COL_GAP: f64 = 40.0;
+const EXT_COL_GAP: f64 = 80.0;
 const EXT_NODE_W: f64 = 130.0;
 const EXT_NODE_H: f64 = 32.0;
 const EXT_NODE_GAP: f64 = 16.0;
@@ -204,7 +204,7 @@ fn render_svg(scenario: &Scenario) -> String {
     let actor_to_lane: HashMap<&str, usize> = scenario.actors.iter().enumerate()
         .map(|(i, a)| (a.name.as_str(), i)).collect();
 
-    // Lane widths
+    // Lane widths — compute max then make all equal
     let mut lane_w: Vec<f64> = scenario.actors.iter()
         .map(|a| (text_width(&a.name) + LANE_H_PAD * 2.0 + 40.0).max(LANE_MIN_W))
         .collect();
@@ -214,6 +214,9 @@ fn render_svg(scenario: &Scenario) -> String {
             lane_w[li] = lane_w[li].max(pw);
         }
     }
+    // Equalize all lanes to the widest
+    let max_lane_w = lane_w.iter().copied().fold(0.0_f64, f64::max);
+    for w in lane_w.iter_mut() { *w = max_lane_w; }
 
     // Ext node widths
     let ext_max_w = scenario.ext_nodes.iter()
