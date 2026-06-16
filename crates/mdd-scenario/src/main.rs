@@ -156,16 +156,16 @@ const FONT_SIZE: f64 = 12.0;
 const PAD: f64 = 30.0;
 
 const LANE_HEADER_H: f64 = 44.0;
-const LANE_MIN_W: f64 = 220.0;
-const LANE_H_PAD: f64 = 40.0;
-const LANE_GAP: f64 = 20.0;
+const LANE_MIN_W: f64 = 300.0;
+const LANE_H_PAD: f64 = 60.0;
+const LANE_GAP: f64 = 40.0;
 
 const PROCESS_RY: f64 = 24.0;  // vertical radius
 const PROCESS_H_PAD: f64 = 18.0; // horizontal padding for text
 const STEP_GAP: f64 = 56.0;
 const STEP_Y_START: f64 = 36.0;
 
-const EXT_COL_GAP: f64 = 80.0;
+const EXT_COL_GAP: f64 = 160.0;
 const EXT_NODE_W: f64 = 130.0;
 const EXT_NODE_H: f64 = 32.0;
 const EXT_NODE_GAP: f64 = 16.0;
