@@ -689,8 +689,18 @@ fn render_svg(diagram: &Diagram) -> String {
 
         let start_target = if route.len() > 1 { route[1] } else { (cx2, cy2) };
         let end_target = if route.len() > 1 { route[route.len() - 2] } else { (cx1, cy1) };
-        let (ax1, ay1) = mdd_layout::edge::clip_to_rect(cx1, cy1, start_target.0, start_target.1, fw / 2.0, fh / 2.0);
-        let (ax2, ay2) = mdd_layout::edge::clip_to_rect(cx2, cy2, end_target.0, end_target.1, tw / 2.0, th / 2.0);
+        let from_pill = diagram.tables[rel.from].columns.is_empty();
+        let to_pill = diagram.tables[rel.to].columns.is_empty();
+        let (ax1, ay1) = if from_pill {
+            clip_to_ellipse(cx1, cy1, start_target.0, start_target.1, fw / 2.0, fh / 2.0)
+        } else {
+            mdd_layout::edge::clip_to_rect(cx1, cy1, start_target.0, start_target.1, fw / 2.0, fh / 2.0)
+        };
+        let (ax2, ay2) = if to_pill {
+            clip_to_ellipse(cx2, cy2, end_target.0, end_target.1, tw / 2.0, th / 2.0)
+        } else {
+            mdd_layout::edge::clip_to_rect(cx2, cy2, end_target.0, end_target.1, tw / 2.0, th / 2.0)
+        };
 
         let mut clipped_route = vec![(ax1, ay1)];
         if route.len() > 2 {
@@ -713,22 +723,48 @@ fn render_svg(diagram: &Diagram) -> String {
             path_d, COLOR_EDGE
         ));
 
-        // Cardinality labels near endpoints
-        let near_start = point_near_end(&clipped_route, true, 18.0);
-        let near_end = point_near_end(&clipped_route, false, 18.0);
+        // Cardinality labels near endpoints, offset perpendicular to the edge
+        let near_start = point_near_end(&clipped_route, true, 22.0);
+        let near_end = point_near_end(&clipped_route, false, 22.0);
+
+        // Perpendicular offset to avoid overlapping the line
+        let label_offset = 14.0;
+        let (s_off_x, s_off_y) = {
+            let dx = clipped_route[1].0 - clipped_route[0].0;
+            let dy = clipped_route[1].1 - clipped_route[0].1;
+            let len = (dx * dx + dy * dy).sqrt().max(1.0);
+            (-dy / len * label_offset, dx / len * label_offset)
+        };
+        let last = clipped_route.len() - 1;
+        let (e_off_x, e_off_y) = {
+            let dx = clipped_route[last].0 - clipped_route[last - 1].0;
+            let dy = clipped_route[last].1 - clipped_route[last - 1].1;
+            let len = (dx * dx + dy * dy).sqrt().max(1.0);
+            (-dy / len * label_offset, dx / len * label_offset)
+        };
 
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            near_start.0, near_start.1 - 6.0, COLOR_EDGE, escape_xml(&rel.from_card)
+            near_start.0 + s_off_x, near_start.1 + s_off_y + 4.0, COLOR_EDGE, escape_xml(&rel.from_card)
         ));
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            near_end.0, near_end.1 - 6.0, COLOR_EDGE, escape_xml(&rel.to_card)
+            near_end.0 + e_off_x, near_end.1 + e_off_y + 4.0, COLOR_EDGE, escape_xml(&rel.to_card)
         ));
     }
 
     svg.push_str("</svg>");
     svg
+}
+
+fn clip_to_ellipse(cx: f64, cy: f64, tx: f64, ty: f64, rx: f64, ry: f64) -> (f64, f64) {
+    let dx = tx - cx;
+    let dy = ty - cy;
+    if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
+        return (cx, cy + ry);
+    }
+    let angle = dy.atan2(dx);
+    (cx + rx * angle.cos(), cy + ry * angle.sin())
 }
 
 fn render_elements_recursive(
