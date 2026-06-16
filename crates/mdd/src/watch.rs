@@ -4,7 +4,72 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+/// Watch directory and output HTML files (markdown → processed HTML).
 pub fn watch(dir: &Path) {
+    if !dir.is_dir() {
+        eprintln!("mdd: {} is not a directory", dir.display());
+        std::process::exit(1);
+    }
+
+    let md_files = find_md_files(dir);
+    let file_count = md_files.len();
+    let max_parallel = 8;
+    eprintln!("mdd: Building {} HTML files ({} at a time)...", file_count, max_parallel);
+
+    for chunk in md_files.chunks(max_parallel) {
+        thread::scope(|s| {
+            for path in chunk {
+                s.spawn(|| {
+                    build_html(path);
+                });
+            }
+        });
+    }
+
+    let mut timestamps: HashMap<String, SystemTime> = HashMap::new();
+    for path in &md_files {
+        if let Ok(modified) = fs::metadata(path).and_then(|m| m.modified()) {
+            timestamps.insert(path.clone(), modified);
+        }
+    }
+
+    generate_index_html(dir, "html");
+
+    eprintln!(
+        "mdd: Watching {} for .md changes... (Ctrl+C to stop)",
+        dir.display()
+    );
+
+    loop {
+        thread::sleep(Duration::from_secs(1));
+
+        let mut any_changed = false;
+        for path in find_md_files(dir) {
+            let modified = match fs::metadata(&path).and_then(|m| m.modified()) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+
+            let changed = match timestamps.get(&path) {
+                Some(prev) => *prev != modified,
+                None => true,
+            };
+
+            if changed {
+                timestamps.insert(path.clone(), modified);
+                build_html(&path);
+                any_changed = true;
+            }
+        }
+
+        if any_changed {
+            generate_index_html(dir, "html");
+        }
+    }
+}
+
+/// Watch directory and output slide PDFs.
+pub fn slide_watch(dir: &Path) {
     if !dir.is_dir() {
         eprintln!("mdd: {} is not a directory", dir.display());
         std::process::exit(1);
@@ -33,8 +98,7 @@ pub fn watch(dir: &Path) {
         }
     }
 
-    // Generate index.html with links to all PDFs
-    generate_index_html(dir);
+    generate_index_html(dir, "pdf");
 
     eprintln!(
         "mdd: Watching {} for .md changes... (Ctrl+C to stop)",
@@ -53,7 +117,7 @@ pub fn watch(dir: &Path) {
 
             let changed = match timestamps.get(&path) {
                 Some(prev) => *prev != modified,
-                None => true, // new file
+                None => true,
             };
 
             if changed {
@@ -64,7 +128,7 @@ pub fn watch(dir: &Path) {
         }
 
         if any_changed {
-            generate_index_html(dir);
+            generate_index_html(dir, "pdf");
         }
     }
 }
@@ -90,10 +154,11 @@ fn collect_md_files(dir: &Path, files: &mut Vec<String>) {
     }
 }
 
-fn generate_index_html(dir: &Path) {
-    let mut pdf_files: Vec<String> = Vec::new();
-    collect_pdf_files(dir, dir, &mut pdf_files);
-    pdf_files.sort();
+fn generate_index_html(dir: &Path, ext: &str) {
+    let mut files: Vec<String> = Vec::new();
+    collect_files_by_ext(dir, dir, ext, &mut files);
+    files.sort();
+    let pdf_files = files;
 
     let dir_name = dir
         .file_name()
@@ -212,15 +277,16 @@ fn render_tree_html(entries: &[TreeEntry], prefix: &str, html: &mut String, is_r
             }
             TreeEntry::File { name, path } => {
                 html.push_str(&format!(
-                    "<span class=\"branch\">{}{}</span><a href=\"{}\" target=\"_blank\">{}.pdf</a>\n",
-                    prefix, connector, path, name
+                    "<span class=\"branch\">{}{}</span><a href=\"{}\" target=\"_blank\">{}</a>\n",
+                    prefix, connector, path,
+                    Path::new(path).file_name().and_then(|f| f.to_str()).unwrap_or(&name)
                 ));
             }
         }
     }
 }
 
-fn collect_pdf_files(base: &Path, dir: &Path, files: &mut Vec<String>) {
+fn collect_files_by_ext(base: &Path, dir: &Path, ext: &str, files: &mut Vec<String>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -228,12 +294,38 @@ fn collect_pdf_files(base: &Path, dir: &Path, files: &mut Vec<String>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_pdf_files(base, &path, files);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("pdf") {
+            collect_files_by_ext(base, &path, ext, files);
+        } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
             if let Ok(rel) = path.strip_prefix(base) {
                 files.push(rel.to_string_lossy().to_string());
             }
         }
+    }
+}
+
+fn build_html(md_path: &str) {
+    let path = Path::new(md_path);
+    let html_path = path.with_extension("html");
+
+    let input = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdd: Failed to read {}: {}", md_path, e);
+            return;
+        }
+    };
+
+    let processed = match crate::process::process(&input, path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdd: {}: {}", md_path, e);
+            return;
+        }
+    };
+
+    match fs::write(&html_path, &processed) {
+        Ok(_) => eprintln!("mdd: Built {}", html_path.display()),
+        Err(e) => eprintln!("mdd: Failed to write {}: {}", html_path.display(), e),
     }
 }
 

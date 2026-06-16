@@ -32,6 +32,7 @@ fn print_help() {
     eprintln!("       mdd slide <file.md> > output.pdf");
     eprintln!("       mdd slide-preview <file.md>");
     eprintln!("       mdd watch <dir>");
+    eprintln!("       mdd slide-watch <dir>");
     eprintln!();
 
     let plugins = find_plugins();
@@ -86,6 +87,10 @@ fn main() {
         3 if args[1] == "watch" => {
             let path = Path::new(&args[2]);
             watch::watch(path);
+        }
+        3 if args[1] == "slide-watch" => {
+            let path = Path::new(&args[2]);
+            watch::slide_watch(path);
         }
         _ => {
             print_help();
