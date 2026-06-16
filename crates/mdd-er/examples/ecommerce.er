@@ -1,55 +1,55 @@
-table Users {
-  * id
-  name
-  email
-  password_hash
-  created_at
+table users : "ユーザー" {
+  id : ID : BIGINT PK
+  email : メールアドレス : VARCHAR(255) UK
+  name : 氏名 : VARCHAR(100)
+  password_hash : パスワードハッシュ : VARCHAR(255)
+  created_at : 作成日時 : TIMESTAMP
 }
 
-table Orders {
-  * id
-  user_id
-  order_date
-  total
-  status
-  shipping_address
+table orders : "注文" {
+  id : ID : BIGINT PK
+  user_id : ユーザーID : BIGINT FK
+  order_date : 注文日 : DATE
+  total : 合計金額 : DECIMAL(10,2)
+  status : ステータス : VARCHAR(20)
+  shipping_address : 配送先 : TEXT
 }
 
-table OrderItems {
-  * id
-  order_id
-  product_id
-  quantity
-  unit_price
+table order_items : "注文明細" {
+  id : ID : BIGINT PK
+  order_id : 注文ID : BIGINT FK
+  product_id : 商品ID : BIGINT FK
+  quantity : 数量 : INT
+  unit_price : 単価 : DECIMAL(10,2)
 }
 
-table Products {
-  * id
-  name
-  description
-  price
-  stock
-  category_id
+table products : "商品" {
+  id : ID : BIGINT PK
+  name : 商品名 : VARCHAR(200)
+  description : 説明 : TEXT
+  price : 価格 : DECIMAL(10,2)
+  stock : 在庫数 : INT
+  category_id : カテゴリID : BIGINT FK
 }
 
-table Categories {
-  * id
-  name
-  parent_id
+table categories : "カテゴリ" {
+  id : ID : BIGINT PK
+  name : カテゴリ名 : VARCHAR(100) UK
+  parent_id : 親カテゴリID : BIGINT FK
 }
 
-table Reviews {
-  * id
-  user_id
-  product_id
-  rating
-  comment
-  created_at
+table reviews : "レビュー" {
+  id : ID : BIGINT PK
+  user_id : ユーザーID : BIGINT FK
+  product_id : 商品ID : BIGINT FK
+  rating : 評価 : SMALLINT
+  comment : コメント : TEXT
+  created_at : 作成日時 : TIMESTAMP
 }
 
-Users 1--* Orders
-Orders 1--* OrderItems
-Products 1--* OrderItems
-Categories 1--* Products
-Users 1--* Reviews
-Products 1--* Reviews
+users 1--* orders
+orders 1--* order_items
+products 1--* order_items
+categories 1--* products
+users 1--* reviews
+products 1--* reviews

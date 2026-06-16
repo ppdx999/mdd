@@ -9,13 +9,18 @@ use mdd_layout::text::{text_width, escape_xml};
 
 #[derive(Debug, Clone)]
 struct Column {
-    name: String,
+    name: String,        // physical name
+    logical: String,     // logical name (empty if not specified)
+    col_type: String,    // data type (empty if not specified)
     is_pk: bool,
+    is_uk: bool,
+    is_fk: bool,
 }
 
 #[derive(Debug)]
 struct Table {
-    name: String,
+    name: String,        // physical name
+    logical: String,     // logical name (empty if not specified)
     columns: Vec<Column>,
 }
 
@@ -63,7 +68,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
     // TableCtx: building a table
     enum Ctx {
         Group(usize, Vec<Element>),
-        Table(String, Vec<Column>),
+        Table((String, String), Vec<Column>), // (physical_name, logical_name)
     }
     let mut stack: Vec<Ctx> = Vec::new();
 
@@ -76,11 +81,12 @@ fn parse(input: &str) -> Result<Diagram, String> {
         // Check if we're inside a table definition
         if let Some(Ctx::Table(_, _)) = stack.last() {
             if line == "}" {
-                if let Some(Ctx::Table(table_name, table_columns)) = stack.pop() {
+                if let Some(Ctx::Table((table_name, table_logical), table_columns)) = stack.pop() {
                     let id = tables.len();
                     name_to_id.insert(table_name.clone(), id);
                     tables.push(Table {
                         name: table_name,
+                        logical: table_logical,
                         columns: table_columns,
                     });
                     let elem = Element::TableRef(id);
@@ -92,34 +98,11 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 }
                 continue;
             }
-            // Parse column: "name [PK|FK]" or "* name"
+            // Parse column:
+            //   Extended: "physical : logical : TYPE PK UK FK"
+            //   Legacy: "* name" or "name PK" or "name FK" or "name"
             if let Some(Ctx::Table(_, cols)) = stack.last_mut() {
-                if let Some(pk_name) = line.strip_prefix("* ") {
-                    cols.push(Column {
-                        name: pk_name.trim().to_string(),
-                        is_pk: true,
-                    });
-                } else {
-                    // Check for "name PK" suffix
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 && parts[parts.len() - 1] == "PK" {
-                        cols.push(Column {
-                            name: parts[..parts.len() - 1].join(" "),
-                            is_pk: true,
-                        });
-                    } else if parts.len() >= 2 && parts[parts.len() - 1] == "FK" {
-                        // FK columns are not PK
-                        cols.push(Column {
-                            name: parts[..parts.len() - 1].join(" "),
-                            is_pk: false,
-                        });
-                    } else {
-                        cols.push(Column {
-                            name: line.to_string(),
-                            is_pk: false,
-                        });
-                    }
-                }
+                cols.push(parse_column(line));
             }
             continue;
         }
@@ -155,16 +138,20 @@ fn parse(input: &str) -> Result<Diagram, String> {
             return Err(format!("Invalid group syntax: {}", line));
         }
 
-        // Table/entity: "table Name {" or "entity Name {"
+        // Table/entity: "table Name {" or "table Name : "Logical" {"
         if line.starts_with("table ") || line.starts_with("entity ") {
             let rest = if line.starts_with("table ") {
                 line.strip_prefix("table ").unwrap()
             } else {
                 line.strip_prefix("entity ").unwrap()
             };
-            if let Some(name) = rest.strip_suffix(" {") {
-                let name = name.trim().to_string();
-                stack.push(Ctx::Table(name, Vec::new()));
+            if let Some(name_part) = rest.strip_suffix(" {") {
+                let (name, logical) = if let Some((n, l)) = name_part.split_once(" : ") {
+                    (n.trim().to_string(), l.trim().trim_matches('"').to_string())
+                } else {
+                    (name_part.trim().to_string(), String::new())
+                };
+                stack.push(Ctx::Table((name, logical), Vec::new()));
                 continue;
             }
             return Err(format!("Invalid table/entity syntax: {}", line));
@@ -189,6 +176,91 @@ fn parse(input: &str) -> Result<Diagram, String> {
         top_level,
         relations,
     })
+}
+
+/// Parse a column definition.
+/// Extended format: "physical : logical : TYPE CONSTRAINTS"
+/// Legacy formats: "* name", "name PK", "name FK", "name"
+fn parse_column(line: &str) -> Column {
+    // Legacy: "* name" → PK
+    if let Some(rest) = line.strip_prefix("* ") {
+        return Column {
+            name: rest.trim().to_string(),
+            logical: String::new(),
+            col_type: String::new(),
+            is_pk: true,
+            is_uk: false,
+            is_fk: false,
+        };
+    }
+
+    // Extended format: split by " : "
+    let segments: Vec<&str> = line.splitn(3, " : ").collect();
+    if segments.len() >= 2 {
+        let name = segments[0].trim().to_string();
+        let logical = segments[1].trim().trim_matches('"').to_string();
+
+        if segments.len() == 3 {
+            // "physical : logical : TYPE CONSTRAINTS"
+            let type_and_constraints = segments[2].trim();
+            let parts: Vec<&str> = type_and_constraints.split_whitespace().collect();
+            let mut col_type_parts = Vec::new();
+            let mut is_pk = false;
+            let mut is_uk = false;
+            let mut is_fk = false;
+            for part in &parts {
+                match *part {
+                    "PK" => is_pk = true,
+                    "UK" => is_uk = true,
+                    "FK" => is_fk = true,
+                    _ => col_type_parts.push(*part),
+                }
+            }
+            return Column {
+                name,
+                logical,
+                col_type: col_type_parts.join(" "),
+                is_pk,
+                is_uk,
+                is_fk,
+            };
+        }
+
+        // "physical : logical" (no type)
+        return Column {
+            name,
+            logical,
+            col_type: String::new(),
+            is_pk: false,
+            is_uk: false,
+            is_fk: false,
+        };
+    }
+
+    // Legacy: "name PK", "name FK", "name"
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() >= 2 {
+        let last = *parts.last().unwrap();
+        if last == "PK" || last == "FK" || last == "UK" {
+            return Column {
+                name: parts[..parts.len() - 1].join(" "),
+                logical: String::new(),
+                col_type: String::new(),
+                is_pk: last == "PK",
+                is_uk: last == "UK",
+                is_fk: last == "FK",
+            };
+        }
+    }
+
+    Column {
+        name: line.to_string(),
+        logical: String::new(),
+        col_type: String::new(),
+        is_pk: false,
+        is_uk: false,
+        is_fk: false,
+    }
 }
 
 fn parse_relation(
@@ -249,6 +321,8 @@ const COLOR_HEADER_TEXT: &str = "#2e7d32";
 const COLOR_BODY_BG: &str = "#fff";
 const COLOR_BODY_STROKE: &str = "#aaa";
 const COLOR_PK: &str = "#c8a415";
+const COLOR_UK: &str = "#1565c0";
+const COLOR_FK: &str = "#7b1fa2";
 const COLOR_GROUP_FILL: &str = "#fafafa";
 const COLOR_GROUP_STROKE: &str = "#bbb";
 
@@ -256,12 +330,25 @@ const COLOR_GROUP_STROKE: &str = "#bbb";
 // Table sizing (multi-column layout for many columns)
 // ---------------------------------------------------------------------------
 
-fn col_display_name(col: &Column) -> String {
-    if col.is_pk {
-        format!("\u{1f511} {}", col.name) // key emoji for sizing
-    } else {
-        col.name.clone()
+fn col_display_text(col: &Column) -> String {
+    let mut parts = Vec::new();
+    // Constraint badges
+    if col.is_pk { parts.push("PK"); }
+    if col.is_uk { parts.push("UK"); }
+    if col.is_fk { parts.push("FK"); }
+    let badge = parts.join(" ");
+
+    let mut text = col.name.clone();
+    if !col.logical.is_empty() {
+        text = format!("{} ({})", text, col.logical);
     }
+    if !col.col_type.is_empty() {
+        text = format!("{} : {}", text, col.col_type);
+    }
+    if !badge.is_empty() {
+        text = format!("{} {}", badge, text);
+    }
+    text
 }
 
 fn column_layout(columns: &[Column]) -> (usize, Vec<f64>, usize) {
@@ -274,22 +361,58 @@ fn column_layout(columns: &[Column]) -> (usize, Vec<f64>, usize) {
     let mut col_widths = vec![0.0_f64; num_cols];
     for (i, col) in columns.iter().enumerate() {
         let c = i / num_rows;
-        let display = col_display_name(col);
+        let display = col_display_text(col);
         col_widths[c] = col_widths[c].max(text_width(&display));
     }
     (num_cols, col_widths, num_rows)
 }
 
+fn table_header_text(table: &Table) -> String {
+    if table.logical.is_empty() {
+        table.name.clone()
+    } else {
+        format!("{} ({})", table.name, table.logical)
+    }
+}
+
 fn table_size(table: &Table) -> (f64, f64) {
-    let header_w = text_width(&table.name) + TBL_H_PAD * 2.0;
-    let (num_cols, col_widths, num_rows) = column_layout(&table.columns);
-    let inner_w: f64 =
-        col_widths.iter().sum::<f64>() + (num_cols as f64 - 1.0).max(0.0) * TBL_COL_GAP;
-    let w = header_w.max(inner_w + TBL_H_PAD * 2.0).max(TBL_MIN_W);
+    let header_text = table_header_text(table);
+    let header_w = text_width(&header_text) + TBL_H_PAD * 2.0;
+
+    // Compute tabular column widths
+    let has_badge = table.columns.iter().any(|c| c.is_pk || c.is_uk || c.is_fk);
+    let badge_w = if has_badge {
+        table.columns.iter().map(|c| {
+            (c.is_pk as usize + c.is_uk as usize + c.is_fk as usize) as f64 * 24.0
+        }).fold(0.0_f64, f64::max).max(24.0)
+    } else {
+        0.0
+    };
+
+    let has_logical = table.columns.iter().any(|c| !c.logical.is_empty());
+    let has_type = table.columns.iter().any(|c| !c.col_type.is_empty());
+    let col_gap = 8.0;
+
+    let max_name = table.columns.iter().map(|c| text_width(&c.name)).fold(0.0_f64, f64::max);
+    let max_logical = if has_logical {
+        table.columns.iter().filter(|c| !c.logical.is_empty())
+            .map(|c| text_width(&c.logical) * 0.85 + 4.0).fold(0.0_f64, f64::max)
+    } else { 0.0 };
+    let max_type = if has_type {
+        table.columns.iter().filter(|c| !c.col_type.is_empty())
+            .map(|c| text_width(&c.col_type) * 0.85).fold(0.0_f64, f64::max)
+    } else { 0.0 };
+
+    let row_w = TBL_H_PAD + badge_w + max_name
+        + if has_logical { col_gap + max_logical } else { 0.0 }
+        + if has_type { col_gap + max_type } else { 0.0 }
+        + TBL_H_PAD;
+
+    let w = header_w.max(row_w).max(TBL_MIN_W);
     let body_h = if table.columns.is_empty() {
         8.0
     } else {
-        num_rows as f64 * LINE_HEIGHT + 8.0
+        table.columns.len() as f64 * LINE_HEIGHT + 8.0
     };
     let h = TBL_HEADER_H + body_h;
     (w, h)
@@ -626,51 +749,112 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
 
     // Header text
     let cx = x + w / 2.0;
+    let header_text = table_header_text(table);
     svg.push_str(&format!(
         "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\" fill=\"{}\">{}</text>",
         cx,
         y + TBL_HEADER_H * 0.7,
         COLOR_HEADER_TEXT,
-        escape_xml(&table.name)
+        escape_xml(&header_text)
     ));
 
     if table.columns.is_empty() {
         return;
     }
 
-    // Column names in grid
-    let (num_cols, col_widths, num_rows) = column_layout(&table.columns);
-    let inner_w: f64 =
-        col_widths.iter().sum::<f64>() + (num_cols as f64 - 1.0).max(0.0) * TBL_COL_GAP;
-    let grid_start_x = x + (w - inner_w) / 2.0;
+    // Pre-compute column widths for tabular alignment
+    let has_any_badge = table.columns.iter().any(|c| c.is_pk || c.is_uk || c.is_fk);
+    let badge_col_w = if has_any_badge {
+        // Max badge count per row * 24px
+        table.columns.iter().map(|c| {
+            let count = c.is_pk as usize + c.is_uk as usize + c.is_fk as usize;
+            count as f64 * 24.0
+        }).fold(0.0_f64, f64::max).max(24.0)
+    } else {
+        0.0
+    };
+
+    let has_any_logical = table.columns.iter().any(|c| !c.logical.is_empty());
+    let has_any_type = table.columns.iter().any(|c| !c.col_type.is_empty());
+
+    let max_name_w = table.columns.iter()
+        .map(|c| text_width(&c.name))
+        .fold(0.0_f64, f64::max);
+    let max_logical_w = if has_any_logical {
+        table.columns.iter()
+            .filter(|c| !c.logical.is_empty())
+            .map(|c| text_width(&c.logical) * 0.85 + 4.0) // parens
+            .fold(0.0_f64, f64::max)
+    } else {
+        0.0
+    };
+
+    let col_gap = 8.0;
+    let x_badge = x + TBL_H_PAD;
+    let x_name = x_badge + badge_col_w;
+    let x_logical = x_name + max_name_w + col_gap;
+    let x_type = if has_any_logical { x_logical + max_logical_w + col_gap } else { x_logical };
 
     for (i, col) in table.columns.iter().enumerate() {
-        let display_col = i / num_rows;
-        let display_row = i % num_rows;
+        let text_y = y + TBL_HEADER_H + (i as f64 + 0.75) * LINE_HEIGHT;
 
-        let col_x: f64 =
-            col_widths[..display_col].iter().sum::<f64>() + display_col as f64 * TBL_COL_GAP;
-        let text_y = y + TBL_HEADER_H + (display_row as f64 + 0.75) * LINE_HEIGHT;
-
+        // Constraint badges (aligned in badge column)
+        let mut bx = x_badge;
         if col.is_pk {
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"11\" fill=\"{}\">🔑</text>",
-                grid_start_x + col_x,
-                text_y,
-                COLOR_PK
+                "<rect x=\"{}\" y=\"{}\" width=\"20\" height=\"12\" rx=\"2\" fill=\"#fff8e1\" stroke=\"none\"/>",
+                bx, text_y - 9.0
             ));
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"11\" font-weight=\"bold\">{}</text>",
-                grid_start_x + col_x + 18.0,
-                text_y,
-                escape_xml(&col.name)
+                "<text x=\"{}\" y=\"{}\" font-size=\"8\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"middle\">PK</text>",
+                bx + 10.0, text_y - 1.0, COLOR_PK
             ));
-        } else {
+            bx += 24.0;
+        }
+        if col.is_uk {
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"11\" fill=\"#555\">{}</text>",
-                grid_start_x + col_x,
-                text_y,
-                escape_xml(&col.name)
+                "<rect x=\"{}\" y=\"{}\" width=\"20\" height=\"12\" rx=\"2\" fill=\"#e3f2fd\" stroke=\"none\"/>",
+                bx, text_y - 9.0
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"8\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"middle\">UK</text>",
+                bx + 10.0, text_y - 1.0, COLOR_UK
+            ));
+            bx += 24.0;
+        }
+        if col.is_fk {
+            svg.push_str(&format!(
+                "<rect x=\"{}\" y=\"{}\" width=\"20\" height=\"12\" rx=\"2\" fill=\"#f3e5f5\" stroke=\"none\"/>",
+                bx, text_y - 9.0
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"8\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"middle\">FK</text>",
+                bx + 10.0, text_y - 1.0, COLOR_FK
+            ));
+        }
+
+        // Physical name (aligned)
+        let is_key = col.is_pk || col.is_uk;
+        let name_color = if is_key { COLOR_DARK } else { "#555" };
+        let weight = if is_key { " font-weight=\"bold\"" } else { "" };
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-size=\"11\" fill=\"{}\"{}>{}</text>",
+            x_name, text_y, name_color, weight, escape_xml(&col.name)
+        ));
+
+        // Logical name (aligned)
+        if has_any_logical && !col.logical.is_empty() {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"10\" fill=\"#999\">{}</text>",
+                x_logical, text_y, escape_xml(&col.logical)
+            ));
+        }
+
+        // Data type (aligned)
+        if has_any_type && !col.col_type.is_empty() {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-size=\"10\" font-family=\"monospace\" fill=\"#aaa\">{}</text>",
+                x_type, text_y, escape_xml(&col.col_type)
             ));
         }
     }
