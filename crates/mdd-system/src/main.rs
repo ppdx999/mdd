@@ -985,6 +985,11 @@ Node types:
 
 Edges:
   From -> To : \"label\"
+  From -> To : data \"Name\"          (inline data node, no columns)
+  From -> To : data Name {           (inline data node with columns)
+    field1
+    field2
+  }
 
 Groups:
   group \"Name\" { ... }
@@ -998,12 +1003,14 @@ Example:
     name
     email
   }
-  file Report
 
   User -> WebApp : \"HTTP\"
   WebApp -> EventBus : \"publish\"
   WebApp -> UserDB : \"query\"
-  WebApp -> Report : \"generate\"
+  WebApp -> EventBus : data Payload {
+    user_id
+    action
+  }
 ";
 
 fn main() {
