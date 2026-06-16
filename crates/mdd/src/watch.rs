@@ -10,18 +10,21 @@ pub fn watch(dir: &Path) {
         std::process::exit(1);
     }
 
-    // Initial build of all .md files (parallel)
+    // Initial build of all .md files (parallel, limited concurrency)
     let md_files = find_md_files(dir);
     let file_count = md_files.len();
-    eprintln!("mdd: Building {} files in parallel...", file_count);
+    let max_parallel = 8;
+    eprintln!("mdd: Building {} files ({} at a time)...", file_count, max_parallel);
 
-    thread::scope(|s| {
-        for path in &md_files {
-            s.spawn(|| {
-                build_slide_pdf(path);
-            });
-        }
-    });
+    for chunk in md_files.chunks(max_parallel) {
+        thread::scope(|s| {
+            for path in chunk {
+                s.spawn(|| {
+                    build_slide_pdf(path);
+                });
+            }
+        });
+    }
 
     let mut timestamps: HashMap<String, SystemTime> = HashMap::new();
     for path in &md_files {
