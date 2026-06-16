@@ -406,9 +406,17 @@ fn render_svg(diagram: &Diagram) -> String {
     let positions = result.positions;
     let edge_waypoints = result.edge_waypoints;
 
-    // SVG dimensions
+    // SVG dimensions: use actual table sizes (may differ from layout-reported sizes)
     let mut max_x: f64 = 0.0;
     let mut max_y: f64 = 0.0;
+    for table in &diagram.tables {
+        if let Some(&(x, y, _w, _h)) = positions.get(&table.name) {
+            let (tw, th) = table_size(table);
+            max_x = max_x.max(x + tw);
+            max_y = max_y.max(y + th);
+        }
+    }
+    // Also account for group bounding boxes from layout
     for (_, (x, y, w, h)) in &positions {
         max_x = max_x.max(x + w);
         max_y = max_y.max(y + h);
