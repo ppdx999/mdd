@@ -282,14 +282,9 @@ fn parse(input: &str) -> Result<Diagram, String> {
                     continue;
                 }
 
-                // data "Name" (single-line, no columns)
+                // data "Name" (single-line, no columns) → just an edge label
                 let data_label = data_rest.trim_matches('"').to_string();
-                let id = nodes.len();
-                name_to_id.insert(data_label.clone(), id);
-                nodes.push(Node { label: data_label.clone(), kind: NodeKind::Data { columns: Vec::new() } });
-                top_level.push(Element::NodeRef(id));
-                edges.push(Edge { from: from.clone(), to: data_label.clone(), label: String::new() });
-                edges.push(Edge { from: data_label, to, label: String::new() });
+                edges.push(Edge { from, to, label: data_label });
                 continue;
             }
 
@@ -335,6 +330,8 @@ const DS_HEADER_H: f64 = 24.0;
 const DS_MIN_W: f64 = 140.0;
 const DS_COL_GAP: f64 = 12.0;
 const DS_MAX_ROWS: usize = 8;
+
+const MAX_NODE_W: f64 = 280.0; // maximum node width before text wrapping
 
 const COLOR_DARK: &str = "#333";
 const COLOR_EDGE: &str = "#666";
@@ -382,6 +379,35 @@ fn wrap_lines(label: &str) -> Vec<String> {
     lines
 }
 
+/// Wrap a detail/column line to fit within max_w pixels.
+fn wrap_detail(line: &str, max_w: f64) -> Vec<String> {
+    if text_width(line) <= max_w {
+        return vec![line.to_string()];
+    }
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut cur_w: f64 = 0.0;
+    for ch in line.chars() {
+        let cw = if ch.is_ascii() { 8.0 } else { 14.0 };
+        if cur_w + cw > max_w && !current.is_empty() {
+            result.push(current);
+            current = String::new();
+            cur_w = 0.0;
+        }
+        current.push(ch);
+        cur_w += cw;
+    }
+    if !current.is_empty() {
+        result.push(current);
+    }
+    result
+}
+
+/// Expand detail lines with wrapping applied.
+fn expand_details(details: &[String], max_w: f64) -> Vec<String> {
+    details.iter().flat_map(|d| wrap_detail(d, max_w)).collect()
+}
+
 // ---------------------------------------------------------------------------
 // Node sizing
 // ---------------------------------------------------------------------------
@@ -389,7 +415,7 @@ fn wrap_lines(label: &str) -> Vec<String> {
 fn rect_size(label: &str) -> (f64, f64) {
     let lines = wrap_lines(label);
     let max_w = lines.iter().map(|l| text_width(l)).fold(0.0_f64, f64::max);
-    let w = (max_w + NODE_H_PAD * 2.0).max(NODE_MIN_W);
+    let w = (max_w + NODE_H_PAD * 2.0).max(NODE_MIN_W).min(MAX_NODE_W);
     let h = (lines.len() as f64 * LINE_HEIGHT + NODE_V_PAD * 2.0).max(NODE_MIN_H);
     (w, h)
 }
@@ -410,11 +436,12 @@ const CYLINDER_RY: f64 = 10.0; // ellipse vertical radius for cylinder caps
 
 fn datastore_size(label: &str, columns: &[String]) -> (f64, f64) {
     let header_w = text_width(label) + DS_H_PAD * 2.0;
-    let (num_cols, col_widths, num_rows) = ds_column_layout(columns);
-    let inner_w: f64 = col_widths.iter().sum::<f64>() + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
-    let w = header_w.max(inner_w + DS_H_PAD * 2.0).max(DS_MIN_W);
-    let body_h = DS_HEADER_H + num_rows as f64 * LINE_HEIGHT + 8.0;
-    let h = body_h + CYLINDER_RY * 2.0; // top + bottom ellipse space
+    let inner_max = MAX_NODE_W - DS_H_PAD * 2.0;
+    let wrapped = expand_details(columns, inner_max);
+    let max_col_w = wrapped.iter().map(|c| text_width(c)).fold(0.0_f64, f64::max);
+    let w = header_w.max(max_col_w + DS_H_PAD * 2.0).max(DS_MIN_W).min(MAX_NODE_W);
+    let body_h = DS_HEADER_H + wrapped.len() as f64 * LINE_HEIGHT + 8.0;
+    let h = body_h + CYLINDER_RY * 2.0;
     (w, h)
 }
 
@@ -436,9 +463,12 @@ fn queue_size(label: &str) -> (f64, f64) {
     (w, h)
 }
 
-fn columned_size(label: &str, columns: &[String], colors: (&str, &str)) -> (f64, f64) {
+fn columned_size(label: &str, columns: &[String], _colors: (&str, &str)) -> (f64, f64) {
     if columns.is_empty() {
-        return rect_size(label);
+        // Compact size for inline data nodes (no columns)
+        let w = (text_width(label) + 16.0).min(200.0);
+        let h = LINE_HEIGHT + 12.0;
+        return (w, h);
     }
     datastore_size(label, columns)
 }
@@ -447,10 +477,12 @@ const PROCESS_HEADER_H: f64 = 28.0;
 const PROCESS_BODY_PAD: f64 = 8.0;
 
 fn process_detail_size(label: &str, details: &[String]) -> (f64, f64) {
-    let header_w = text_width(label) + NODE_H_PAD * 2.0 + 24.0; // extra for icon
-    let max_detail_w = details.iter().map(|d| text_width(d)).fold(0.0_f64, f64::max);
-    let w = header_w.max(max_detail_w + NODE_H_PAD * 2.0).max(NODE_MIN_W);
-    let body_h = PROCESS_BODY_PAD + details.len() as f64 * LINE_HEIGHT + PROCESS_BODY_PAD;
+    let header_w = text_width(label) + NODE_H_PAD * 2.0 + 24.0;
+    let inner_max = MAX_NODE_W - NODE_H_PAD * 2.0;
+    let wrapped = expand_details(details, inner_max);
+    let max_detail_w = wrapped.iter().map(|d| text_width(d)).fold(0.0_f64, f64::max);
+    let w = header_w.max(max_detail_w + NODE_H_PAD * 2.0).max(NODE_MIN_W).min(MAX_NODE_W);
+    let body_h = PROCESS_BODY_PAD + wrapped.len() as f64 * LINE_HEIGHT + PROCESS_BODY_PAD;
     let h = PROCESS_HEADER_H + body_h;
     (w, h)
 }
@@ -516,6 +548,8 @@ fn render_svg(diagram: &Diagram) -> String {
 
     let config = LayoutConfig {
         padding: PADDING,
+        node_sep: 20.0,
+        rank_sep: 40.0,
         group_h_pad: 40.0,
         group_v_pad: 40.0,
         group_header_h: 28.0,
@@ -771,9 +805,11 @@ fn render_process_detail(svg: &mut String, x: f64, y: f64, label: &str, details:
         x + 30.0, y + PROCESS_HEADER_H / 2.0 + 5.0, escape_xml(label)
     ));
 
-    // Detail items
+    // Detail items (with wrapping)
+    let inner_max = MAX_NODE_W - NODE_H_PAD * 2.0;
+    let wrapped = expand_details(details, inner_max);
     let body_y = y + PROCESS_HEADER_H + PROCESS_BODY_PAD;
-    for (i, detail) in details.iter().enumerate() {
+    for (i, detail) in wrapped.iter().enumerate() {
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#555\">{}</text>",
             x + NODE_H_PAD, body_y + (i as f64 + 0.75) * LINE_HEIGHT, escape_xml(detail)
@@ -1027,16 +1063,12 @@ fn render_columned_body(svg: &mut String, x: f64, y: f64, w: f64, label: &str, c
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>",
         x, y + DS_HEADER_H, x + w, y + DS_HEADER_H, stroke
     ));
-    let (num_cols, col_widths, num_rows) = ds_column_layout(columns);
-    let inner_w: f64 = col_widths.iter().sum::<f64>() + (num_cols as f64 - 1.0).max(0.0) * DS_COL_GAP;
-    let grid_x = x + (w - inner_w) / 2.0;
-    for (i, col) in columns.iter().enumerate() {
-        let dc = i / num_rows;
-        let dr = i % num_rows;
-        let col_x: f64 = col_widths[..dc].iter().sum::<f64>() + dc as f64 * DS_COL_GAP;
+    let inner_max = MAX_NODE_W - DS_H_PAD * 2.0;
+    let wrapped = expand_details(columns, inner_max);
+    for (i, col) in wrapped.iter().enumerate() {
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" font-size=\"11\" fill=\"#555\">{}</text>",
-            grid_x + col_x, y + DS_HEADER_H + (dr as f64 + 0.75) * LINE_HEIGHT, escape_xml(col)
+            x + DS_H_PAD, y + DS_HEADER_H + (i as f64 + 0.75) * LINE_HEIGHT, escape_xml(col)
         ));
     }
 }
@@ -1160,15 +1192,10 @@ mod tests {
     fn parse_inline_data_simple() {
         let input = "process A\nprocess B\nA -> B : data \"中間結果\"\n";
         let d = parse(input).unwrap();
-        // Should create: A, B, 中間結果 (3 nodes), A->中間結果, 中間結果->B (2 edges)
-        assert_eq!(d.nodes.len(), 3);
-        assert_eq!(d.edges.len(), 2);
-        assert!(matches!(d.nodes[2].kind, NodeKind::Data { .. }));
-        assert_eq!(d.nodes[2].label, "中間結果");
-        assert_eq!(d.edges[0].from, "A");
-        assert_eq!(d.edges[0].to, "中間結果");
-        assert_eq!(d.edges[1].from, "中間結果");
-        assert_eq!(d.edges[1].to, "B");
+        // Simple inline data becomes edge label, not a node
+        assert_eq!(d.nodes.len(), 2);
+        assert_eq!(d.edges.len(), 1);
+        assert_eq!(d.edges[0].label, "中間結果");
     }
 
     #[test]
