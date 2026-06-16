@@ -154,7 +154,22 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 stack.push(Ctx::Table((name, logical), Vec::new()));
                 continue;
             }
-            return Err(format!("Invalid table/entity syntax: {}", line));
+            // Single-line table (no columns): "table Name" or "table Name : Logical"
+            let (name, logical) = if let Some((n, l)) = rest.split_once(" : ") {
+                (n.trim().to_string(), l.trim().trim_matches('"').to_string())
+            } else {
+                (rest.trim().to_string(), String::new())
+            };
+            let id = tables.len();
+            name_to_id.insert(name.clone(), id);
+            tables.push(Table { name, logical, columns: Vec::new() });
+            let elem = Element::TableRef(id);
+            if let Some(Ctx::Group(_, children)) = stack.last_mut() {
+                children.push(elem);
+            } else {
+                top_level.push(elem);
+            }
+            continue;
         }
 
         // Relation: Users 1--* Orders
@@ -381,8 +396,28 @@ fn table_header_text(table: &Table) -> String {
 }
 
 fn table_size(table: &Table) -> (f64, f64) {
-    let header_text = table_header_text(table);
-    let header_w = text_width(&header_text) + TBL_H_PAD * 2.0;
+    let has_logical = !table.logical.is_empty();
+    let header_h = if has_logical { TBL_HEADER_H + 14.0 } else { TBL_HEADER_H };
+    let header_w = if has_logical {
+        let lw = text_width(&table.logical) + TBL_H_PAD * 2.0;
+        let nw = text_width(&table.name) * 0.85 + TBL_H_PAD * 2.0;
+        lw.max(nw)
+    } else {
+        text_width(&table.name) + TBL_H_PAD * 2.0
+    };
+
+    // Columns-less: compact pill (2-line if logical name exists)
+    if table.columns.is_empty() {
+        if table.logical.is_empty() {
+            let w = header_w.max(TBL_MIN_W);
+            return (w, 36.0);
+        } else {
+            let logical_w = text_width(&table.logical) + TBL_H_PAD * 2.0;
+            let name_w = text_width(&table.name) * 0.85 + TBL_H_PAD * 2.0;
+            let w = logical_w.max(name_w).max(TBL_MIN_W);
+            return (w, 50.0); // 2 lines
+        }
+    }
 
     // Compute tabular column widths
     let has_badge = table.columns.iter().any(|c| c.is_pk || !c.uks.is_empty() || c.is_fk);
@@ -414,7 +449,7 @@ fn table_size(table: &Table) -> (f64, f64) {
     } else {
         TBL_BODY_TOP_PAD + table.columns.len() as f64 * LINE_HEIGHT + 8.0
     };
-    let h = TBL_HEADER_H + body_h;
+    let h = header_h + body_h;
     (w, h)
 }
 
@@ -735,6 +770,32 @@ fn render_elements_recursive(
 fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
     let (w, h) = table_size(table);
 
+    // Columns-less table: compact rounded pill
+    if table.columns.is_empty() {
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+            x, y, w, h, h / 2.0, COLOR_HEADER_BG, COLOR_HEADER_TEXT
+        ));
+        let cx = x + w / 2.0;
+        if table.logical.is_empty() {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                cx, y + h / 2.0 + 5.0, COLOR_HEADER_TEXT, escape_xml(&table.name)
+            ));
+        } else {
+            // 2-line: logical name (bold) + physical name (monospace, subdued)
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                cx, y + h / 2.0 - 2.0, COLOR_HEADER_TEXT, escape_xml(&table.logical)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"10\" font-family=\"monospace\" fill=\"#888\">{}</text>",
+                cx, y + h / 2.0 + 14.0, escape_xml(&table.name)
+            ));
+        }
+        return;
+    }
+
     // Body background (no side borders, DFD datastore style)
     svg.push_str(&format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" stroke=\"none\"/>",
@@ -752,27 +813,36 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
         x, y + h, x + w, y + h, COLOR_HEADER_TEXT
     ));
 
+    let header_h = if table.logical.is_empty() { TBL_HEADER_H } else { TBL_HEADER_H + 14.0 };
+
     // Header background
     svg.push_str(&format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
-        x, y, w, TBL_HEADER_H, COLOR_HEADER_BG
+        x, y, w, header_h, COLOR_HEADER_BG
     ));
     // Header separator line
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>",
-        x, y + TBL_HEADER_H, x + w, y + TBL_HEADER_H, COLOR_HEADER_TEXT
+        x, y + header_h, x + w, y + header_h, COLOR_HEADER_TEXT
     ));
 
     // Header text
     let cx = x + w / 2.0;
-    let header_text = table_header_text(table);
-    svg.push_str(&format!(
-        "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-        cx,
-        y + TBL_HEADER_H * 0.7,
-        COLOR_HEADER_TEXT,
-        escape_xml(&header_text)
-    ));
+    if table.logical.is_empty() {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+            cx, y + header_h * 0.7, COLOR_HEADER_TEXT, escape_xml(&table.name)
+        ));
+    } else {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+            cx, y + header_h * 0.38, COLOR_HEADER_TEXT, escape_xml(&table.logical)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"10\" font-family=\"monospace\" fill=\"#888\">{}</text>",
+            cx, y + header_h * 0.8, escape_xml(&table.name)
+        ));
+    }
 
     if table.columns.is_empty() {
         return;
@@ -810,7 +880,7 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
     let x_name = if has_any_logical { x_logical + max_logical_w + col_gap } else { x_logical };
 
     for (i, col) in table.columns.iter().enumerate() {
-        let text_y = y + TBL_HEADER_H + TBL_BODY_TOP_PAD + (i as f64 + 0.75) * LINE_HEIGHT;
+        let text_y = y + header_h + TBL_BODY_TOP_PAD + (i as f64 + 0.75) * LINE_HEIGHT;
 
         // Constraint badges (aligned in badge column)
         let mut bx = x_badge;
