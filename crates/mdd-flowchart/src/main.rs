@@ -159,23 +159,22 @@ fn compute_spacing(diagram: &Diagram) -> SpacingConfig {
     let is_linear = max_out_degree <= 1;
 
     let factor = if is_linear {
-        // Compact spacing for linear flows
-        0.6 + (complexity as f64 / 40.0).sqrt() * 0.3
+        0.5 + (complexity as f64 / 50.0).sqrt() * 0.2
     } else if complexity <= 10 {
-        1.0 + (complexity as f64 / 20.0).sqrt() * 0.4
+        0.7 + (complexity as f64 / 30.0).sqrt() * 0.3
     } else if complexity <= 30 {
-        1.0 + (complexity as f64 / 10.0).sqrt() * 0.6
+        0.8 + (complexity as f64 / 20.0).sqrt() * 0.4
     } else {
-        2.0 + (complexity - 30) as f64 * 0.06
+        1.2 + (complexity - 30) as f64 * 0.03
     }
-    .min(5.0);
+    .min(3.0);
 
     let n = diagram.nodes.len() as f64;
     SpacingConfig {
-        nodesep: 30.0 * factor,
-        ranksep: 50.0 * factor,
-        component_gap: 30.0 * factor,
-        vertex_spacing: 8.0 + n * 3.0,
+        nodesep: 24.0 * factor,
+        ranksep: 40.0 * factor,
+        component_gap: 24.0 * factor,
+        vertex_spacing: 6.0 + n * 2.0,
     }
 }
 
