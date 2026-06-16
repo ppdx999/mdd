@@ -209,7 +209,7 @@ fn render_tree_html(entries: &[TreeEntry], prefix: &str, html: &mut String, is_r
             }
             TreeEntry::File { name, path } => {
                 html.push_str(&format!(
-                    "<span class=\"branch\">{}{}</span><a href=\"{}\">{}.pdf</a>\n",
+                    "<span class=\"branch\">{}{}</span><a href=\"{}\" target=\"_blank\">{}.pdf</a>\n",
                     prefix, connector, path, name
                 ));
             }
