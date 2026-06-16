@@ -348,9 +348,7 @@ fn col_display_text(col: &Column) -> String {
     if !col.logical.is_empty() {
         text = format!("{} ({})", text, col.logical);
     }
-    if !col.col_type.is_empty() {
-        text = format!("{} : {}", text, col.col_type);
-    }
+    // col_type is parsed but not displayed
     if !badge.is_empty() {
         text = format!("{} {}", badge, text);
     }
@@ -396,7 +394,6 @@ fn table_size(table: &Table) -> (f64, f64) {
     };
 
     let has_logical = table.columns.iter().any(|c| !c.logical.is_empty());
-    let has_type = table.columns.iter().any(|c| !c.col_type.is_empty());
     let col_gap = 8.0;
 
     let max_logical = if has_logical {
@@ -404,15 +401,10 @@ fn table_size(table: &Table) -> (f64, f64) {
             .map(|c| text_width(&c.logical)).fold(0.0_f64, f64::max)
     } else { 0.0 };
     let max_name = table.columns.iter().map(|c| text_width(&c.name) * 0.85).fold(0.0_f64, f64::max);
-    let max_type = if has_type {
-        table.columns.iter().filter(|c| !c.col_type.is_empty())
-            .map(|c| text_width(&c.col_type) * 0.85).fold(0.0_f64, f64::max)
-    } else { 0.0 };
 
     let row_w = TBL_H_PAD + badge_w
         + if has_logical { max_logical + col_gap } else { 0.0 }
         + max_name
-        + if has_type { col_gap + max_type } else { 0.0 }
         + TBL_H_PAD;
 
     let w = header_w.max(row_w).max(TBL_MIN_W);
@@ -787,7 +779,6 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
     };
 
     let has_any_logical = table.columns.iter().any(|c| !c.logical.is_empty());
-    let has_any_type = table.columns.iter().any(|c| !c.col_type.is_empty());
 
     let max_logical_w = if has_any_logical {
         table.columns.iter()
@@ -805,7 +796,6 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
     let x_badge = x + TBL_H_PAD;
     let x_logical = x_badge + badge_col_w;
     let x_name = if has_any_logical { x_logical + max_logical_w + col_gap } else { x_logical };
-    let x_type = x_name + max_name_w + col_gap;
 
     for (i, col) in table.columns.iter().enumerate() {
         let text_y = y + TBL_HEADER_H + (i as f64 + 0.75) * LINE_HEIGHT;
@@ -862,14 +852,6 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
             "<text x=\"{}\" y=\"{}\" font-size=\"10\" font-family=\"monospace\" fill=\"#999\">{}</text>",
             x_name, text_y, escape_xml(&col.name)
         ));
-
-        // Data type (aligned, third column)
-        if has_any_type && !col.col_type.is_empty() {
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" font-size=\"10\" font-family=\"monospace\" fill=\"#bbb\">{}</text>",
-                x_type, text_y, escape_xml(&col.col_type)
-            ));
-        }
     }
 }
 
