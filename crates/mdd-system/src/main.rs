@@ -11,8 +11,8 @@ use mdd_layout::{LayoutConfig, LayoutEdge, LayoutElement, LayoutGraph, LayoutGro
 
 #[derive(Debug, Clone)]
 enum NodeKind {
-    /// Rectangle (default): process, service, component
-    Process,
+    /// Process: circle (simple) or rounded rect with details
+    Process { details: Vec<String> },
     /// External entity / actor (double-bordered rect)
     Entity,
     /// Database / datastore (cylinder-like)
@@ -30,7 +30,7 @@ enum NodeKind {
 impl NodeKind {
     fn keyword(&self) -> &'static str {
         match self {
-            NodeKind::Process => "process",
+            NodeKind::Process { .. } => "process",
             NodeKind::Entity => "entity",
             NodeKind::DataStore { .. } => "datastore",
             NodeKind::Actor => "actor",
@@ -98,14 +98,14 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let mut group_stack: Vec<(usize, Vec<Element>)> = Vec::new();
 
     let simple_kinds: &[(&str, fn() -> NodeKind)] = &[
-        ("process ", || NodeKind::Process),
         ("entity ", || NodeKind::Entity),
         ("actor ", || NodeKind::Actor),
         ("queue ", || NodeKind::Queue),
     ];
 
-    // Block-capable kinds: keyword → constructor taking columns
+    // Block-capable kinds: keyword → constructor taking columns/details
     let block_kinds: &[(&str, fn(Vec<String>) -> NodeKind)] = &[
+        ("process ", |details| NodeKind::Process { details }),
         ("datastore ", |cols| NodeKind::DataStore { columns: cols }),
         ("file ", |cols| NodeKind::File { columns: cols }),
         ("data ", |cols| NodeKind::Data { columns: cols }),
@@ -121,6 +121,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
         if let Some(block_type) = in_block {
             if line == "}" {
                 let make_kind: fn(Vec<String>) -> NodeKind = match block_type {
+                    "process" => |details| NodeKind::Process { details },
                     "datastore" => |cols| NodeKind::DataStore { columns: cols },
                     "file" => |cols| NodeKind::File { columns: cols },
                     "data" => |cols| NodeKind::Data { columns: cols },
@@ -442,9 +443,23 @@ fn columned_size(label: &str, columns: &[String], colors: (&str, &str)) -> (f64,
     datastore_size(label, columns)
 }
 
+const PROCESS_HEADER_H: f64 = 28.0;
+const PROCESS_BODY_PAD: f64 = 8.0;
+
+fn process_detail_size(label: &str, details: &[String]) -> (f64, f64) {
+    let header_w = text_width(label) + NODE_H_PAD * 2.0 + 24.0; // extra for icon
+    let max_detail_w = details.iter().map(|d| text_width(d)).fold(0.0_f64, f64::max);
+    let w = header_w.max(max_detail_w + NODE_H_PAD * 2.0).max(NODE_MIN_W);
+    let body_h = PROCESS_BODY_PAD + details.len() as f64 * LINE_HEIGHT + PROCESS_BODY_PAD;
+    let h = PROCESS_HEADER_H + body_h;
+    (w, h)
+}
+
 fn node_size(node: &Node) -> (f64, f64) {
     match &node.kind {
-        NodeKind::Process => process_size(&node.label),
+        NodeKind::Process { details } => {
+            if details.is_empty() { process_size(&node.label) } else { process_detail_size(&node.label, details) }
+        }
         NodeKind::Entity => rect_size(&node.label),
         NodeKind::DataStore { columns } => datastore_size(&node.label, columns),
         NodeKind::File { columns } => columned_size(&node.label, columns, COLOR_FILE),
@@ -455,7 +470,7 @@ fn node_size(node: &Node) -> (f64, f64) {
 }
 
 fn is_circle(kind: &NodeKind) -> bool {
-    matches!(kind, NodeKind::Process)
+    matches!(kind, NodeKind::Process { details } if details.is_empty())
 }
 
 // ---------------------------------------------------------------------------
@@ -658,7 +673,13 @@ fn render_elements(svg: &mut String, elements: &[Element], nodes: &[Node], group
 
 fn render_node(svg: &mut String, node: &Node, x: f64, y: f64) {
     match &node.kind {
-        NodeKind::Process => render_process(svg, x, y, &node.label),
+        NodeKind::Process { details } => {
+            if details.is_empty() {
+                render_process(svg, x, y, &node.label);
+            } else {
+                render_process_detail(svg, x, y, &node.label, details);
+            }
+        }
         NodeKind::Entity => render_entity(svg, x, y, &node.label),
         NodeKind::DataStore { columns } => render_datastore(svg, x, y, &node.label, columns),
         NodeKind::Actor => render_actor(svg, x, y, &node.label),
@@ -701,6 +722,61 @@ fn render_process(svg: &mut String, x: f64, y: f64, label: &str) {
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-weight=\"bold\">{}</text>",
             cx, start_y + i as f64 * LINE_HEIGHT, escape_xml(line)
+        ));
+    }
+}
+
+fn render_process_detail(svg: &mut String, x: f64, y: f64, label: &str, details: &[String]) {
+    let (w, h) = process_detail_size(label, details);
+
+    // Card outline
+    svg.push_str(&format!(
+        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+        x, y, w, h, COLOR_PROCESS.0, COLOR_PROCESS.1
+    ));
+
+    // Header background
+    svg.push_str(&format!(
+        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"8\" fill=\"{}\" stroke=\"none\"/>",
+        x, y, w, PROCESS_HEADER_H, COLOR_PROCESS.0
+    ));
+    // Header separator
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\"/>",
+        x, y + PROCESS_HEADER_H, x + w, y + PROCESS_HEADER_H, COLOR_PROCESS.1
+    ));
+
+    // Small circular arrow icon in header
+    let icon_cx = x + 16.0;
+    let icon_cy = y + PROCESS_HEADER_H / 2.0;
+    let icon_r = 6.0;
+    svg.push_str(&format!(
+        "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.2\"/>",
+        icon_cx, icon_cy, icon_r, COLOR_PROCESS.1
+    ));
+    let ar = icon_r + 3.0;
+    let a1 = -std::f64::consts::FRAC_PI_4;
+    let a2 = std::f64::consts::PI;
+    svg.push_str(&format!(
+        "<path d=\"M{},{} A{},{} 0 1 1 {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\"/>",
+        icon_cx + ar * a1.cos(), icon_cy + ar * a1.sin(),
+        ar, ar,
+        icon_cx + ar * a2.cos(), icon_cy + ar * a2.sin(),
+        COLOR_PROCESS.1
+    ));
+
+    // Header text
+    svg.push_str(&format!(
+        "<text x=\"{}\" y=\"{}\" font-weight=\"bold\">{}</text>",
+        x + 30.0, y + PROCESS_HEADER_H / 2.0 + 5.0, escape_xml(label)
+    ));
+
+    // Detail items
+    let body_y = y + PROCESS_HEADER_H + PROCESS_BODY_PAD;
+    for (i, detail) in details.iter().enumerate() {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" font-size=\"12\" fill=\"#555\">{}</text>",
+            x + NODE_H_PAD, body_y + (i as f64 + 0.75) * LINE_HEIGHT, escape_xml(detail)
         ));
     }
 }
