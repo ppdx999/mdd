@@ -23,8 +23,8 @@ enum NodeKind {
     File { columns: Vec<String> },
     /// Message queue (parallelogram)
     Queue,
-    /// Temporary data / cache (dashed cylinder)
-    Cache { columns: Vec<String> },
+    /// Non-persistent data structure (dashed cylinder)
+    Data { columns: Vec<String> },
 }
 
 impl NodeKind {
@@ -36,7 +36,7 @@ impl NodeKind {
             NodeKind::Actor => "actor",
             NodeKind::File { .. } => "file",
             NodeKind::Queue => "queue",
-            NodeKind::Cache { .. } => "cache",
+            NodeKind::Data { .. } => "data",
         }
     }
 }
@@ -86,7 +86,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let mut edges: Vec<Edge> = Vec::new();
 
     // Block state for datastore/file/cache { ... } multi-line definitions
-    let mut in_block: Option<&str> = None; // "datastore", "file", or "cache"
+    let mut in_block: Option<&str> = None; // "datastore", "file", or "data"
     let mut block_name = String::new();
     let mut block_columns: Vec<String> = Vec::new();
 
@@ -103,7 +103,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let block_kinds: &[(&str, fn(Vec<String>) -> NodeKind)] = &[
         ("datastore ", |cols| NodeKind::DataStore { columns: cols }),
         ("file ", |cols| NodeKind::File { columns: cols }),
-        ("cache ", |cols| NodeKind::Cache { columns: cols }),
+        ("data ", |cols| NodeKind::Data { columns: cols }),
     ];
 
     for line in input.lines() {
@@ -118,7 +118,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 let make_kind: fn(Vec<String>) -> NodeKind = match block_type {
                     "datastore" => |cols| NodeKind::DataStore { columns: cols },
                     "file" => |cols| NodeKind::File { columns: cols },
-                    "cache" => |cols| NodeKind::Cache { columns: cols },
+                    "data" => |cols| NodeKind::Data { columns: cols },
                     _ => unreachable!(),
                 };
                 let id = nodes.len();
@@ -287,7 +287,7 @@ const COLOR_DATASTORE: (&str, &str) = ("#f0fff0", "#339966");
 const COLOR_ACTOR: (&str, &str) = ("#fff", "#333");
 const COLOR_FILE: (&str, &str) = ("#fffde7", "#f9a825");
 const COLOR_QUEUE: (&str, &str) = ("#f3e5f5", "#7b1fa2");
-const COLOR_CACHE: (&str, &str) = ("#e0f2f1", "#00897b");
+const COLOR_DATA: (&str, &str) = ("#e0f2f1", "#00897b");
 const COLOR_GROUP: (&str, &str) = ("#fff8f8", "#cc3333");
 
 // ---------------------------------------------------------------------------
@@ -390,7 +390,7 @@ fn node_size(node: &Node) -> (f64, f64) {
         NodeKind::Entity => rect_size(&node.label),
         NodeKind::DataStore { columns } => datastore_size(&node.label, columns),
         NodeKind::File { columns } => columned_size(&node.label, columns, COLOR_FILE),
-        NodeKind::Cache { columns } => columned_size(&node.label, columns, COLOR_CACHE),
+        NodeKind::Data { columns } => columned_size(&node.label, columns, COLOR_DATA),
         NodeKind::Actor => (ACTOR_W, ACTOR_H),
         NodeKind::Queue => queue_size(&node.label),
     }
@@ -606,7 +606,7 @@ fn render_node(svg: &mut String, node: &Node, x: f64, y: f64) {
         NodeKind::Actor => render_actor(svg, x, y, &node.label),
         NodeKind::File { columns } => render_file(svg, x, y, &node.label, columns),
         NodeKind::Queue => render_queue(svg, x, y, &node.label),
-        NodeKind::Cache { columns } => render_cache(svg, x, y, &node.label, columns),
+        NodeKind::Data { columns } => render_data(svg, x, y, &node.label, columns),
     }
 }
 
@@ -843,27 +843,27 @@ fn render_queue(svg: &mut String, x: f64, y: f64, label: &str) {
     }
 }
 
-fn render_cache(svg: &mut String, x: f64, y: f64, label: &str, columns: &[String]) {
-    let (w, h) = columned_size(label, columns, COLOR_CACHE);
+fn render_data(svg: &mut String, x: f64, y: f64, label: &str, columns: &[String]) {
+    let (w, h) = columned_size(label, columns, COLOR_DATA);
     svg.push_str(&format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" stroke=\"none\"/>",
-        x, y, w, h, COLOR_CACHE.0
+        x, y, w, h, COLOR_DATA.0
     ));
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-        x, y, x + w, y, COLOR_CACHE.1
+        x, y, x + w, y, COLOR_DATA.1
     ));
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
-        x, y + h, x + w, y + h, COLOR_CACHE.1
+        x, y + h, x + w, y + h, COLOR_DATA.1
     ));
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"4,3\"/>",
-        x, y, x, y + h, COLOR_CACHE.1
+        x, y, x, y + h, COLOR_DATA.1
     ));
     svg.push_str(&format!(
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"4,3\"/>",
-        x + w, y, x + w, y + h, COLOR_CACHE.1
+        x + w, y, x + w, y + h, COLOR_DATA.1
     ));
 
     if columns.is_empty() {
@@ -878,7 +878,7 @@ fn render_cache(svg: &mut String, x: f64, y: f64, label: &str, columns: &[String
             ));
         }
     } else {
-        render_columned_body(svg, x, y, w, label, columns, COLOR_CACHE.1);
+        render_columned_body(svg, x, y, w, label, columns, COLOR_DATA.1);
     }
 }
 
@@ -923,7 +923,7 @@ Node types:
   actor    Name          Stick figure (person, role)
   file     Name          Dog-ear rectangle (document, file)
   queue    Name          Parallelogram (message queue, event bus)
-  cache    Name          Dashed cylinder (temporary data, cache)
+  data     Name          Dashed cylinder (non-persistent data structure)
 
 Edges:
   From -> To : \"label\"
