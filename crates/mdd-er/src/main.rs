@@ -312,7 +312,8 @@ const LINE_HEIGHT: f64 = 18.0;
 const PADDING: f64 = 40.0;
 
 const TBL_H_PAD: f64 = 16.0;
-const TBL_HEADER_H: f64 = 28.0;
+const TBL_HEADER_H: f64 = 32.0;
+const TBL_BODY_TOP_PAD: f64 = 10.0; // gap between header and first column
 const TBL_MIN_W: f64 = 140.0;
 const TBL_COL_GAP: f64 = 12.0;
 const TBL_MAX_ROWS: usize = 10;
@@ -411,7 +412,7 @@ fn table_size(table: &Table) -> (f64, f64) {
     let body_h = if table.columns.is_empty() {
         8.0
     } else {
-        table.columns.len() as f64 * LINE_HEIGHT + 8.0
+        TBL_BODY_TOP_PAD + table.columns.len() as f64 * LINE_HEIGHT + 8.0
     };
     let h = TBL_HEADER_H + body_h;
     (w, h)
@@ -734,21 +735,32 @@ fn render_elements_recursive(
 fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
     let (w, h) = table_size(table);
 
-    // Body background + border
+    // Body background (no side borders, DFD datastore style)
     svg.push_str(&format!(
-        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-        x, y, w, h, COLOR_BODY_BG, COLOR_BODY_STROKE
+        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" stroke=\"none\"/>",
+        x, y, w, h, COLOR_BODY_BG
+    ));
+
+    // Top line
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+        x, y, x + w, y, COLOR_HEADER_TEXT
+    ));
+    // Bottom line
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+        x, y + h, x + w, y + h, COLOR_HEADER_TEXT
     ));
 
     // Header background
     svg.push_str(&format!(
-        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"4\" fill=\"{}\"/>",
+        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
         x, y, w, TBL_HEADER_H, COLOR_HEADER_BG
     ));
-    // Cover bottom corners of header (they overlap with body)
+    // Header separator line
     svg.push_str(&format!(
-        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"4\" fill=\"{}\"/>",
-        x, y + TBL_HEADER_H - 4.0, w, COLOR_HEADER_BG
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>",
+        x, y + TBL_HEADER_H, x + w, y + TBL_HEADER_H, COLOR_HEADER_TEXT
     ));
 
     // Header text
@@ -798,7 +810,7 @@ fn render_table(svg: &mut String, x: f64, y: f64, table: &Table) {
     let x_name = if has_any_logical { x_logical + max_logical_w + col_gap } else { x_logical };
 
     for (i, col) in table.columns.iter().enumerate() {
-        let text_y = y + TBL_HEADER_H + (i as f64 + 0.75) * LINE_HEIGHT;
+        let text_y = y + TBL_HEADER_H + TBL_BODY_TOP_PAD + (i as f64 + 0.75) * LINE_HEIGHT;
 
         // Constraint badges (aligned in badge column)
         let mut bx = x_badge;
