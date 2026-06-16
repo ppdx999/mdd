@@ -1,0 +1,6 @@
+actor User
+process WebApp
+datastore DB
+
+User -> WebApp : "HTTP"
+WebApp -> DB : "query"

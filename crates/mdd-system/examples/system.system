@@ -1,0 +1,40 @@
+actor ユーザー
+actor 管理者
+
+group "フロントエンド" {
+  process WebApp
+  process 管理画面
+}
+
+group "バックエンド" {
+  process APIサーバー
+  queue EventBus
+  file ログファイル
+}
+
+group "データ層" {
+  datastore UserDB {
+    id
+    name
+    email
+  }
+  datastore OrderDB {
+    order_id
+    user_id
+    amount
+  }
+}
+
+entity 決済ゲートウェイ
+entity メール配信
+
+ユーザー -> WebApp : "操作"
+管理者 -> 管理画面 : "操作"
+WebApp -> APIサーバー : "REST API"
+管理画面 -> APIサーバー : "REST API"
+APIサーバー -> UserDB : "CRUD"
+APIサーバー -> OrderDB : "CRUD"
+APIサーバー -> EventBus : "イベント発行"
+APIサーバー -> 決済ゲートウェイ : "決済リクエスト"
+EventBus -> メール配信 : "通知"
+APIサーバー -> ログファイル : "書き込み"

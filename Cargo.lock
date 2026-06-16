@@ -583,6 +583,13 @@ name = "mdd-swot"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-system"
+version = "0.1.0"
+dependencies = [
+ "mdd-layout",
+]
+
+[[package]]
 name = "mdd-table"
 version = "0.1.0"
 
