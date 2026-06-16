@@ -946,29 +946,42 @@ mdd-er - Render an entity-relationship diagram as SVG
 
 Usage: mdd-er < input.er
 
-Define tables/entities with columns (prefix \"* \" for primary keys, or suffix PK/FK),
-then relate them with cardinality notation: 1--1, 1--*, *--1, *--*.
-Use \"group\" to group related entities together.
+Table definition:
+  table Name {                       Simple (physical name only)
+    * id                             PK (legacy syntax)
+    name
+  }
+  table Name : \"Logical\" {           With logical name (2-line header)
+    id : ID : BIGINT PK              Extended: physical : logical : type constraints
+    email : Email : VARCHAR(255) UK1  UK1/UK2 for composite unique keys
+    user_id : UserID : BIGINT FK     FK column
+    name : Name                      physical : logical (no type)
+    status                           Simple column name
+  }
+  table Name                         Column-less table (pill shape)
+  table Name : \"Logical\"             Column-less with logical name
+
+Relations:
+  Users 1--* Orders                  One-to-many
+  Users 1--1 Profile                 One-to-one
+  Tags *--* Posts                    Many-to-many
+
+Groups:
+  group \"Name\" { ... }
 
 Example:
-  group \"Users\" {
-    entity User {
-      id PK
-      name
-      email
-    }
-    entity Profile {
-      user_id FK
-      bio
-    }
+  table users : \"ユーザー\" {
+    id : ID : BIGINT PK
+    email : メールアドレス : VARCHAR(255) UK1
+    tenant_id : テナントID : BIGINT FK UK1
+    name : 氏名 : VARCHAR(100)
   }
-  entity Posts {
-    * id
-    user_id
-    title
-  }
-  User 1--* Posts
-  User 1--1 Profile
+
+  table orders : \"注文\"
+  table products : \"商品\"
+
+  users 1--* orders
+  products 1--* orders
 ";
 
 fn main() {
