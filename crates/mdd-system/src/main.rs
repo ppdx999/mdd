@@ -85,10 +85,15 @@ fn parse(input: &str) -> Result<Diagram, String> {
     let mut name_to_id: HashMap<String, usize> = HashMap::new();
     let mut edges: Vec<Edge> = Vec::new();
 
-    // Block state for datastore/file/cache { ... } multi-line definitions
+    // Block state for datastore/file/data { ... } multi-line definitions
     let mut in_block: Option<&str> = None; // "datastore", "file", or "data"
     let mut block_name = String::new();
     let mut block_columns: Vec<String> = Vec::new();
+
+    // Edge-data block state: A -> B : data Name { ... }
+    let mut in_edge_data: Option<(String, String)> = None; // (from, to)
+    let mut edge_data_name = String::new();
+    let mut edge_data_columns: Vec<String> = Vec::new();
 
     let mut group_stack: Vec<(usize, Vec<Element>)> = Vec::new();
 
@@ -136,6 +141,32 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 continue;
             }
             block_columns.push(line.to_string());
+            continue;
+        }
+
+        // Inside edge-data block: A -> B : data Name { columns... }
+        if let Some((ref from, ref to)) = in_edge_data {
+            if line == "}" {
+                let data_label = edge_data_name.clone();
+                let from = from.clone();
+                let to = to.clone();
+
+                // Create data node
+                let id = nodes.len();
+                name_to_id.insert(data_label.clone(), id);
+                nodes.push(Node { label: data_label.clone(), kind: NodeKind::Data { columns: edge_data_columns.clone() } });
+                top_level.push(Element::NodeRef(id));
+
+                // Create two edges: from -> data, data -> to
+                edges.push(Edge { from, to: data_label.clone(), label: String::new() });
+                edges.push(Edge { from: data_label, to, label: String::new() });
+
+                in_edge_data = None;
+                edge_data_name.clear();
+                edge_data_columns.clear();
+                continue;
+            }
+            edge_data_columns.push(line.to_string());
             continue;
         }
 
@@ -226,7 +257,7 @@ fn parse(input: &str) -> Result<Diagram, String> {
             let from = parts[0].trim().to_string();
             let rest = parts[1];
             let (to, label) = if let Some((to_part, label_part)) = rest.split_once(" : ") {
-                (to_part.trim().to_string(), label_part.trim().trim_matches('"').to_string())
+                (to_part.trim().to_string(), label_part.trim().to_string())
             } else {
                 (rest.trim().to_string(), String::new())
             };
@@ -238,6 +269,30 @@ fn parse(input: &str) -> Result<Diagram, String> {
                 return Err(format!("Unknown node: {}", to));
             }
 
+            // Check for inline data: A -> B : data Name { ... } or A -> B : data "Name"
+            if label.starts_with("data ") {
+                let data_rest = label.strip_prefix("data ").unwrap().trim();
+
+                // data Name { (multi-line block)
+                if let Some(name) = data_rest.strip_suffix(" {") {
+                    edge_data_name = name.trim().trim_matches('"').to_string();
+                    edge_data_columns.clear();
+                    in_edge_data = Some((from, to));
+                    continue;
+                }
+
+                // data "Name" (single-line, no columns)
+                let data_label = data_rest.trim_matches('"').to_string();
+                let id = nodes.len();
+                name_to_id.insert(data_label.clone(), id);
+                nodes.push(Node { label: data_label.clone(), kind: NodeKind::Data { columns: Vec::new() } });
+                top_level.push(Element::NodeRef(id));
+                edges.push(Edge { from: from.clone(), to: data_label.clone(), label: String::new() });
+                edges.push(Edge { from: data_label, to, label: String::new() });
+                continue;
+            }
+
+            let label = label.trim_matches('"').to_string();
             edges.push(Edge { from, to, label });
             continue;
         }
@@ -247,6 +302,9 @@ fn parse(input: &str) -> Result<Diagram, String> {
 
     if in_block.is_some() {
         return Err(format!("Unclosed block: {}", block_name));
+    }
+    if in_edge_data.is_some() {
+        return Err(format!("Unclosed edge data block: {}", edge_data_name));
     }
     if !group_stack.is_empty() {
         return Err("Unclosed group block".to_string());
@@ -1013,5 +1071,32 @@ mod tests {
         let svg = render_svg(&d);
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn parse_inline_data_simple() {
+        let input = "process A\nprocess B\nA -> B : data \"中間結果\"\n";
+        let d = parse(input).unwrap();
+        // Should create: A, B, 中間結果 (3 nodes), A->中間結果, 中間結果->B (2 edges)
+        assert_eq!(d.nodes.len(), 3);
+        assert_eq!(d.edges.len(), 2);
+        assert!(matches!(d.nodes[2].kind, NodeKind::Data { .. }));
+        assert_eq!(d.nodes[2].label, "中間結果");
+        assert_eq!(d.edges[0].from, "A");
+        assert_eq!(d.edges[0].to, "中間結果");
+        assert_eq!(d.edges[1].from, "中間結果");
+        assert_eq!(d.edges[1].to, "B");
+    }
+
+    #[test]
+    fn parse_inline_data_with_columns() {
+        let input = "process A\nprocess B\nA -> B : data Payload {\n  field1\n  field2\n}\n";
+        let d = parse(input).unwrap();
+        assert_eq!(d.nodes.len(), 3);
+        assert_eq!(d.edges.len(), 2);
+        match &d.nodes[2].kind {
+            NodeKind::Data { columns } => assert_eq!(columns.len(), 2),
+            _ => panic!("Expected Data"),
+        }
     }
 }
