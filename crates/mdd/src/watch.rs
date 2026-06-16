@@ -4,6 +4,8 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+use pulldown_cmark::{Options, Parser, html};
+
 /// Watch directory and output HTML files (markdown → processed HTML).
 pub fn watch(dir: &Path) {
     if !dir.is_dir() {
@@ -315,6 +317,7 @@ fn build_html(md_path: &str) {
         }
     };
 
+    // Step 1: Process plugins (replace mdd code blocks with SVGs)
     let processed = match crate::process::process(&input, path) {
         Ok(s) => s,
         Err(e) => {
@@ -323,7 +326,59 @@ fn build_html(md_path: &str) {
         }
     };
 
-    match fs::write(&html_path, &processed) {
+    // Step 2: Extract SVGs and replace with placeholders before Markdown→HTML conversion
+    let mut svgs: Vec<String> = Vec::new();
+    let mut md_with_placeholders = String::new();
+    let mut remaining = processed.as_str();
+    while let Some(start) = remaining.find("<svg") {
+        md_with_placeholders.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("</svg>") {
+            let svg = &remaining[start..start + end + 6];
+            let placeholder = format!("<!--SVG_PLACEHOLDER_{}-->", svgs.len());
+            svgs.push(svg.to_string());
+            md_with_placeholders.push_str(&placeholder);
+            remaining = &remaining[start + end + 6..];
+        } else {
+            md_with_placeholders.push_str(&remaining[start..]);
+            remaining = "";
+        }
+    }
+    md_with_placeholders.push_str(remaining);
+
+    // Step 3: Convert Markdown to HTML
+    let parser = Parser::new_ext(&md_with_placeholders, Options::all());
+    let mut html_body = String::new();
+    html::push_html(&mut html_body, parser);
+
+    // Step 4: Restore SVGs
+    for (i, svg) in svgs.iter().enumerate() {
+        let placeholder = format!("<!--SVG_PLACEHOLDER_{}-->", i);
+        html_body = html_body.replace(&placeholder, svg);
+    }
+
+    // Step 5: Wrap in full HTML document
+    let title = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("mdd");
+    let full_html = format!(
+        "<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n\
+         <style>\n\
+         body {{ font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }}\n\
+         h1 {{ border-bottom: 2px solid #e8eaf6; padding-bottom: 8px; }}\n\
+         h2 {{ border-bottom: 1px solid #eee; padding-bottom: 4px; }}\n\
+         code {{ background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }}\n\
+         pre {{ background: #f5f5f5; padding: 16px; border-radius: 6px; overflow-x: auto; }}\n\
+         pre code {{ background: none; padding: 0; }}\n\
+         table {{ border-collapse: collapse; margin: 16px 0; }}\n\
+         th, td {{ border: 1px solid #ddd; padding: 8px 12px; }}\n\
+         th {{ background: #f5f5f5; }}\n\
+         svg {{ max-width: 100%; height: auto; display: block; margin: 16px 0; }}\n\
+         </style>\n\
+         </head>\n<body>\n{}\n</body>\n</html>",
+        title, html_body
+    );
+
+    match fs::write(&html_path, &full_html) {
         Ok(_) => eprintln!("mdd: Built {}", html_path.display()),
         Err(e) => eprintln!("mdd: Failed to write {}: {}", html_path.display(), e),
     }
