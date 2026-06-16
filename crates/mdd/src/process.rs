@@ -14,6 +14,7 @@ pub fn process(input: &str, source_path: &Path) -> Result<String, String> {
     let mut list_ordered = false;
     let mut list_index: u64 = 0;
     let mut in_item = false;
+    let mut link_stack: Vec<(String, String)> = Vec::new();
 
     for event in parser {
         match event {
@@ -117,7 +118,33 @@ pub fn process(input: &str, source_path: &Path) -> Result<String, String> {
             }
             Event::Start(Tag::Link { dest_url, title, .. }) => {
                 output.push('[');
-                let _ = (dest_url, title);
+                link_stack.push((dest_url.to_string(), title.to_string()));
+            }
+            Event::End(TagEnd::Link) => {
+                if let Some((url, title)) = link_stack.pop() {
+                    if title.is_empty() {
+                        output.push_str(&format!("]({})", url));
+                    } else {
+                        output.push_str(&format!("]({} \"{}\")", url, title));
+                    }
+                } else {
+                    output.push(']');
+                }
+            }
+            Event::Start(Tag::Image { dest_url, title, .. }) => {
+                output.push_str("![");
+                link_stack.push((dest_url.to_string(), title.to_string()));
+            }
+            Event::End(TagEnd::Image) => {
+                if let Some((url, title)) = link_stack.pop() {
+                    if title.is_empty() {
+                        output.push_str(&format!("]({})", url));
+                    } else {
+                        output.push_str(&format!("]({} \"{}\")", url, title));
+                    }
+                } else {
+                    output.push(']');
+                }
             }
             Event::Rule => {
                 output.push_str("---\n");
