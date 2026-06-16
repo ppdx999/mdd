@@ -162,7 +162,11 @@ pub fn force_layout(graph: &LayoutGraph, config: &ForceConfig) -> LayoutResult {
     // Step 1: Sugiyama rank assignment (determines Y layers)
     // Step 2: Force-directed X positioning (pulls connected nodes together)
     let sn_count = super_nodes.len();
-    let gap = 40.0;
+    let gap = if config.ideal_distance > 0.0 {
+        config.ideal_distance.max(40.0)
+    } else {
+        40.0
+    };
 
     // Step 1: Rank assignment via longest path
     let mut sn_successors: Vec<Vec<usize>> = vec![vec![]; sn_count];
@@ -486,7 +490,7 @@ fn run_force(
 
     let repulsion = config.repulsion_strength;
     // Cap temperature to prevent huge initial displacements
-    let mut temperature = (radius * 0.5).min(k * 2.0);
+    let mut temperature = (radius * 0.8).min(k * 3.0);
     let cooling = temperature / config.iterations as f64;
 
     for _ in 0..config.iterations {
@@ -530,8 +534,8 @@ fn run_force(
         }
 
         // Gravity: pull all nodes toward the origin (initial center).
-        // Prevents isolated nodes from flying away due to repulsion only.
-        let gravity = 0.3;
+        // Weaker when ideal distance is large, so nodes can spread.
+        let gravity = (30.0 / k).min(0.3);
         for i in 0..n {
             dx[i] -= x[i] * gravity;
             dy[i] -= y[i] * gravity;
@@ -547,7 +551,7 @@ fn run_force(
 
         // Clamp: prevent nodes from exceeding a reasonable radius from origin.
         // Max radius scales with sqrt(n) and ideal distance k.
-        let max_radius = k * (n as f64).sqrt() * 0.7;
+        let max_radius = k * (n as f64).sqrt() * 1.2;
         for i in 0..n {
             let dist = (x[i] * x[i] + y[i] * y[i]).sqrt();
             if dist > max_radius {

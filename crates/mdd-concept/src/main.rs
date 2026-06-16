@@ -187,9 +187,28 @@ fn render_svg(concept: &Concept) -> String {
         graph.top_level.push(mdd_layout::LayoutElement::NodeRef(i));
     }
 
-    // Run force-directed layout
+    // Adaptive spacing: scales with graph complexity and density
+    let n_nodes = concept.nodes.len() as f64;
+    let n_edges = concept.links.len() as f64;
+    let complexity = n_nodes + n_edges;
+    let max_degree = {
+        let mut degree = std::collections::HashMap::<&str, usize>::new();
+        for link in &concept.links {
+            *degree.entry(&link.from).or_insert(0) += 1;
+            *degree.entry(&link.to).or_insert(0) += 1;
+        }
+        *degree.values().max().unwrap_or(&1) as f64
+    };
+    let scale = 1.0 + (complexity / 10.0).sqrt() * 0.5;
+    let density_scale = 1.0 + (max_degree / 4.0).sqrt() * 0.3;
+    let ideal_dist = 100.0 * scale * density_scale;
+    let repulsion = 1.5 + (complexity / 15.0).sqrt() * 0.5;
+
     let config = ForceConfig {
         padding: PADDING,
+        ideal_distance: ideal_dist,
+        repulsion_strength: repulsion,
+        iterations: 600,
         ..ForceConfig::default()
     };
     let result = mdd_layout::force_layout(&graph, &config);
