@@ -1,0 +1,52 @@
+table receive_order_goods {
+  receive_order_goods_id : BIGINT PK
+  fk_receive_order_id : BIGINT FK
+  fk_goods_id : BIGINT FK
+  goods_amount : INT
+  stock_status_code : TINYINT
+  receive_order_status_code : TINYINT
+  cancel_code : TINYINT
+  ks_order_goods_status_code : TINYINT
+  delivery_reference_number : VARCHAR
+}
+
+create front/api/order/complete : "フロント注文完了" {
+  fk_receive_order_id
+  fk_goods_id
+  goods_amount
+  stock_status_code
+}
+
+create manage/api/receive_order/regist : "管理画面受注登録" {
+  fk_receive_order_id
+  fk_goods_id
+  goods_amount
+}
+
+read front/api/mypage/history_list : "購入履歴一覧" {
+  goods_amount
+  receive_order_status_code
+}
+
+read manage/screens/receive_order/list : "受注一覧" {
+  goods_amount
+  stock_status_code
+  receive_order_status_code
+}
+
+update manage/api/send_order/close : "出荷締め" {
+  receive_order_status_code
+  fk_send_order_id
+}
+
+update ks_ec_lsc_ext/batch/import_data_shipping : "UMI出荷データ取込" {
+  ks_order_goods_status_code
+  delivery_reference_number
+}
+
+update manage/batch/auto_cancel : "自動キャンセル" {
+  cancel_code
+  cancel_date
+}
+
+delete manage/api/receive_order/delete : "受注一括削除"

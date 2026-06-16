@@ -374,6 +374,10 @@ name = "mdd-cycle"
 version = "0.1.0"
 
 [[package]]
+name = "mdd-data-lifecycle"
+version = "0.1.0"
+
+[[package]]
 name = "mdd-dfd"
 version = "0.1.0"
 dependencies = [

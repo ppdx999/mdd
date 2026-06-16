@@ -1,0 +1,17 @@
+table users {
+  id : BIGINT PK
+  name : VARCHAR
+  email : VARCHAR
+}
+
+create api/users : "ユーザー作成" {
+  name
+  email
+}
+
+read api/users/:id : "ユーザー取得" {
+  name
+  email
+}
+
+delete api/users/:id : "ユーザー削除"
