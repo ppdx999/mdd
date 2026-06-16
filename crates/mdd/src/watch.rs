@@ -305,31 +305,12 @@ fn collect_files_by_ext(base: &Path, dir: &Path, ext: &str, files: &mut Vec<Stri
     }
 }
 
-fn build_html(md_path: &str) {
-    let path = Path::new(md_path);
-    let html_path = path.with_extension("html");
-
-    let input = match fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("mdd: Failed to read {}: {}", md_path, e);
-            return;
-        }
-    };
-
-    // Step 1: Process plugins (replace mdd code blocks with SVGs)
-    let processed = match crate::process::process(&input, path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("mdd: {}: {}", md_path, e);
-            return;
-        }
-    };
-
-    // Step 2: Extract SVGs and replace with placeholders before Markdown→HTML conversion
+/// Convert processed markdown (with SVGs) to a full HTML document.
+pub fn markdown_to_html(processed: &str, title: &str) -> String {
+    // Extract SVGs and replace with placeholders before Markdown→HTML conversion
     let mut svgs: Vec<String> = Vec::new();
     let mut md_with_placeholders = String::new();
-    let mut remaining = processed.as_str();
+    let mut remaining = processed;
     while let Some(start) = remaining.find("<svg") {
         md_with_placeholders.push_str(&remaining[..start]);
         if let Some(end) = remaining[start..].find("</svg>") {
@@ -345,22 +326,19 @@ fn build_html(md_path: &str) {
     }
     md_with_placeholders.push_str(remaining);
 
-    // Step 3: Convert Markdown to HTML
+    // Convert Markdown to HTML
     let parser = Parser::new_ext(&md_with_placeholders, Options::all());
     let mut html_body = String::new();
     html::push_html(&mut html_body, parser);
 
-    // Step 4: Restore SVGs
+    // Restore SVGs
     for (i, svg) in svgs.iter().enumerate() {
         let placeholder = format!("<!--SVG_PLACEHOLDER_{}-->", i);
         html_body = html_body.replace(&placeholder, svg);
     }
 
-    // Step 5: Wrap in full HTML document
-    let title = path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mdd");
-    let full_html = format!(
+    // Wrap in full HTML document
+    format!(
         "<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n\
          <style>\n\
          body {{ font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }}\n\
@@ -376,7 +354,33 @@ fn build_html(md_path: &str) {
          </style>\n\
          </head>\n<body>\n{}\n</body>\n</html>",
         title, html_body
-    );
+    )
+}
+
+fn build_html(md_path: &str) {
+    let path = Path::new(md_path);
+    let html_path = path.with_extension("html");
+
+    let input = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdd: Failed to read {}: {}", md_path, e);
+            return;
+        }
+    };
+
+    let processed = match crate::process::process(&input, path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdd: {}: {}", md_path, e);
+            return;
+        }
+    };
+
+    let title = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("mdd");
+    let full_html = markdown_to_html(&processed, title);
 
     match fs::write(&html_path, &full_html) {
         Ok(_) => eprintln!("mdd: Built {}", html_path.display()),

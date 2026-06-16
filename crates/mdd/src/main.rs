@@ -28,6 +28,7 @@ fn find_plugins() -> Vec<String> {
 
 fn print_help() {
     eprintln!("Usage: mdd <file.md>");
+    eprintln!("       mdd html <file.md>");
     eprintln!("       mdd preview <file.md>");
     eprintln!("       mdd slide <file.md> > output.pdf");
     eprintln!("       mdd slide-preview <file.md>");
@@ -71,6 +72,24 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+        3 if args[1] == "html" => {
+            let path = Path::new(&args[2]);
+            let input = fs::read_to_string(path).unwrap_or_else(|e| {
+                eprintln!("mdd: Failed to read {}: {}", path.display(), e);
+                std::process::exit(1);
+            });
+            let processed = match process::process(&input, path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("mdd: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            let title = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("mdd");
+            print!("{}", watch::markdown_to_html(&processed, title));
         }
         3 if args[1] == "preview" => {
             let path = Path::new(&args[2]);
