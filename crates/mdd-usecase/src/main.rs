@@ -335,26 +335,44 @@ fn compute_layout(diagram: &Diagram) -> Layout {
 
     let right_x = center_x + max_uc_w + COL_GAP;
 
-    // Position left actors: more edges → further from usecases
+    // Position actors: more edges → further from usecases, enforce minimum vertical gap
     let max_edge_count = actor_edge_count.values().copied().max().unwrap_or(1) as f64;
-    let edge_offset_scale = 30.0; // extra px per edge ratio
+    let edge_offset_scale = 30.0;
+    let min_actor_gap = ACTOR_HEIGHT + 20.0; // minimum vertical spacing between actors
 
-    for &(aid, bary) in &left_actors {
-        let y = bary - ACTOR_HEIGHT / 2.0;
-        let count = *actor_edge_count.get(&aid).unwrap_or(&0) as f64;
-        let extra_offset = (count / max_edge_count) * edge_offset_scale * count.sqrt();
-        let x = PADDING + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0 - extra_offset;
-        positions.insert(diagram.nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, ACTOR_HEIGHT));
+    fn place_actors(
+        actors: &[(usize, f64)],
+        base_x: f64,
+        x_dir: f64, // -1.0 for left (offset left), 1.0 for right
+        actor_edge_count: &HashMap<usize, usize>,
+        max_edge_count: f64,
+        edge_offset_scale: f64,
+        min_gap: f64,
+        actor_height: f64,
+        positions: &mut HashMap<String, (f64, f64, f64, f64)>,
+        nodes: &[crate::Node],
+    ) {
+        let mut last_bottom: f64 = f64::MIN;
+        for &(aid, bary) in actors {
+            let mut y = bary - actor_height / 2.0;
+            // Ensure no overlap with previous actor
+            if y < last_bottom + min_gap - actor_height {
+                y = last_bottom + min_gap - actor_height;
+            }
+            last_bottom = y + actor_height;
+
+            let count = *actor_edge_count.get(&aid).unwrap_or(&0) as f64;
+            let extra_offset = (count / max_edge_count) * edge_offset_scale * count.sqrt();
+            let x = base_x + x_dir * extra_offset;
+            positions.insert(nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, actor_height));
+        }
     }
 
-    // Position right actors
-    for &(aid, bary) in &right_actors {
-        let y = bary - ACTOR_HEIGHT / 2.0;
-        let count = *actor_edge_count.get(&aid).unwrap_or(&0) as f64;
-        let extra_offset = (count / max_edge_count) * edge_offset_scale * count.sqrt();
-        let x = right_x + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0 + extra_offset;
-        positions.insert(diagram.nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, ACTOR_HEIGHT));
-    }
+    let left_base_x = PADDING + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0;
+    place_actors(&left_actors, left_base_x, -1.0, &actor_edge_count, max_edge_count, edge_offset_scale, min_actor_gap, ACTOR_HEIGHT, &mut positions, &diagram.nodes);
+
+    let right_base_x = right_x + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0;
+    place_actors(&right_actors, right_base_x, 1.0, &actor_edge_count, max_edge_count, edge_offset_scale, min_actor_gap, ACTOR_HEIGHT, &mut positions, &diagram.nodes);
 
     // --- Step 4: Ensure non-negative positions ---
     let mut min_x = f64::MAX;
