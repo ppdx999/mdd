@@ -335,17 +335,24 @@ fn compute_layout(diagram: &Diagram) -> Layout {
 
     let right_x = center_x + max_uc_w + COL_GAP;
 
-    // Position left actors
+    // Position left actors: more edges → further from usecases
+    let max_edge_count = actor_edge_count.values().copied().max().unwrap_or(1) as f64;
+    let edge_offset_scale = 30.0; // extra px per edge ratio
+
     for &(aid, bary) in &left_actors {
         let y = bary - ACTOR_HEIGHT / 2.0;
-        let x = PADDING + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0;
+        let count = *actor_edge_count.get(&aid).unwrap_or(&0) as f64;
+        let extra_offset = (count / max_edge_count) * edge_offset_scale * count.sqrt();
+        let x = PADDING + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0 - extra_offset;
         positions.insert(diagram.nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, ACTOR_HEIGHT));
     }
 
     // Position right actors
     for &(aid, bary) in &right_actors {
         let y = bary - ACTOR_HEIGHT / 2.0;
-        let x = right_x + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0;
+        let count = *actor_edge_count.get(&aid).unwrap_or(&0) as f64;
+        let extra_offset = (count / max_edge_count) * edge_offset_scale * count.sqrt();
+        let x = right_x + (ACTOR_COL_WIDTH - ACTOR_WIDTH) / 2.0 + extra_offset;
         positions.insert(diagram.nodes[aid].label.clone(), (x, y, ACTOR_WIDTH, ACTOR_HEIGHT));
     }
 
