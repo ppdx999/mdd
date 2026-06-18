@@ -232,6 +232,22 @@ fn render_svg(diagram: &Diagram) -> String {
         }
     }
 
+    // Ensure no two nodes in the same lane share the same row
+    for _ in 0..diagram.nodes.len() {
+        for i in 0..diagram.nodes.len() {
+            for j in (i + 1)..diagram.nodes.len() {
+                if diagram.nodes[i].lane == diagram.nodes[j].lane && node_row[i] == node_row[j] {
+                    // Push the later-defined one down
+                    if diagram.nodes[j].order > diagram.nodes[i].order {
+                        node_row[j] = node_row[j] + 1;
+                    } else {
+                        node_row[i] = node_row[i] + 1;
+                    }
+                }
+            }
+        }
+    }
+
     // Compute Y position for each row
     let max_row = *node_row.iter().max().unwrap_or(&0);
     let mut row_y: Vec<f64> = Vec::new();
@@ -352,27 +368,80 @@ fn render_svg(diagram: &Diagram) -> String {
         let to_cx = tx + tw / 2.0;
         let to_cy = ty + th / 2.0;
 
-        // Clip to node boundaries
-        let (ax1, ay1) = clip_to_node(from_cx, from_cy, to_cx, to_cy, &diagram.nodes[edge.from]);
-        let (ax2, ay2) = clip_to_node(to_cx, to_cy, from_cx, from_cy, &diagram.nodes[edge.to]);
+        let same_lane = diagram.nodes[edge.from].lane == diagram.nodes[edge.to].lane;
+        let row_diff = if node_row[edge.to] > node_row[edge.from] {
+            node_row[edge.to] - node_row[edge.from]
+        } else {
+            node_row[edge.from] - node_row[edge.to]
+        };
+        let needs_curve = same_lane && row_diff > 1;
 
-        svg.push_str(&format!(
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
-            ax1, ay1, ax2, ay2, COLOR_EDGE
-        ));
+        if needs_curve {
+            // Same lane, skipping rows: curve to the right to avoid intermediate nodes
+            let (_, from_h) = node_size(&diagram.nodes[edge.from]);
+            let (_, to_h) = node_size(&diagram.nodes[edge.to]);
+            let start_y = from_cy + from_h / 2.0;
+            let end_y = to_cy - to_h / 2.0;
+            let bulge = 80.0 + row_diff as f64 * 20.0;
+            let ctrl_x = from_cx + bulge;
+            let mid_y = (start_y + end_y) / 2.0;
 
-        if !edge.label.is_empty() {
-            let lx = (ax1 + ax2) / 2.0;
-            let ly = (ay1 + ay2) / 2.0 - 6.0;
-            let lw = text_width(&edge.label);
             svg.push_str(&format!(
-                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.9\"/>",
-                lx - lw / 2.0 - 3.0, ly - 12.0, lw + 6.0
+                "<path d=\"M{},{} C{},{} {},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
+                from_cx, start_y,
+                ctrl_x, start_y,
+                ctrl_x, end_y,
+                to_cx, end_y,
+                COLOR_EDGE
             ));
+
+            // Label on the curve
+            if !edge.label.is_empty() {
+                let lw = text_width(&edge.label);
+                let lx = ctrl_x + 8.0;
+                let ly = mid_y;
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.9\"/>",
+                    lx - 3.0, ly - 12.0, lw + 6.0
+                ));
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" font-size=\"11\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                    lx, ly, COLOR_EDGE, escape_xml(&edge.label)
+                ));
+            }
+        } else {
+            // Normal edge: straight line or cross-lane
+            let (ax1, ay1) = clip_to_node(from_cx, from_cy, to_cx, to_cy, &diagram.nodes[edge.from]);
+            let (ax2, ay2) = clip_to_node(to_cx, to_cy, from_cx, from_cy, &diagram.nodes[edge.to]);
+
             svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-                lx, ly, COLOR_EDGE, escape_xml(&edge.label)
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" marker-end=\"url(#arrow)\"/>",
+                ax1, ay1, ax2, ay2, COLOR_EDGE
             ));
+
+            if !edge.label.is_empty() {
+                let lw = text_width(&edge.label);
+                let t = if same_lane { 0.3 } else { 0.25 };
+                let mx = ax1 + (ax2 - ax1) * t;
+                let my = ay1 + (ay2 - ay1) * t;
+
+                let (lx, ly) = if same_lane {
+                    // Adjacent same-lane: offset right
+                    let (nw, _) = node_size(&diagram.nodes[edge.from]);
+                    (from_cx + nw / 2.0 + 8.0 + lw / 2.0, my)
+                } else {
+                    (mx, my - 8.0)
+                };
+
+                svg.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"16\" rx=\"3\" fill=\"white\" opacity=\"0.9\"/>",
+                    lx - lw / 2.0 - 3.0, ly - 12.0, lw + 6.0
+                ));
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"11\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+                    lx, ly, COLOR_EDGE, escape_xml(&edge.label)
+                ));
+            }
         }
     }
 
