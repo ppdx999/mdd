@@ -584,8 +584,8 @@ fn render_svg(diagram: &Diagram) -> String {
     let scale = 1.0 + (complexity / 10.0).sqrt() * 0.5;
     let density_scale = 1.0 + (max_degree / 4.0).sqrt() * 0.3;
     let size_factor = (avg_node_size / 80.0).sqrt().max(0.7); // sqrt dampens large tables
-    let ideal_dist = (50.0 * scale * density_scale * size_factor).max(200.0);
-    let repulsion = ((1.0 + (complexity / 20.0).sqrt() * 0.3) * size_factor).max(1.8);
+    let ideal_dist = (60.0 * scale * density_scale * size_factor).max(avg_node_size * 1.5);
+    let repulsion = ((1.2 + (complexity / 20.0).sqrt() * 0.3) * size_factor).max(2.0);
 
     // Use force_layout for positioning (2D force-directed)
     let config = mdd_layout::ForceConfig {
