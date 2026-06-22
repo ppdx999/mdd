@@ -470,6 +470,45 @@ cron式でバッチジョブ一覧を可視化する。cron式は自動的に「
 
 ![batch](crates/mdd-batch/examples/system.svg)
 
+### HTML 出力
+
+`mdd html` コマンドで Markdown を SVG 埋め込み済みの HTML に変換。
+
+```bash
+mdd html input.md > output.html
+```
+
+### ディレクトリ監視
+
+```bash
+# HTML出力（ファイル変更を監視して自動ビルド + index.html 生成）
+mdd watch docs/
+
+# スライドPDF出力
+mdd slide-watch docs/
+```
+
+### GitHub Actions
+
+他のリポジトリの CI/CD で mdd を使うには:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: ppdx999/mdd@main
+  - run: mdd html docs/design.md > dist/design.html
+```
+
+バージョン固定:
+
+```yaml
+  - uses: ppdx999/mdd@main
+    with:
+      version: v0.1.6
+```
+
+サンプルワークフロー: [examples/github-actions.yml](examples/github-actions.yml)
+
 ### スライドエクスポート
 
 `mdd slide` コマンドで Markdown をスライド形式の PDF に変換。`# 見出し` でスライド分割、各ページのサイズはコンテンツに自動調整。
