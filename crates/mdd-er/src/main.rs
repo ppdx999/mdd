@@ -572,20 +572,21 @@ fn render_svg(diagram: &Diagram) -> String {
         }
         *degree.iter().max().unwrap_or(&1) as f64
     };
-    // Average node size affects spacing needs
+    // Node size stats affect spacing needs
+    let node_sizes: Vec<(f64, f64)> = diagram.tables.iter().map(|t| table_size(t)).collect();
     let avg_node_size = {
-        let total: f64 = diagram.tables.iter().map(|t| {
-            let (w, h) = table_size(t);
-            (w + h) / 2.0
-        }).sum();
+        let total: f64 = node_sizes.iter().map(|(w, h)| (w + h) / 2.0).sum();
         total / n.max(1.0)
     };
+    let max_node_h = node_sizes.iter().map(|(_, h)| *h).fold(0.0_f64, f64::max);
 
     let scale = 1.0 + (complexity / 10.0).sqrt() * 0.5;
     let density_scale = 1.0 + (max_degree / 4.0).sqrt() * 0.3;
-    let size_factor = (avg_node_size / 80.0).sqrt().max(0.7); // sqrt dampens large tables
-    let ideal_dist = (60.0 * scale * density_scale * size_factor).max(avg_node_size * 1.5);
-    let repulsion = ((1.2 + (complexity / 20.0).sqrt() * 0.3) * size_factor).max(2.0);
+    let size_factor = (avg_node_size / 80.0).sqrt().max(0.7);
+    // Minimum distance must be at least as tall as the tallest node + gap
+    let min_dist = (max_node_h + 40.0).max(avg_node_size * 1.5);
+    let ideal_dist = (60.0 * scale * density_scale * size_factor).max(min_dist);
+    let repulsion = ((1.5 + (complexity / 15.0).sqrt() * 0.4) * size_factor).max(2.5);
 
     // Use force_layout for positioning (2D force-directed)
     let config = mdd_layout::ForceConfig {

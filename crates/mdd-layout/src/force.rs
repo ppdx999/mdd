@@ -532,13 +532,14 @@ fn run_force(
                 let mut delta_x = x[i] - x[j];
                 let mut delta_y = y[i] - y[j];
                 let dist = (delta_x * delta_x + delta_y * delta_y).sqrt().max(1.0);
-                // Minimum separation based on node sizes
-                let min_sep = ((widths[i] + widths[j]) / 2.0)
-                    .max((heights[i] + heights[j]) / 2.0)
-                    + 20.0;
-                let effective_dist = dist.max(min_sep * 0.5);
-                // Cap repulsive force to prevent explosion with large nodes
-                let force = (repulsion * k * k / effective_dist).min(k * 2.0);
+                // Minimum separation: sum of half-diagonals so nodes never overlap
+                let diag_i = (widths[i] * widths[i] + heights[i] * heights[i]).sqrt() / 2.0;
+                let diag_j = (widths[j] * widths[j] + heights[j] * heights[j]).sqrt() / 2.0;
+                let min_sep = diag_i + diag_j + 20.0;
+                let effective_dist = dist.max(1.0);
+                // Strong repulsion when nodes overlap (dist < min_sep)
+                let overlap_boost = if dist < min_sep { (min_sep / dist.max(1.0)).powi(2) } else { 1.0 };
+                let force = (repulsion * k * k / effective_dist * overlap_boost).min(k * 4.0);
                 delta_x /= dist;
                 delta_y /= dist;
                 dx[i] += delta_x * force;
