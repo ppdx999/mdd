@@ -355,17 +355,18 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         }
         for fi in 0..real_count {
             let ni = flat_nodes[fi].node_index;
-            if let Some(&dx) = shifts.get(&graph.nodes[ni].name) {
+            if let Some(&(dx, dy)) = shifts.get(&graph.nodes[ni].name) {
                 node_x[fi] += dx;
+                node_y[fi] += dy;
             }
         }
         // Also shift virtual nodes that belong to shifted edges
         for (edge_key, chain) in &virtual_chains {
-            // Parse edge_key "from→to" to find if source was shifted
             if let Some(from_name) = edge_key.split('→').next() {
-                if let Some(&dx) = shifts.get(from_name) {
+                if let Some(&(dx, dy)) = shifts.get(from_name) {
                     for &vi in chain {
                         node_x[vi] += dx;
+                        node_y[vi] += dy;
                     }
                 }
             }
@@ -479,15 +480,17 @@ pub fn compound_layout(graph: &LayoutGraph, config: &LayoutConfig) -> LayoutResu
         }
         for fi in 0..real_count {
             let ni = flat_nodes[fi].node_index;
-            if let Some(&dx) = shifts.get(&graph.nodes[ni].name) {
+            if let Some(&(dx, dy)) = shifts.get(&graph.nodes[ni].name) {
                 node_x[fi] += dx;
+                node_y[fi] += dy;
             }
         }
         for (edge_key, chain) in &virtual_chains {
             if let Some(from_name) = edge_key.split('→').next() {
-                if let Some(&dx) = shifts.get(from_name) {
+                if let Some(&(dx, dy)) = shifts.get(from_name) {
                     for &vi in chain {
                         node_x[vi] += dx;
+                        node_y[vi] += dy;
                     }
                 }
             }
@@ -617,9 +620,8 @@ fn compute_cluster_bounds(
     }
 }
 
-/// Find x-shifts needed to eliminate overlaps between sibling elements (groups and standalone nodes).
-/// `elem_sort_keys` maps element name -> sort key (e.g. avg x of highest-rank nodes).
-/// Returns a map of node_name -> dx shift for all nodes that need to move.
+/// Find (dx, dy) shifts needed to eliminate overlaps between sibling elements.
+/// Returns a map of node_name -> (dx, dy) shift for all nodes that need to move.
 fn find_cluster_shifts(
     elements: &[LayoutElement],
     nodes: &[LayoutNode],
@@ -627,8 +629,8 @@ fn find_cluster_shifts(
     positions: &HashMap<String, (f64, f64, f64, f64)>,
     elem_sort_keys: &HashMap<String, f64>,
     config: &LayoutConfig,
-) -> HashMap<String, f64> {
-    let mut shifts: HashMap<String, f64> = HashMap::new();
+) -> HashMap<String, (f64, f64)> {
+    let mut shifts: HashMap<String, (f64, f64)> = HashMap::new();
     let gap = config.group_h_pad;
 
     // Collect sibling element bounds
@@ -639,59 +641,53 @@ fn find_cluster_shifts(
             sibling_bounds.push((i, name, x, y, w, h));
         }
     }
-    // Sort by precomputed sort key (rank-based node positions), falling back to bbox center
     sibling_bounds.sort_by(|a, b| {
         let ka = elem_sort_keys.get(&a.1).copied().unwrap_or(a.2 + a.4 / 2.0);
         let kb = elem_sort_keys.get(&b.1).copied().unwrap_or(b.2 + b.4 / 2.0);
         ka.partial_cmp(&kb).unwrap()
     });
 
-    // For each pair, ensure no overlap.
-    // Check all pairs since non-adjacent elements can overlap when they span different Y ranges.
+    // For each pair, ensure no overlap. Choose the smaller push direction (x or y).
     for i in 0..sibling_bounds.len() {
         for j in (i + 1)..sibling_bounds.len() {
             let (ei, _, ax, ay, aw, ah) = sibling_bounds[i].clone();
             let (ej, _, bx, by, bw, bh) = sibling_bounds[j].clone();
 
-            // Check if they overlap vertically
-            let y_overlap = ay < by + bh && by < ay + ah;
-            if !y_overlap {
+            let y_overlaps = ay < by + bh && by < ay + ah;
+            let x_overlaps = ax < bx + bw && bx < ax + aw;
+            if !y_overlaps || !x_overlaps {
                 continue;
             }
 
-            // Check x overlap
-            let x_overlap = ax < bx + bw && bx < ax + aw;
-            if !x_overlap {
-                continue;
-            }
-
-            // Determine which element to move and in which direction.
-            // If b is inside a (b is smaller and contained), move b to a's left.
-            // Otherwise push b to the right of a.
-            let b_center = bx + bw / 2.0;
-            let a_center = ax + aw / 2.0;
-            let b_inside_a = bx >= ax && bx + bw <= ax + aw;
-            let a_inside_b = ax >= bx && ax + aw <= bx + bw;
+            let b_inside_a = bx >= ax && bx + bw <= ax + aw && by >= ay && by + bh <= ay + ah;
+            let a_inside_b = ax >= bx && ax + aw <= bx + bw && ay >= by && ay + ah <= by + bh;
 
             if b_inside_a {
-                // Move b to the left of a
                 let target_x = ax - bw - gap;
                 let dx = target_x - bx;
-                collect_node_shifts(&elements[ej], nodes, groups, dx, &mut shifts);
+                collect_node_shifts_2d(&elements[ej], nodes, groups, dx, 0.0, &mut shifts);
                 sibling_bounds[j].2 += dx;
             } else if a_inside_b {
-                // Move a to the left of b
                 let target_x = bx - aw - gap;
                 let dx = target_x - ax;
-                collect_node_shifts(&elements[ei], nodes, groups, dx, &mut shifts);
+                collect_node_shifts_2d(&elements[ei], nodes, groups, dx, 0.0, &mut shifts);
                 sibling_bounds[i].2 += dx;
             } else {
-                // Standard overlap: push b to the right of a
-                let needed_x = ax + aw + gap;
-                if bx < needed_x {
-                    let dx = needed_x - bx;
-                    collect_node_shifts(&elements[ej], nodes, groups, dx, &mut shifts);
-                    sibling_bounds[j].2 += dx;
+                // Calculate push needed in both directions
+                let x_push_right = (ax + aw + gap) - bx;
+                let y_push_down = (ay + ah + gap) - by;
+
+                // Choose the smaller push to minimize displacement
+                if x_push_right.abs() <= y_push_down.abs() {
+                    if x_push_right > 0.0 {
+                        collect_node_shifts_2d(&elements[ej], nodes, groups, x_push_right, 0.0, &mut shifts);
+                        sibling_bounds[j].2 += x_push_right;
+                    }
+                } else {
+                    if y_push_down > 0.0 {
+                        collect_node_shifts_2d(&elements[ej], nodes, groups, 0.0, y_push_down, &mut shifts);
+                        sibling_bounds[j].3 += y_push_down;
+                    }
                 }
             }
         }
@@ -701,8 +697,10 @@ fn find_cluster_shifts(
     for elem in elements {
         if let LayoutElement::GroupRef(gi) = elem {
             let child_shifts = find_cluster_shifts(&groups[*gi].children, nodes, groups, positions, elem_sort_keys, config);
-            for (name, dx) in child_shifts {
-                *shifts.entry(name).or_insert(0.0) += dx;
+            for (name, (dx, dy)) in child_shifts {
+                let entry = shifts.entry(name).or_insert((0.0, 0.0));
+                entry.0 += dx;
+                entry.1 += dy;
             }
         }
     }
@@ -710,21 +708,24 @@ fn find_cluster_shifts(
     shifts
 }
 
-/// Collect all node names under an element and assign them a dx shift.
-fn collect_node_shifts(
+/// Collect all node names under an element and assign them a (dx, dy) shift.
+fn collect_node_shifts_2d(
     elem: &LayoutElement,
     nodes: &[LayoutNode],
     groups: &[LayoutGroup],
     dx: f64,
-    shifts: &mut HashMap<String, f64>,
+    dy: f64,
+    shifts: &mut HashMap<String, (f64, f64)>,
 ) {
     match elem {
         LayoutElement::NodeRef(ni) => {
-            *shifts.entry(nodes[*ni].name.clone()).or_insert(0.0) += dx;
+            let entry = shifts.entry(nodes[*ni].name.clone()).or_insert((0.0, 0.0));
+            entry.0 += dx;
+            entry.1 += dy;
         }
         LayoutElement::GroupRef(gi) => {
             for child in &groups[*gi].children {
-                collect_node_shifts(child, nodes, groups, dx, shifts);
+                collect_node_shifts_2d(child, nodes, groups, dx, dy, shifts);
             }
         }
     }

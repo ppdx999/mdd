@@ -280,10 +280,22 @@ fn build_layout_graph(diagram: &Diagram) -> mdd_layout::LayoutGraph {
 
 fn render_svg(diagram: &Diagram) -> String {
     let graph = build_layout_graph(diagram);
+    // Adaptive spacing based on complexity
+    let n = diagram.nodes.len() as f64;
+    let e = diagram.edges.len() as f64;
+    let g = diagram.groups.len() as f64;
+    let complexity = n + e + g * 3.0;
+    let scale = 1.0 + (complexity / 10.0).sqrt() * 0.4;
+    let node_sep = (40.0 * scale).max(50.0);
+    let rank_sep = (50.0 * scale).max(60.0);
+    let group_pad = (30.0 * scale).max(36.0);
+
     let config = mdd_layout::LayoutConfig {
         padding: PADDING,
-        group_h_pad: GROUP_H_PAD,
-        group_v_pad: GROUP_V_PAD,
+        node_sep,
+        rank_sep,
+        group_h_pad: group_pad,
+        group_v_pad: group_pad,
         group_header_h: GROUP_HEADER_H,
         default_node_w: NODE_W,
         default_node_h: NODE_H,
