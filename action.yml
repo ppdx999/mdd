@@ -1,0 +1,30 @@
+name: 'Setup mdd'
+description: 'Install mdd — Markdown Driven Diagram tool'
+branding:
+  icon: 'file-text'
+  color: 'blue'
+
+inputs:
+  version:
+    description: 'mdd version to install (e.g. v0.1.0). Leave empty for latest.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install mdd
+      shell: bash
+      env:
+        MDD_VERSION: ${{ inputs.version }}
+        MDD_INSTALL_DIR: ${{ runner.temp }}/mdd-bin
+      run: |
+        curl -fsSL https://raw.githubusercontent.com/ppdx999/mdd/main/install.sh | sh
+
+    - name: Add mdd to PATH
+      shell: bash
+      run: echo "${{ runner.temp }}/mdd-bin" >> $GITHUB_PATH
+
+    - name: Verify installation
+      shell: bash
+      run: mdd --help > /dev/null 2>&1 || (echo "mdd installation failed" && exit 1)
