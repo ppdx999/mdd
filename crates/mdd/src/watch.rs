@@ -212,7 +212,8 @@ fn build_tree(paths: &[String]) -> Vec<TreeEntry> {
     let mut root: Vec<TreeEntry> = Vec::new();
 
     for path in paths {
-        let parts: Vec<&str> = path.split('/').collect();
+        // Split by both '/' and '\' to handle Unix and Windows paths
+        let parts: Vec<&str> = path.split(['/', '\\']).collect();
         insert_into_tree(&mut root, &parts, path);
     }
 
@@ -278,9 +279,11 @@ fn render_tree_html(entries: &[TreeEntry], prefix: &str, html: &mut String, is_r
                 render_tree_html(children, &child_prefix, html, false);
             }
             TreeEntry::File { name, path } => {
+                // Normalize backslashes to forward slashes for HTML href
+                let href = path.replace('\\', "/");
                 html.push_str(&format!(
                     "<span class=\"branch\">{}{}</span><a href=\"{}\" target=\"_blank\">{}</a>\n",
-                    prefix, connector, path,
+                    prefix, connector, href,
                     Path::new(path).file_name().and_then(|f| f.to_str()).unwrap_or(&name)
                 ));
             }
