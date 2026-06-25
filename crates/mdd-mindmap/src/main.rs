@@ -16,6 +16,7 @@ struct MindMap {
 #[derive(Debug)]
 struct MmNode {
     text: String,
+    description: Option<String>,
     depth: usize, // 0 = center, 1 = branch, 2+ = sub-item
 }
 
@@ -39,9 +40,10 @@ fn parse(input: &str) -> Result<MindMap, String> {
         // center "..."
         if trimmed.starts_with("center ") {
             let rest = trimmed.strip_prefix("center ").unwrap().trim();
-            let text = strip_quotes(rest).to_string();
+            let raw = strip_quotes(rest);
+            let (text, description) = split_title_desc(raw);
             let idx = nodes.len();
-            nodes.push(MmNode { text, depth: 0 });
+            nodes.push(MmNode { text, description, depth: 0 });
             stack.clear();
             stack.push((0, idx));
             continue;
@@ -66,8 +68,10 @@ fn parse(input: &str) -> Result<MindMap, String> {
 
         let parent_idx = stack.last().unwrap().1;
         let idx = nodes.len();
+        let (text, description) = split_title_desc(trimmed);
         nodes.push(MmNode {
-            text: trimmed.to_string(),
+            text,
+            description,
             depth,
         });
         edges.push((parent_idx, idx));
@@ -92,17 +96,36 @@ fn strip_quotes(s: &str) -> &str {
     }
 }
 
+fn split_title_desc(s: &str) -> (String, Option<String>) {
+    if let Some((title, desc)) = s.split_once('|') {
+        let t = title.trim().to_string();
+        let d = desc.trim().to_string();
+        if d.is_empty() {
+            (t, None)
+        } else {
+            (t, Some(d))
+        }
+    } else {
+        (s.to_string(), None)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const FONT_SIZE: f64 = 13.0;
+const DESC_FONT_SIZE: f64 = 11.0;
+const DESC_COLOR: &str = "#666";
+const LINE_GAP: f64 = 8.0; // gap between title and description lines
 const COLOR_DARK: &str = "#333";
 const NODE_H_PAD: f64 = 14.0;
 const NODE_V_PAD: f64 = 8.0;
 const MIN_NODE_W: f64 = 60.0;
 const PADDING: f64 = 60.0;
-const CENTER_FONT_SIZE: f64 = 15.0;
+const CENTER_FONT_SIZE: f64 = 26.0;
+const CENTER_H_PAD: f64 = 14.0;
+const CENTER_V_PAD: f64 = 8.0;
 const HORIZONTAL_GAP: f64 = 40.0; // gap between depth levels
 const LEAF_MARGIN: f64 = 6.0; // gap between leaf siblings (same parent)
 const SUBTREE_MARGIN: f64 = 20.0; // gap between sibling subtrees (different parent groups)
@@ -124,11 +147,23 @@ const COLORS: &[(&str, &str)] = &[
 // ---------------------------------------------------------------------------
 
 fn node_size(node: &MmNode) -> (f64, f64) {
-    let font = if node.depth == 0 { CENTER_FONT_SIZE } else { FONT_SIZE };
+    let (font, h_pad, v_pad) = if node.depth == 0 {
+        (CENTER_FONT_SIZE, CENTER_H_PAD, CENTER_V_PAD)
+    } else {
+        (FONT_SIZE, NODE_H_PAD, NODE_V_PAD)
+    };
     let char_scale = font / FONT_SIZE;
-    let tw = text_width(&node.text) * char_scale + NODE_H_PAD * 2.0;
-    let w = tw.max(MIN_NODE_W);
-    let h = font + NODE_V_PAD * 2.0;
+    let title_w = text_width(&node.text) * char_scale + h_pad * 2.0;
+
+    let (w, h) = if let Some(desc) = &node.description {
+        let desc_scale = DESC_FONT_SIZE / FONT_SIZE;
+        let desc_w = text_width(desc) * desc_scale + h_pad * 2.0;
+        let w = title_w.max(desc_w).max(MIN_NODE_W);
+        let h = font + LINE_GAP + DESC_FONT_SIZE + v_pad * 2.0;
+        (w, h)
+    } else {
+        (title_w.max(MIN_NODE_W), font + v_pad * 2.0)
+    };
     (w, h)
 }
 
@@ -417,7 +452,11 @@ fn render_svg(map: &MindMap) -> String {
 
         let rx = if node.depth == 0 { 14.0 } else { 6.0 };
         let stroke_w = if node.depth == 0 { 2.5 } else { 1.5 };
-        let font_size = if node.depth == 0 { CENTER_FONT_SIZE } else { FONT_SIZE };
+        let (font_size, v_pad) = if node.depth == 0 {
+            (CENTER_FONT_SIZE, CENTER_V_PAD)
+        } else {
+            (FONT_SIZE, NODE_V_PAD)
+        };
         let opacity = if node.depth >= 2 { " opacity=\"0.8\"" } else { "" };
         let font_weight = if node.depth <= 1 { " font-weight=\"bold\"" } else { "" };
 
@@ -425,13 +464,30 @@ fn render_svg(map: &MindMap) -> String {
             "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{}/>\n",
             x, y, w, h, rx, bg, accent, stroke_w, opacity
         ));
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\"{}>{}</text>\n",
-            x + w / 2.0,
-            y + h / 2.0 + font_size * 0.35,
-            font_size, font_weight,
-            escape_xml(&node.text)
-        ));
+
+        if let Some(desc) = &node.description {
+            // Two-line node: title above, description below
+            let title_y = y + v_pad + font_size * 0.8;
+            let desc_y = title_y + LINE_GAP + DESC_FONT_SIZE * 0.8;
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\"{}>{}</text>\n",
+                x + w / 2.0, title_y, font_size, font_weight,
+                escape_xml(&node.text)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                x + w / 2.0, desc_y, DESC_FONT_SIZE, DESC_COLOR,
+                escape_xml(desc)
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\"{}>{}</text>\n",
+                x + w / 2.0,
+                y + h / 2.0 + font_size * 0.35,
+                font_size, font_weight,
+                escape_xml(&node.text)
+            ));
+        }
     }
 
     svg.push_str("</svg>");
@@ -449,10 +505,11 @@ Usage: mdd-mindmap < input.mindmap
 
 First line declares the center node with: center \"Topic\"
 Branches are indented 2 spaces. Deeper nesting uses more indentation.
+Use | to add a description below the title: Title | Description
 
 Example:
-  center \"Project\"
-    Design
+  center \"Project | Overview\"
+    Design | Visual design
       Colors
       Layout
     Backend
