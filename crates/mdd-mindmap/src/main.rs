@@ -103,8 +103,10 @@ const NODE_V_PAD: f64 = 8.0;
 const MIN_NODE_W: f64 = 60.0;
 const PADDING: f64 = 60.0;
 const CENTER_FONT_SIZE: f64 = 15.0;
-const RING_GAP: f64 = 100.0; // base distance between depth rings
-const NODE_SPACING: f64 = 20.0; // minimum gap between adjacent nodes on arc
+const HORIZONTAL_GAP: f64 = 40.0; // gap between depth levels
+const LEAF_MARGIN: f64 = 6.0; // gap between leaf siblings (same parent)
+const SUBTREE_MARGIN: f64 = 20.0; // gap between sibling subtrees (different parent groups)
+const BRANCH_GAP: f64 = 32.0; // gap between top-level branches
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -150,95 +152,119 @@ fn branch_color_index(node_idx: usize, edges: &[(usize, usize)]) -> usize {
 }
 
 // ---------------------------------------------------------------------------
-// Radial tree layout
+// Horizontal tree layout
 // ---------------------------------------------------------------------------
 
-/// Compute the minimum angular sweep a subtree needs (using base RING_GAP)
-/// so that no nodes overlap at any depth level within it.
-fn min_subtree_sweep(
+/// Pick margin between sibling nodes: small for leaves, larger for subtrees.
+fn sibling_margin(kids: &[usize], children: &HashMap<usize, Vec<usize>>) -> f64 {
+    let any_has_children = kids
+        .iter()
+        .any(|&k| children.get(&k).is_some_and(|c| !c.is_empty()));
+    if any_has_children {
+        SUBTREE_MARGIN
+    } else {
+        LEAF_MARGIN
+    }
+}
+
+/// Compute the vertical space needed for a subtree.
+fn subtree_height(
     node_idx: usize,
-    depth: usize,
     children: &HashMap<usize, Vec<usize>>,
     nodes: &[MmNode],
 ) -> f64 {
-    let (w, _) = node_size(&nodes[node_idx]);
-    let radius = RING_GAP * depth as f64;
-    let self_sweep = if depth > 0 {
-        (w + NODE_SPACING) / radius
-    } else {
-        0.0
-    };
-
-    let children_sweep: f64 = match children.get(&node_idx) {
-        Some(kids) => kids
-            .iter()
-            .map(|&k| min_subtree_sweep(k, depth + 1, children, nodes))
-            .sum(),
-        None => 0.0,
-    };
-
-    self_sweep.max(children_sweep)
-}
-
-/// Allocate angular sweep to each node proportional to its subtree width needs.
-fn allocate_sweeps(
-    node_idx: usize,
-    parent_sweep: f64,
-    depth: usize,
-    children: &HashMap<usize, Vec<usize>>,
-    nodes: &[MmNode],
-    sweeps: &mut [f64],
-) {
-    let kids = match children.get(&node_idx) {
-        Some(k) => k,
-        None => return,
-    };
-
-    let weights: Vec<f64> = kids
-        .iter()
-        .map(|&k| min_subtree_sweep(k, depth + 1, children, nodes))
-        .collect();
-    let total: f64 = weights.iter().sum();
-    if total <= 0.0 {
-        return;
-    }
-
-    for (i, &kid) in kids.iter().enumerate() {
-        let child_sweep = parent_sweep * weights[i] / total;
-        sweeps[kid] = child_sweep;
-        allocate_sweeps(kid, child_sweep, depth + 1, children, nodes, sweeps);
+    match children.get(&node_idx) {
+        Some(kids) if !kids.is_empty() => {
+            let margin = sibling_margin(kids, children);
+            let sum: f64 = kids
+                .iter()
+                .map(|&k| subtree_height(k, children, nodes))
+                .sum();
+            sum + (kids.len() - 1) as f64 * margin
+        }
+        _ => {
+            let (_, h) = node_size(&nodes[node_idx]);
+            h
+        }
     }
 }
 
-/// Position nodes using pre-computed sweeps and per-depth radii.
-fn position_nodes(
+/// Recursively position a subtree within a vertical range.
+/// `depth_inner_edge[d]` is the inner-edge x for depth d (left edge for right side).
+fn layout_subtree(
     node_idx: usize,
+    y_start: f64,
+    y_end: f64,
+    direction: f64,
     children: &HashMap<usize, Vec<usize>>,
     nodes: &[MmNode],
     positions: &mut [(f64, f64)],
-    depth_radii: &[f64],
-    sweeps: &[f64],
-    start_angles: &mut [f64],
+    depth_inner_edge: &[f64],
 ) {
+    let depth = nodes[node_idx].depth;
+    let y = (y_start + y_end) / 2.0;
+    let x = if depth == 0 {
+        0.0
+    } else {
+        let (w, _) = node_size(&nodes[node_idx]);
+        // Right side: left-align (inner edge = left edge)
+        // Left side: right-align (inner edge = right edge, negated)
+        (depth_inner_edge[depth] + w / 2.0) * direction
+    };
+    positions[node_idx] = (x, y);
+
     let kids = match children.get(&node_idx) {
-        Some(k) => k,
-        None => return,
+        Some(k) if !k.is_empty() => k,
+        _ => return,
     };
 
-    let mut current_angle = start_angles[node_idx];
+    let margin = sibling_margin(kids, children);
+    let mut current_y = y_start;
     for &kid in kids {
-        let mid_angle = current_angle + sweeps[kid] / 2.0;
-        let r = depth_radii[nodes[kid].depth];
-        positions[kid] = (r * mid_angle.cos(), r * mid_angle.sin());
-        start_angles[kid] = current_angle;
-        position_nodes(kid, children, nodes, positions, depth_radii, sweeps, start_angles);
-        current_angle += sweeps[kid];
+        let h = subtree_height(kid, children, nodes);
+        layout_subtree(
+            kid,
+            current_y,
+            current_y + h,
+            direction,
+            children,
+            nodes,
+            positions,
+            depth_inner_edge,
+        );
+        current_y += h + margin;
     }
 }
 
-/// Radial layout: place nodes in concentric rings around center.
-/// Each depth ring has its own radius based on the widest node at that depth.
-fn radial_layout(map: &MindMap) -> Vec<(f64, f64)> {
+/// Layout one side (left or right) of the tree.
+fn layout_side(
+    kids: &[usize],
+    direction: f64,
+    children: &HashMap<usize, Vec<usize>>,
+    nodes: &[MmNode],
+    positions: &mut [(f64, f64)],
+    depth_inner_edge: &[f64],
+) {
+    if kids.is_empty() {
+        return;
+    }
+    let total_h: f64 = kids
+        .iter()
+        .map(|&k| subtree_height(k, children, nodes))
+        .sum::<f64>()
+        + (kids.len() - 1) as f64 * BRANCH_GAP;
+    let mut y = -total_h / 2.0;
+    for &kid in kids {
+        let h = subtree_height(kid, children, nodes);
+        layout_subtree(
+            kid, y, y + h, direction, children, nodes, positions, depth_inner_edge,
+        );
+        y += h + BRANCH_GAP;
+    }
+}
+
+/// Horizontal tree layout: branches extend left and right from center.
+fn tree_layout(map: &MindMap) -> Vec<(f64, f64)> {
     let n = map.nodes.len();
     let mut positions = vec![(0.0_f64, 0.0_f64); n];
 
@@ -247,32 +273,52 @@ fn radial_layout(map: &MindMap) -> Vec<(f64, f64)> {
         children.entry(parent).or_default().push(child);
     }
 
-    let two_pi = 2.0 * std::f64::consts::PI;
+    let root_kids = match children.get(&0) {
+        Some(k) => k.clone(),
+        None => return positions,
+    };
 
-    // Pass 1: Allocate angular sweeps using min_subtree_sweep as weights
-    let mut sweeps = vec![0.0_f64; n];
-    sweeps[0] = two_pi;
-    allocate_sweeps(0, two_pi, 0, &children, &map.nodes, &mut sweeps);
-
-    // Pass 2: Compute per-depth radii so nodes fit within their allocated sweep
+    // Compute max node width per depth for horizontal positioning
     let max_depth = map.nodes.iter().map(|nd| nd.depth).max().unwrap_or(0);
-    let mut depth_radii = vec![0.0_f64; max_depth + 1];
-    for d in 1..=max_depth {
-        let mut needed = depth_radii[d - 1] + RING_GAP;
-        for (i, node) in map.nodes.iter().enumerate() {
-            if node.depth == d && sweeps[i] > 1e-9 {
-                let (w, _) = node_size(node);
-                needed = needed.max((w + NODE_SPACING) / sweeps[i]);
-            }
-        }
-        depth_radii[d] = needed;
+    let mut max_width = vec![0.0_f64; max_depth + 1];
+    for node in &map.nodes {
+        let (w, _) = node_size(node);
+        max_width[node.depth] = max_width[node.depth].max(w);
     }
 
-    // Pass 3: Position nodes
+    // Inner-edge x positions per depth.
+    // For right side: this is the left edge of nodes at depth d.
+    // For left side: negated, this is the right edge.
+    let mut depth_inner_edge = vec![0.0_f64; max_depth + 1];
+    for d in 1..=max_depth {
+        if d == 1 {
+            // First level starts after center node's right edge + gap
+            depth_inner_edge[d] = max_width[0] / 2.0 + HORIZONTAL_GAP;
+        } else {
+            depth_inner_edge[d] = depth_inner_edge[d - 1] + max_width[d - 1] + HORIZONTAL_GAP;
+        }
+    }
+
+    // Split branches: first half right, second half left
+    let n_right = (root_kids.len() + 1) / 2;
+
     positions[0] = (0.0, 0.0);
-    let mut start_angles = vec![0.0_f64; n];
-    start_angles[0] = -std::f64::consts::FRAC_PI_2;
-    position_nodes(0, &children, &map.nodes, &mut positions, &depth_radii, &sweeps, &mut start_angles);
+    layout_side(
+        &root_kids[..n_right],
+        1.0,
+        &children,
+        &map.nodes,
+        &mut positions,
+        &depth_inner_edge,
+    );
+    layout_side(
+        &root_kids[n_right..],
+        -1.0,
+        &children,
+        &map.nodes,
+        &mut positions,
+        &depth_inner_edge,
+    );
 
     positions
 }
@@ -282,7 +328,7 @@ fn radial_layout(map: &MindMap) -> Vec<(f64, f64)> {
 // ---------------------------------------------------------------------------
 
 fn render_svg(map: &MindMap) -> String {
-    let centers = radial_layout(map);
+    let centers = tree_layout(map);
 
     // Compute node rects (top-left x, y, w, h) from center positions
     let mut rects: Vec<(f64, f64, f64, f64)> = Vec::new();
@@ -332,26 +378,27 @@ fn render_svg(map: &MindMap) -> String {
         let color_idx = branch_color_index(child, &map.edges);
         let (_, accent) = COLORS[color_idx % COLORS.len()];
 
-        let pcx = px + pw / 2.0;
         let pcy = py + ph / 2.0;
-        let ccx = cx + cw / 2.0;
         let ccy = cy + ch / 2.0;
 
-        let (p_conn_x, p_conn_y) = nearest_rect_point(ccx, ccy, px, py, pw, ph);
-        let (c_conn_x, c_conn_y) = nearest_rect_point(pcx, pcy, cx, cy, cw, ch);
-
-        let dx = c_conn_x - p_conn_x;
-        let dy = c_conn_y - p_conn_y;
-        let len = (dx * dx + dy * dy).sqrt().max(1.0);
-        let ctrl_dist = len * 0.4;
+        // Connect from side-edge centers: parent's outer edge to child's inner edge
+        let child_is_right = (cx + cw / 2.0) > (px + pw / 2.0);
+        let (p_conn_x, p_conn_y) = if child_is_right {
+            (px + pw, pcy) // parent right edge center
+        } else {
+            (px, pcy) // parent left edge center
+        };
+        let (c_conn_x, c_conn_y) = if child_is_right {
+            (cx, ccy) // child left edge center
+        } else {
+            (cx + cw, ccy) // child right edge center
+        };
 
         let stroke_w = if map.nodes[parent].depth == 0 { 2.5 } else { 1.5 };
 
         svg.push_str(&format!(
-            "<path d=\"M {},{} C {},{} {},{} {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+            "<path d=\"M {},{} L {},{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
             p_conn_x, p_conn_y,
-            p_conn_x + dx / len * ctrl_dist, p_conn_y + dy / len * ctrl_dist,
-            c_conn_x - dx / len * ctrl_dist, c_conn_y - dy / len * ctrl_dist,
             c_conn_x, c_conn_y,
             accent, stroke_w
         ));
@@ -389,28 +436,6 @@ fn render_svg(map: &MindMap) -> String {
 
     svg.push_str("</svg>");
     svg
-}
-
-/// Find the nearest point on rectangle edge to a target point.
-fn nearest_rect_point(
-    target_x: f64, target_y: f64,
-    rx: f64, ry: f64, rw: f64, rh: f64,
-) -> (f64, f64) {
-    let cx = rx + rw / 2.0;
-    let cy = ry + rh / 2.0;
-    let dx = target_x - cx;
-    let dy = target_y - cy;
-    if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
-        return (cx, cy + rh / 2.0);
-    }
-    let mut t = f64::MAX;
-    if dx.abs() > 1e-9 {
-        t = t.min((rw / 2.0) / dx.abs());
-    }
-    if dy.abs() > 1e-9 {
-        t = t.min((rh / 2.0) / dy.abs());
-    }
-    (cx + dx * t, cy + dy * t)
 }
 
 // ---------------------------------------------------------------------------
