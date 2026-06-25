@@ -153,7 +153,10 @@ fn node_size(node: &MmNode) -> (f64, f64) {
         (FONT_SIZE, NODE_H_PAD, NODE_V_PAD)
     };
     let char_scale = font / FONT_SIZE;
-    let title_w = text_width(&node.text) * char_scale + h_pad * 2.0;
+    // Bold text is ~5-7% wider than normal
+    let bold = node.depth <= 1 || node.description.is_some();
+    let bold_factor = if bold { 1.07 } else { 1.0 };
+    let title_w = text_width(&node.text) * char_scale * bold_factor + h_pad * 2.0;
 
     let (w, h) = if let Some(desc) = &node.description {
         let desc_scale = DESC_FONT_SIZE / FONT_SIZE;
@@ -458,7 +461,11 @@ fn render_svg(map: &MindMap) -> String {
             (FONT_SIZE, NODE_V_PAD)
         };
         let opacity = if node.depth >= 2 { " opacity=\"0.8\"" } else { "" };
-        let font_weight = if node.depth <= 1 { " font-weight=\"bold\"" } else { "" };
+        let font_weight = if node.depth <= 1 || node.description.is_some() {
+            " font-weight=\"bold\""
+        } else {
+            ""
+        };
 
         svg.push_str(&format!(
             "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{}/>\n",
