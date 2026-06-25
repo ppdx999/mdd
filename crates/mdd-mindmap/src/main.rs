@@ -103,7 +103,8 @@ const NODE_V_PAD: f64 = 8.0;
 const MIN_NODE_W: f64 = 60.0;
 const PADDING: f64 = 60.0;
 const CENTER_FONT_SIZE: f64 = 15.0;
-const RING_GAP: f64 = 100.0; // distance between depth rings
+const RING_GAP: f64 = 100.0; // base distance between depth rings
+const NODE_SPACING: f64 = 20.0; // minimum gap between adjacent nodes on arc
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -152,71 +153,128 @@ fn branch_color_index(node_idx: usize, edges: &[(usize, usize)]) -> usize {
 // Radial tree layout
 // ---------------------------------------------------------------------------
 
-/// Count total descendants (including self) for subtree sizing.
-fn subtree_weight(node_idx: usize, children: &HashMap<usize, Vec<usize>>) -> usize {
-    let mut count = 1;
-    if let Some(kids) = children.get(&node_idx) {
-        for &kid in kids {
-            count += subtree_weight(kid, children);
-        }
-    }
-    count
-}
-
-/// Radial layout: place nodes in concentric rings around center.
-/// Returns positions as (center_x, center_y) for each node index.
-fn radial_layout(map: &MindMap) -> Vec<(f64, f64)> {
-    let n = map.nodes.len();
-    let mut positions = vec![(0.0_f64, 0.0_f64); n];
-
-    // Build children map
-    let mut children: HashMap<usize, Vec<usize>> = HashMap::new();
-    for &(parent, child) in &map.edges {
-        children.entry(parent).or_default().push(child);
-    }
-
-    // Center node at origin
-    positions[0] = (0.0, 0.0);
-
-    // Recursively assign angular ranges
-    let two_pi = 2.0 * std::f64::consts::PI;
-    assign_positions(0, -std::f64::consts::FRAC_PI_2, two_pi, 0, &children, map, &mut positions);
-
-    positions
-}
-
-fn assign_positions(
+/// Compute the minimum angular sweep a subtree needs (using base RING_GAP)
+/// so that no nodes overlap at any depth level within it.
+fn min_subtree_sweep(
     node_idx: usize,
-    start_angle: f64,
-    sweep: f64,
     depth: usize,
     children: &HashMap<usize, Vec<usize>>,
-    map: &MindMap,
-    positions: &mut Vec<(f64, f64)>,
+    nodes: &[MmNode],
+) -> f64 {
+    let (w, _) = node_size(&nodes[node_idx]);
+    let radius = RING_GAP * depth as f64;
+    let self_sweep = if depth > 0 {
+        (w + NODE_SPACING) / radius
+    } else {
+        0.0
+    };
+
+    let children_sweep: f64 = match children.get(&node_idx) {
+        Some(kids) => kids
+            .iter()
+            .map(|&k| min_subtree_sweep(k, depth + 1, children, nodes))
+            .sum(),
+        None => 0.0,
+    };
+
+    self_sweep.max(children_sweep)
+}
+
+/// Allocate angular sweep to each node proportional to its subtree width needs.
+fn allocate_sweeps(
+    node_idx: usize,
+    parent_sweep: f64,
+    depth: usize,
+    children: &HashMap<usize, Vec<usize>>,
+    nodes: &[MmNode],
+    sweeps: &mut [f64],
 ) {
     let kids = match children.get(&node_idx) {
         Some(k) => k,
         None => return,
     };
 
-    let total_weight: usize = kids.iter().map(|&k| subtree_weight(k, children)).sum();
-    if total_weight == 0 {
+    let weights: Vec<f64> = kids
+        .iter()
+        .map(|&k| min_subtree_sweep(k, depth + 1, children, nodes))
+        .collect();
+    let total: f64 = weights.iter().sum();
+    if total <= 0.0 {
         return;
     }
 
-    let radius = RING_GAP * (depth + 1) as f64;
-    let mut current_angle = start_angle;
-
-    for &kid in kids {
-        let weight = subtree_weight(kid, children) as f64;
-        let child_sweep = sweep * weight / total_weight as f64;
-        let mid_angle = current_angle + child_sweep / 2.0;
-
-        positions[kid] = (radius * mid_angle.cos(), radius * mid_angle.sin());
-
-        assign_positions(kid, current_angle, child_sweep, depth + 1, children, map, positions);
-        current_angle += child_sweep;
+    for (i, &kid) in kids.iter().enumerate() {
+        let child_sweep = parent_sweep * weights[i] / total;
+        sweeps[kid] = child_sweep;
+        allocate_sweeps(kid, child_sweep, depth + 1, children, nodes, sweeps);
     }
+}
+
+/// Position nodes using pre-computed sweeps and per-depth radii.
+fn position_nodes(
+    node_idx: usize,
+    children: &HashMap<usize, Vec<usize>>,
+    nodes: &[MmNode],
+    positions: &mut [(f64, f64)],
+    depth_radii: &[f64],
+    sweeps: &[f64],
+    start_angles: &mut [f64],
+) {
+    let kids = match children.get(&node_idx) {
+        Some(k) => k,
+        None => return,
+    };
+
+    let mut current_angle = start_angles[node_idx];
+    for &kid in kids {
+        let mid_angle = current_angle + sweeps[kid] / 2.0;
+        let r = depth_radii[nodes[kid].depth];
+        positions[kid] = (r * mid_angle.cos(), r * mid_angle.sin());
+        start_angles[kid] = current_angle;
+        position_nodes(kid, children, nodes, positions, depth_radii, sweeps, start_angles);
+        current_angle += sweeps[kid];
+    }
+}
+
+/// Radial layout: place nodes in concentric rings around center.
+/// Each depth ring has its own radius based on the widest node at that depth.
+fn radial_layout(map: &MindMap) -> Vec<(f64, f64)> {
+    let n = map.nodes.len();
+    let mut positions = vec![(0.0_f64, 0.0_f64); n];
+
+    let mut children: HashMap<usize, Vec<usize>> = HashMap::new();
+    for &(parent, child) in &map.edges {
+        children.entry(parent).or_default().push(child);
+    }
+
+    let two_pi = 2.0 * std::f64::consts::PI;
+
+    // Pass 1: Allocate angular sweeps using min_subtree_sweep as weights
+    let mut sweeps = vec![0.0_f64; n];
+    sweeps[0] = two_pi;
+    allocate_sweeps(0, two_pi, 0, &children, &map.nodes, &mut sweeps);
+
+    // Pass 2: Compute per-depth radii so nodes fit within their allocated sweep
+    let max_depth = map.nodes.iter().map(|nd| nd.depth).max().unwrap_or(0);
+    let mut depth_radii = vec![0.0_f64; max_depth + 1];
+    for d in 1..=max_depth {
+        let mut needed = depth_radii[d - 1] + RING_GAP;
+        for (i, node) in map.nodes.iter().enumerate() {
+            if node.depth == d && sweeps[i] > 1e-9 {
+                let (w, _) = node_size(node);
+                needed = needed.max((w + NODE_SPACING) / sweeps[i]);
+            }
+        }
+        depth_radii[d] = needed;
+    }
+
+    // Pass 3: Position nodes
+    positions[0] = (0.0, 0.0);
+    let mut start_angles = vec![0.0_f64; n];
+    start_angles[0] = -std::f64::consts::FRAC_PI_2;
+    position_nodes(0, &children, &map.nodes, &mut positions, &depth_radii, &sweeps, &mut start_angles);
+
+    positions
 }
 
 // ---------------------------------------------------------------------------
