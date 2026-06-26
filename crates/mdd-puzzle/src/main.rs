@@ -67,6 +67,21 @@ const COLORS: &[(&str, &str)] = &[
     ("#fff3e0", "#e65100"),
 ];
 
+/// Compute font size for a label to fit within the hexagon.
+fn label_font_size(label: &str) -> f64 {
+    let max_w = 3.0_f64.sqrt() * HEX_RADIUS - 16.0; // inner width minus padding
+    // CJK chars ≈ 1.2 * font_size wide, ASCII ≈ 0.65 * font_size
+    // (conservative estimates for sans-serif rendering)
+    let char_count: f64 = label
+        .chars()
+        .map(|c| if c.is_ascii() { 0.65 } else { 1.2 })
+        .sum();
+    if char_count <= 0.0 {
+        return FONT_SIZE;
+    }
+    (max_w / char_count).min(FONT_SIZE).max(7.0) // floor at 7px
+}
+
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -244,10 +259,11 @@ fn render_svg(puzzle: &Puzzle) -> String {
             points, fill, stroke
         ));
 
-        // Label
+        // Label (shrink font if text is too wide for hexagon)
+        let fs = label_font_size(&piece.label);
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" fill=\"{}\">{}</text>",
-            cx, cy, stroke,
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
+            cx, cy, fs, stroke,
             escape_xml(&piece.label)
         ));
     }
