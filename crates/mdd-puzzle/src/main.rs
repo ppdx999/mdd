@@ -7,6 +7,7 @@ use std::io::{self, Read};
 #[derive(Debug)]
 struct Piece {
     label: String,
+    description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -27,9 +28,13 @@ fn parse(input: &str) -> Result<Puzzle, String> {
             continue;
         }
 
-        pieces.push(Piece {
-            label: trimmed.to_string(),
-        });
+        let (label, description) = if let Some((t, d)) = trimmed.split_once('|') {
+            let d = d.trim().to_string();
+            (t.trim().to_string(), if d.is_empty() { None } else { Some(d) })
+        } else {
+            (trimmed.to_string(), None)
+        };
+        pieces.push(Piece { label, description });
     }
 
     if pieces.len() < 2 {
@@ -43,13 +48,13 @@ fn parse(input: &str) -> Result<Puzzle, String> {
 // SVG rendering
 // ---------------------------------------------------------------------------
 
-const CHAR_WIDTH: f64 = 8.0;
-const CJK_CHAR_WIDTH: f64 = 14.0;
 const FONT_SIZE: f64 = 13.0;
 const COLOR_DARK: &str = "#333";
 
 const HEX_RADIUS: f64 = 55.0;
 const PADDING: f64 = 40.0;
+const DESC_FONT_SIZE: f64 = 11.0;
+const DESC_COLOR: &str = "#666";
 
 const COLORS: &[(&str, &str)] = &[
     ("#e3f2fd", "#1565c0"),
@@ -61,12 +66,6 @@ const COLORS: &[(&str, &str)] = &[
     ("#e8eaf6", "#283593"),
     ("#fff3e0", "#e65100"),
 ];
-
-fn text_width(s: &str) -> f64 {
-    s.chars()
-        .map(|c| if c.is_ascii() { CHAR_WIDTH } else { CJK_CHAR_WIDTH })
-        .sum()
-}
 
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -90,26 +89,106 @@ fn hexagon_points(cx: f64, cy: f64, r: f64) -> String {
 fn render_svg(puzzle: &Puzzle) -> String {
     let n = puzzle.pieces.len();
     let cols = (n as f64).sqrt().ceil() as usize;
-    let rows = (n + cols - 1) / cols;
+    let _rows = (n + cols - 1) / cols;
 
     // Hexagon geometry: width = sqrt(3) * r, height = 2 * r
     let hex_w = 3.0_f64.sqrt() * HEX_RADIUS;
     let hex_h = 2.0 * HEX_RADIUS;
 
-    // Grid spacing
+    // Grid spacing (no extra for descriptions — they radiate outward)
     let col_step = hex_w;
     let row_step = hex_h * 0.75;
 
-    // Calculate total dimensions
-    let grid_w = if rows > 1 {
-        cols as f64 * col_step + col_step * 0.5
-    } else {
-        cols as f64 * col_step
-    };
-    let grid_h = row_step * (rows - 1) as f64 + hex_h;
+    // Calculate hexagon centers first
+    let origin_x = hex_w / 2.0;
+    let origin_y = HEX_RADIUS;
+    let mut centers: Vec<(f64, f64)> = Vec::new();
+    for i in 0..n {
+        let row = i / cols;
+        let col = i % cols;
+        let offset_x = if row % 2 == 1 { col_step * 0.5 } else { 0.0 };
+        let cx = origin_x + col as f64 * col_step + offset_x;
+        let cy = origin_y + row as f64 * row_step;
+        centers.push((cx, cy));
+    }
 
-    let total_w = PADDING * 2.0 + grid_w;
-    let total_h = PADDING * 2.0 + grid_h;
+    // Grid center (average of all hexagon positions)
+    let grid_cx: f64 = centers.iter().map(|(x, _)| x).sum::<f64>() / n as f64;
+    let grid_cy: f64 = centers.iter().map(|(_, y)| y).sum::<f64>() / n as f64;
+
+    // Compute description endpoints to determine bounding box
+    let desc_line_len = 30.0;
+    let desc_text_gap = 4.0;
+    struct DescInfo {
+        line_start: (f64, f64),
+        line_end: (f64, f64),
+        text_pos: (f64, f64),
+        dir: (f64, f64),
+    }
+    let mut desc_infos: Vec<Option<DescInfo>> = Vec::new();
+    for (i, piece) in puzzle.pieces.iter().enumerate() {
+        if piece.description.is_none() {
+            desc_infos.push(None);
+            continue;
+        }
+        let (cx, cy) = centers[i];
+        let dx = cx - grid_cx;
+        let dy = cy - grid_cy;
+        let dist = (dx * dx + dy * dy).sqrt();
+        let (dir_x, dir_y) = if dist > 1.0 {
+            (dx / dist, dy / dist)
+        } else {
+            // Center piece: extend upward
+            (0.0, -1.0)
+        };
+        let ls_x = cx + dir_x * HEX_RADIUS;
+        let ls_y = cy + dir_y * HEX_RADIUS;
+        let le_x = ls_x + dir_x * desc_line_len;
+        let le_y = ls_y + dir_y * desc_line_len;
+        let tx = le_x + dir_x * desc_text_gap;
+        let ty = le_y + dir_y * desc_text_gap;
+        desc_infos.push(Some(DescInfo {
+            line_start: (ls_x, ls_y),
+            line_end: (le_x, le_y),
+            text_pos: (tx, ty),
+            dir: (dir_x, dir_y),
+        }));
+    }
+
+    // Compute bounding box including hexagons and description text
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    for (cx, cy) in &centers {
+        min_x = min_x.min(cx - hex_w / 2.0);
+        min_y = min_y.min(cy - HEX_RADIUS);
+        max_x = max_x.max(cx + hex_w / 2.0);
+        max_y = max_y.max(cy + HEX_RADIUS);
+    }
+    for (i, info) in desc_infos.iter().enumerate() {
+        if let Some(di) = info {
+            let (tx, ty) = di.text_pos;
+            // Estimate text extent based on direction
+            let desc = puzzle.pieces[i].description.as_ref().unwrap();
+            let tw = desc.len() as f64 * 7.0; // rough text width estimate
+            if di.dir.0 > 0.3 {
+                max_x = max_x.max(tx + tw);
+            } else if di.dir.0 < -0.3 {
+                min_x = min_x.min(tx - tw);
+            } else {
+                min_x = min_x.min(tx - tw / 2.0);
+                max_x = max_x.max(tx + tw / 2.0);
+            }
+            min_y = min_y.min(ty - DESC_FONT_SIZE);
+            max_y = max_y.max(ty + DESC_FONT_SIZE);
+        }
+    }
+
+    let total_w = (max_x - min_x) + PADDING * 2.0;
+    let total_h = (max_y - min_y) + PADDING * 2.0;
+    let off_x = PADDING - min_x;
+    let off_y = PADDING - min_y;
 
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">",
@@ -124,17 +203,38 @@ fn render_svg(puzzle: &Puzzle) -> String {
         FONT_SIZE, COLOR_DARK
     ));
 
-    // Draw hexagons
-    let origin_x = PADDING + hex_w / 2.0;
-    let origin_y = PADDING + HEX_RADIUS;
-
+    // Draw description lines and text (behind hexagons)
     for (i, piece) in puzzle.pieces.iter().enumerate() {
-        let row = i / cols;
-        let col = i % cols;
+        if let (Some(desc), Some(di)) = (&piece.description, &desc_infos[i]) {
+            let (_, stroke) = COLORS[i % COLORS.len()];
+            svg.push_str(&format!(
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.6\"/>",
+                di.line_start.0 + off_x, di.line_start.1 + off_y,
+                di.line_end.0 + off_x, di.line_end.1 + off_y,
+                stroke
+            ));
+            let anchor = if di.dir.0 > 0.3 {
+                "start"
+            } else if di.dir.0 < -0.3 {
+                "end"
+            } else {
+                "middle"
+            };
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" dominant-baseline=\"central\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                di.text_pos.0 + off_x,
+                di.text_pos.1 + off_y,
+                anchor, DESC_FONT_SIZE, DESC_COLOR,
+                escape_xml(desc)
+            ));
+        }
+    }
 
-        let offset_x = if row % 2 == 1 { col_step * 0.5 } else { 0.0 };
-        let cx = origin_x + col as f64 * col_step + offset_x;
-        let cy = origin_y + row as f64 * row_step;
+    // Draw hexagons (on top of lines)
+    for (i, piece) in puzzle.pieces.iter().enumerate() {
+        let (cx, cy) = centers[i];
+        let cx = cx + off_x;
+        let cy = cy + off_y;
 
         let (fill, stroke) = COLORS[i % COLORS.len()];
 
@@ -145,15 +245,10 @@ fn render_svg(puzzle: &Puzzle) -> String {
         ));
 
         // Label
-        let label = &piece.label;
-        let tw = text_width(label);
-        let _ = tw; // used implicitly by text-anchor middle
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" fill=\"{}\">{}</text>",
-            cx,
-            cy,
-            stroke,
-            escape_xml(label)
+            cx, cy, stroke,
+            escape_xml(&piece.label)
         ));
     }
 
@@ -171,11 +266,12 @@ mdd-puzzle - Render a puzzle (hexagon grid) diagram as SVG
 Usage: mdd-puzzle < input.puzzle
 
 Each line is a piece label, rendered as a hexagon in a grid.
+Use | to add a description shown outside the hexagon: Label | Description
 At least 2 pieces are required.
 
 Example:
-  Strategy
-  People
+  Strategy | Long-term vision
+  People | Team and culture
   Technology
   Process
 ";
