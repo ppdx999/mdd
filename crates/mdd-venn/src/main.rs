@@ -143,17 +143,17 @@ const SET_COLORS: &[&str] = &["#1565c0", "#2e7d32", "#f57f17"];
 const MIN_CIRCLE_RADIUS: f64 = 130.0;
 const OVERLAP_RATIO: f64 = 0.4;
 const PADDING: f64 = 60.0;
-const ITEM_LINE_HEIGHT: f64 = 18.0;
 const LABEL_FONT_SIZE: f64 = 18.0;
+const DESC_FONT_SIZE: f64 = 11.0;
+const DESC_COLOR: &str = "#666";
+const DESC_LINE_LEN: f64 = 30.0;
+const DESC_LINE_HEIGHT: f64 = 15.0;
 
-/// Compute circle radius based on content (items + label)
+/// Compute circle radius based on label width.
 fn set_radius(set: &SetDef) -> f64 {
-    let item_height = (set.items.len() as f64 + 1.5) * ITEM_LINE_HEIGHT; // +1.5 for label
-    let max_item_w = set.items.iter()
-        .map(|s| text_width(s))
-        .fold(text_width(&set.label), f64::max);
-    let content_r = (item_height / 2.0).max(max_item_w / 2.0 + 30.0);
-    (content_r * 1.3).max(MIN_CIRCLE_RADIUS)
+    let label_w = text_width(&set.label);
+    let content_r = label_w / 2.0 + 30.0;
+    content_r.max(MIN_CIRCLE_RADIUS)
 }
 
 fn text_width(s: &str) -> f64 {
@@ -169,6 +169,54 @@ fn escape_xml(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Render items radiating outward from a point.
+/// `line_start` = distance from (cx,cy) where the line begins.
+/// `text_start` = distance from (cx,cy) where the text begins.
+fn render_items_outside(
+    svg: &mut String,
+    cx: f64,
+    cy: f64,
+    line_start: f64,
+    text_start: f64,
+    dir: (f64, f64),
+    items: &[String],
+    color: &str,
+) {
+    if items.is_empty() {
+        return;
+    }
+    let ls_x = cx + dir.0 * line_start;
+    let ls_y = cy + dir.1 * line_start;
+    let le_x = cx + dir.0 * text_start;
+    let le_y = cy + dir.1 * text_start;
+
+    svg.push_str(&format!(
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" opacity=\"0.5\"/>",
+        ls_x, ls_y, le_x, le_y, color
+    ));
+
+    let anchor = if dir.0 > 0.3 {
+        "start"
+    } else if dir.0 < -0.3 {
+        "end"
+    } else {
+        "middle"
+    };
+    let text_gap = 6.0;
+    let tx = le_x + dir.0 * text_gap;
+    let ty = le_y + dir.1 * text_gap;
+
+    for (i, line) in items.iter().enumerate() {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+            tx,
+            ty + i as f64 * DESC_LINE_HEIGHT,
+            anchor, DESC_FONT_SIZE, DESC_COLOR,
+            escape_xml(line)
+        ));
+    }
+}
+
 fn render_svg(venn: &Venn) -> String {
     if venn.sets.len() == 2 {
         render_two_sets(venn)
@@ -178,24 +226,26 @@ fn render_svg(venn: &Venn) -> String {
 }
 
 fn render_two_sets(venn: &Venn) -> String {
+    let has_items = venn.sets.iter().any(|s| !s.items.is_empty());
+    let pad = if has_items { PADDING + 80.0 } else { PADDING };
+
     let r1 = set_radius(&venn.sets[0]);
     let r2 = set_radius(&venn.sets[1]);
     let r_avg = (r1 + r2) / 2.0;
     let overlap_dist = r_avg * 2.0 * (1.0 - OVERLAP_RATIO);
 
-    let cx1 = PADDING + r1;
+    let cx1 = pad + r1;
     let cx2 = cx1 + overlap_dist;
     let r_max = r1.max(r2);
-    let cy_circles = PADDING + r_max;
+    let cy_circles = pad + r_max;
 
-    let total_w = cx2 + r2 + PADDING;
-    let total_h = cy_circles + r_max + PADDING;
+    let total_w = cx2 + r2 + pad;
+    let total_h = cy_circles + r_max + pad;
 
     let mut svg = svg_header(total_w, total_h);
 
     // Circles
-    let radii = [r1, r2];
-    for (i, (cx, cy, r)) in [(cx1, cy_circles, r1), (cx2, cy_circles, r2)].iter().enumerate() {
+    for (i, &(cx, cy, r)) in [(cx1, cy_circles, r1), (cx2, cy_circles, r2)].iter().enumerate() {
         svg.push_str(&format!(
             "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" fill-opacity=\"0.15\" stroke=\"{}\" stroke-width=\"2\"/>",
             cx, cy, r, SET_COLORS[i], SET_COLORS[i]
@@ -216,12 +266,24 @@ fn render_two_sets(venn: &Venn) -> String {
         set_b_label_x, label_y, LABEL_FONT_SIZE, SET_COLORS[1], escape_xml(&venn.sets[1].label)
     ));
 
-    render_items_at(&mut svg, set_a_label_x, label_y + ITEM_LINE_HEIGHT + 4.0, &venn.sets[0].items, COLOR_DARK);
-    render_items_at(&mut svg, set_b_label_x, label_y + ITEM_LINE_HEIGHT + 4.0, &venn.sets[1].items, COLOR_DARK);
+    // Items radiating outward from each circle
+    let venn_cx = (cx1 + cx2) / 2.0;
+    let centers = [(cx1, cy_circles, r1), (cx2, cy_circles, r2)];
+    for (i, &(cx, cy, r)) in centers.iter().enumerate() {
+        let dx = cx - venn_cx;
+        let dy = cy - cy_circles;
+        let dist = (dx * dx + dy * dy).sqrt();
+        let dir = if dist > 1.0 {
+            (dx / dist, dy / dist)
+        } else {
+            (0.0, -1.0)
+        };
+        render_items_outside(&mut svg, cx, cy, r, r + DESC_LINE_LEN, dir, &venn.sets[i].items, SET_COLORS[i]);
+    }
 
     // Overlap
     let overlap_x = (cx1 + cx2) / 2.0;
-    let overlap_label_y = cy_circles - r_max * 0.3;
+    let overlap_label_y = cy_circles;
 
     if !venn.overlaps.is_empty() {
         let ol = &venn.overlaps[0];
@@ -229,16 +291,20 @@ fn render_two_sets(venn: &Venn) -> String {
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
             overlap_x, overlap_label_y, LABEL_FONT_SIZE, COLOR_DARK, escape_xml(&ol.label)
         ));
-        render_items_at(&mut svg, overlap_x, overlap_label_y + ITEM_LINE_HEIGHT + 4.0, &ol.items, COLOR_DARK);
+        // Overlap items radiate downward
+        let dir = (0.0, 1.0);
+        let edge_dist = r_max;
+        render_items_outside(&mut svg, overlap_x, overlap_label_y, LABEL_FONT_SIZE, edge_dist + DESC_LINE_LEN, dir, &ol.items, COLOR_DARK);
     }
-
-    let _ = radii;
 
     svg.push_str("</svg>");
     svg
 }
 
 fn render_three_sets(venn: &Venn) -> String {
+    let has_items = venn.sets.iter().any(|s| !s.items.is_empty());
+    let pad = if has_items { PADDING + 80.0 } else { PADDING };
+
     let radii: Vec<f64> = venn.sets.iter().map(|s| set_radius(s)).collect();
     let r_avg = radii.iter().sum::<f64>() / 3.0;
     let r_max = radii.iter().copied().fold(0.0_f64, f64::max);
@@ -246,8 +312,8 @@ fn render_three_sets(venn: &Venn) -> String {
 
     let tri_h = overlap_dist * (3.0_f64).sqrt() / 2.0;
 
-    let cx_top = PADDING + r_max + overlap_dist / 2.0;
-    let cy_top = PADDING + r_max;
+    let cx_top = pad + r_max + overlap_dist / 2.0;
+    let cy_top = pad + r_max;
 
     let cx_bl = cx_top - overlap_dist / 2.0;
     let cy_bl = cy_top + tri_h;
@@ -255,8 +321,8 @@ fn render_three_sets(venn: &Venn) -> String {
     let cx_br = cx_top + overlap_dist / 2.0;
     let cy_br = cy_top + tri_h;
 
-    let total_w = cx_br + r_max + PADDING;
-    let total_h = cy_bl + r_max + PADDING;
+    let total_w = cx_br + r_max + pad;
+    let total_h = cy_bl + r_max + pad;
 
     let mut svg = svg_header(total_w, total_h);
 
@@ -274,31 +340,47 @@ fn render_three_sets(venn: &Venn) -> String {
     let center_x = (cx_top + cx_bl + cx_br) / 3.0;
     let center_y = (cy_top + cy_bl + cy_br) / 3.0;
 
+    // Fixed outward directions: top→upper-right, bottom-left→lower-left, bottom-right→lower-right
+    let s = std::f64::consts::FRAC_1_SQRT_2; // 0.707
+    let set_dirs = [(s, -s), (-s, s), (s, s)];
+
     for (i, (cx, cy)) in centers.iter().enumerate() {
         let dx = cx - center_x;
         let dy = cy - center_y;
         let dist = (dx * dx + dy * dy).sqrt();
-        let label_x = cx + dx / dist * radii[i] * 0.55;
-        let label_y = cy + dy / dist * radii[i] * 0.55;
+        let label_dir = (dx / dist, dy / dist);
+        let label_x = cx + label_dir.0 * radii[i] * 0.55;
+        let label_y = cy + label_dir.1 * radii[i] * 0.55;
 
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
             label_x, label_y, LABEL_FONT_SIZE, SET_COLORS[i], escape_xml(&venn.sets[i].label)
         ));
 
-        render_items_at(&mut svg, label_x, label_y + ITEM_LINE_HEIGHT + 4.0, &venn.sets[i].items, COLOR_DARK);
+        // Items radiating outward in fixed directions
+        render_items_outside(&mut svg, *cx, *cy, radii[i], radii[i] + DESC_LINE_LEN, set_dirs[i], &venn.sets[i].items, SET_COLORS[i]);
     }
 
-    // Overlaps at centroid
+    // Overlap: label at centroid, items radiate upper-left
     if !venn.overlaps.is_empty() {
         let ol = &venn.overlaps[0];
-        let ol_y = center_y - (ol.items.len() as f64 * ITEM_LINE_HEIGHT) / 2.0;
 
         svg.push_str(&format!(
             "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            center_x, ol_y, LABEL_FONT_SIZE, COLOR_DARK, escape_xml(&ol.label)
+            center_x, center_y, LABEL_FONT_SIZE, COLOR_DARK, escape_xml(&ol.label)
         ));
-        render_items_at(&mut svg, center_x, ol_y + ITEM_LINE_HEIGHT + 4.0, &ol.items, COLOR_DARK);
+
+        // Distance from centroid to farthest circle edge
+        let max_edge_dist = centers.iter().enumerate()
+            .map(|(i, (cx, cy))| {
+                let dx = cx - center_x;
+                let dy = cy - center_y;
+                (dx * dx + dy * dy).sqrt() + radii[i]
+            })
+            .fold(0.0_f64, f64::max);
+
+        let overlap_dir = (-s, -s); // upper-left
+        render_items_outside(&mut svg, center_x, center_y, LABEL_FONT_SIZE, max_edge_dist + DESC_LINE_LEN, overlap_dir, &ol.items, COLOR_DARK);
     }
 
     svg.push_str("</svg>");
@@ -318,16 +400,6 @@ fn svg_header(width: f64, height: f64) -> String {
     svg
 }
 
-fn render_items_at(svg: &mut String, x: f64, start_y: f64, items: &[String], color: &str) {
-    for (i, item) in items.iter().enumerate() {
-        let y = start_y + i as f64 * ITEM_LINE_HEIGHT;
-        svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{}\" fill=\"{}\">{}</text>",
-            x, y, FONT_SIZE, color, escape_xml(item)
-        ));
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -338,6 +410,7 @@ mdd-venn - Render a Venn diagram as SVG
 Usage: mdd-venn < input.venn
 
 Define 2 or 3 sets with \"set Name { items... }\".
+Items are displayed outside the circle with radiating lines.
 Optionally define overlapping items with \"overlap Name { items... }\".
 
 Example:
