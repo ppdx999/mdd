@@ -153,14 +153,13 @@ fn node_size(node: &MmNode) -> (f64, f64) {
         (FONT_SIZE, NODE_H_PAD, NODE_V_PAD)
     };
     let char_scale = font / FONT_SIZE;
-    // Bold text is ~5-7% wider than normal
     let bold = node.depth <= 1 || node.description.is_some();
-    let bold_factor = if bold { 1.07 } else { 1.0 };
+    let bold_factor = if bold { 1.1 } else { 1.05 };
     let title_w = text_width(&node.text) * char_scale * bold_factor + h_pad * 2.0;
 
     let (w, h) = if let Some(desc) = &node.description {
         let desc_scale = DESC_FONT_SIZE / FONT_SIZE;
-        let desc_w = text_width(desc) * desc_scale + h_pad * 2.0;
+        let desc_w = text_width(desc) * desc_scale * 1.05 + h_pad * 2.0;
         let w = title_w.max(desc_w).max(MIN_NODE_W);
         let h = font + LINE_GAP + DESC_FONT_SIZE + v_pad * 2.0;
         (w, h)
