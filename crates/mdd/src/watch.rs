@@ -353,9 +353,42 @@ pub fn markdown_to_html(processed: &str, title: &str) -> String {
          table {{ border-collapse: collapse; margin: 16px 0; }}\n\
          th, td {{ border: 1px solid #ddd; padding: 8px 12px; }}\n\
          th {{ background: #f5f5f5; }}\n\
-         svg {{ max-width: 100%; height: auto; display: block; margin: 16px 0; }}\n\
+         svg {{ max-width: 100%; height: auto; display: block; margin: 16px 0; cursor: pointer; }}\n\
+         .svg-overlay {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; \
+         background: rgba(0,0,0,0.85); z-index: 9999; overflow-y: auto; }}\n\
+         .svg-overlay.active {{ display: flex; flex-direction: column; align-items: center; }}\n\
+         .svg-overlay-close {{ position: fixed; top: 16px; right: 24px; color: white; font-size: 32px; \
+         cursor: pointer; z-index: 10000; width: 40px; height: 40px; display: flex; align-items: center; \
+         justify-content: center; border-radius: 50%; background: rgba(255,255,255,0.15); }}\n\
+         .svg-overlay-close:hover {{ background: rgba(255,255,255,0.3); }}\n\
+         .svg-overlay svg {{ width: 95vw; background: white; padding: 20px; border-radius: 8px; \
+         margin: 40px auto; flex-shrink: 0; }}\n\
          </style>\n\
-         </head>\n<body>\n{}\n</body>\n</html>",
+         </head>\n<body>\n{}\n\
+         <div class=\"svg-overlay\" id=\"svgOverlay\">\
+         </div>\n\
+         <script>\n\
+         function closeOverlay() {{ document.getElementById('svgOverlay').classList.remove('active'); }}\n\
+         document.querySelectorAll('svg').forEach(function(svg) {{\n\
+           if (svg.closest('.svg-overlay')) return;\n\
+           svg.addEventListener('click', function() {{\n\
+             var overlay = document.getElementById('svgOverlay');\n\
+             overlay.innerHTML = '<div class=\"svg-overlay-close\" onclick=\"closeOverlay()\">&times;</div>';\n\
+             var clone = svg.cloneNode(true);\n\
+             clone.removeAttribute('width');\n\
+             clone.removeAttribute('height');\n\
+             overlay.appendChild(clone);\n\
+             overlay.classList.add('active');\n\
+           }});\n\
+         }});\n\
+         document.getElementById('svgOverlay').addEventListener('click', function(e) {{\n\
+           if (e.target === this) closeOverlay();\n\
+         }});\n\
+         document.addEventListener('keydown', function(e) {{\n\
+           if (e.key === 'Escape') closeOverlay();\n\
+         }});\n\
+         </script>\n\
+         </body>\n</html>",
         title, html_body
     )
 }
