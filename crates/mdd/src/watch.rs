@@ -6,6 +6,32 @@ use std::time::{Duration, SystemTime};
 
 use pulldown_cmark::{Options, Parser, html};
 
+/// Build all .md files in dir to HTML in outdir, preserving directory structure.
+/// No watching, no index.html. Exits when done.
+pub fn build(dir: &Path, outdir: &Path) {
+    if !dir.is_dir() {
+        eprintln!("mdd: {} is not a directory", dir.display());
+        std::process::exit(1);
+    }
+
+    let md_files = find_md_files(dir);
+    let file_count = md_files.len();
+    let max_parallel = 8;
+    eprintln!("mdd: Building {} files ({} at a time)...", file_count, max_parallel);
+
+    for chunk in md_files.chunks(max_parallel) {
+        thread::scope(|s| {
+            for md_path in chunk {
+                s.spawn(|| {
+                    build_html_to(md_path, dir, outdir);
+                });
+            }
+        });
+    }
+
+    eprintln!("mdd: Done. {} files built in {}", file_count, outdir.display());
+}
+
 /// Watch directory and output HTML files (markdown → processed HTML).
 pub fn watch(dir: &Path) {
     if !dir.is_dir() {
@@ -391,6 +417,46 @@ pub fn markdown_to_html(processed: &str, title: &str) -> String {
          </body>\n</html>",
         title, html_body
     )
+}
+
+/// Build a single .md file to HTML, mapping input dir to output dir.
+/// e.g. build_html_to("docs/foo/bar.md", "docs", "dist") → writes "dist/foo/bar.html"
+fn build_html_to(md_path: &str, input_dir: &Path, output_dir: &Path) {
+    let path = Path::new(md_path);
+    let rel = path.strip_prefix(input_dir).unwrap_or(path);
+    let html_rel = rel.with_extension("html");
+    let html_path = output_dir.join(&html_rel);
+
+    // Create parent directories
+    if let Some(parent) = html_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let input = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdd: Failed to read {}: {}", md_path, e);
+            return;
+        }
+    };
+
+    let processed = match crate::process::process(&input, path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdd: {}: {}", md_path, e);
+            return;
+        }
+    };
+
+    let title = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("mdd");
+    let full_html = markdown_to_html(&processed, title);
+
+    match fs::write(&html_path, &full_html) {
+        Ok(_) => eprintln!("mdd: Built {}", html_path.display()),
+        Err(e) => eprintln!("mdd: Failed to write {}: {}", html_path.display(), e),
+    }
 }
 
 fn build_html(md_path: &str) {

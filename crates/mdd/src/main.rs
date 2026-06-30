@@ -29,6 +29,7 @@ fn find_plugins() -> Vec<String> {
 fn print_help() {
     eprintln!("Usage: mdd <file.md>");
     eprintln!("       mdd html <file.md>");
+    eprintln!("       mdd build <dir> -o <outdir>");
     eprintln!("       mdd preview <file.md>");
     eprintln!("       mdd slide <file.md> > output.pdf");
     eprintln!("       mdd slide-preview <file.md>");
@@ -90,6 +91,11 @@ fn main() {
                 .and_then(|s| s.to_str())
                 .unwrap_or("mdd");
             print!("{}", watch::markdown_to_html(&processed, title));
+        }
+        5 if args[1] == "build" && args[3] == "-o" => {
+            let dir = Path::new(&args[2]);
+            let outdir = Path::new(&args[4]);
+            watch::build(dir, outdir);
         }
         3 if args[1] == "preview" => {
             let path = Path::new(&args[2]);
